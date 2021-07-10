@@ -19,6 +19,7 @@ Reasons why decred should showcase:
 -	Not many cryptos coming to the conference; providing decred the opportunity to lead the conversation
 -	Build decred community in the region
 The conference offers affordable packages for participation: I have been able to negotiate the price for the Silver Package ($15,000USD down to $11,000USD)- which includes ( 2x2 booth+20 min presentation). We also have the option to take the presentation only package ($10,000USD) for a 20 min presentation which can be done remotely. If this proposal is approved, I would like to further ask the community to suggest what the 20min presentation should be about and who can deliver it etc.
+
 Benefits
 -	Potential to reach ~1 Million audience in Middle East
 •	ROI from conference
