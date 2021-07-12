@@ -59,17 +59,22 @@ B.  Presentation Package (Special Price for Decred) $11,000 USD
 -	Press releases will feature your brand
 -	Insert in delegate bag to all attendees
 -	4 Sponsor Pass: Access to VIP Area
+
+
 Additional Expense: (3 Decred representatives at the conference)
 -	Travel: $2000 PP
 -	Hotel stay: $1000 PP
 -	Representative(s):30/hr
 -	Decred Merch: $1500
- Total Expense: Conference Package + additional expense
-- Package A+ Additional Expense =		Total	32440
+ 
+Total Expense: Conference Package + additional expense
+- Package A+ Additional Expense = 32440
 - Package B+ Additional Expene = 33440
 
 The Ask
+
 Should Decred participate at the Middle East Conference? If yes, which option from below:
 •	Silver package
+
 •	Presentation Only 
 
