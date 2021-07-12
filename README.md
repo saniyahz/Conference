@@ -33,6 +33,7 @@ Benefits
 
 Featuring Companies
 Binance,  Bybit, CBX, Crypto.com,USwap, Hips Payments, WazirX, Bitpaid, Freeton,  Salamantex, CaizCoin,  Garantex & more Crypto Companies to confirm
+
 Expenses
 Conference Package Options
 A.  Presentation Package: $10,000 USD
@@ -58,13 +59,17 @@ B.  Presentation Package (Special Price for Decred) $11,000 USD
 -	Press releases will feature your brand
 -	Insert in delegate bag to all attendees
 -	4 Sponsor Pass: Access to VIP Area
-Other Expense:
--	Travel to Dubai: $2000 PP
+Additional Expense: (3 Decred representatives at the conference)
+-	Travel: $2000 PP
 -	Hotel stay: $1000 PP
--	Organizer $$
--	Decred Merch $$
- 
+-	Representative(s):30/hr
+-	Decred Merch: $1500
+ Total Expense: Conference Package + additional expense
+- Package A+ Additional Expense =		Total	32440
+- Package B+ Additional Expene = 33440
+
 The Ask
 Should Decred participate at the Middle East Conference? If yes, which option from below:
 •	Silver package
 •	Presentation Only 
+
