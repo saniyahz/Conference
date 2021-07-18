@@ -76,5 +76,6 @@ The Ask
 Should Decred participate at the Middle East Conference? If yes, which option from below:
 •	Silver package
 
-•	Presentation Only 
+•	Presentation Only (will take to the community to suggest who to speak at the conference and the topic(s))
+
 
