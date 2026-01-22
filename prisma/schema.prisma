@@ -1,0 +1,81 @@
+// This is your Prisma schema file
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "sqlite"
+  url      = env("DATABASE_URL")
+}
+
+model User {
+  id            String    @id @default(cuid())
+  name          String?
+  email         String    @unique
+  password      String
+  emailVerified DateTime?
+  image         String?
+  createdAt     DateTime  @default(now())
+  updatedAt     DateTime  @updatedAt
+
+  subscription  Subscription?
+  stories       Story[]
+  orders        PrintOrder[]
+}
+
+model Subscription {
+  id                String   @id @default(cuid())
+  userId            String   @unique
+  user              User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  plan              String   // "free", "monthly", "yearly", "unlimited_monthly", "unlimited_yearly"
+  status            String   // "active", "cancelled", "expired"
+  stripeCustomerId  String?  @unique
+  stripeSubscriptionId String? @unique
+
+  currentPeriodStart DateTime
+  currentPeriodEnd   DateTime
+  storiesSavedThisMonth Int @default(0)
+
+  createdAt         DateTime @default(now())
+  updatedAt         DateTime @updatedAt
+}
+
+model Story {
+  id          String   @id @default(cuid())
+  userId      String
+  user        User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  title       String
+  pages       String   // JSON string of pages
+  coverImage  String?
+
+  isSaved     Boolean  @default(false)
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  @@index([userId])
+}
+
+model PrintOrder {
+  id          String   @id @default(cuid())
+  userId      String
+  user        User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  storyId     String
+
+  status      String   // "pending", "processing", "shipped", "completed", "cancelled"
+
+  basePrice   Float
+  discount    Float
+  totalPrice  Float
+
+  shippingAddress String
+  trackingNumber  String?
+
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  @@index([userId])
+}
