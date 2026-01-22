@@ -16,7 +16,7 @@ export default function SpeechRecorder({ onComplete }: SpeechRecorderProps) {
   const recognitionRef = useRef<any>(null)
 
   useEffect(() => {
-    console.log('SpeechRecorder v2.0 - Enhanced version loaded')
+    console.log('✅ SpeechRecorder v2.0 ENHANCED - Loaded at ' + new Date().toISOString())
     // Check if browser supports Speech Recognition
     if (typeof window !== 'undefined') {
       const SpeechRecognition = (window as any).SpeechRecognition || (window as any).webkitSpeechRecognition
