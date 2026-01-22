@@ -23,6 +23,7 @@ export default function StoryBook({ story, onReset }: StoryBookProps) {
   const [selectedVoice, setSelectedVoice] = useState<string>('default')
 
   useEffect(() => {
+    console.log('StoryBook v2.0 - Enhanced version with voice selector loaded')
     if (typeof window !== 'undefined') {
       setSpeechSupported('speechSynthesis' in window)
 

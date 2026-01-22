@@ -130,7 +130,7 @@ export async function POST(request: NextRequest) {
           pdf.roundedRect(margin + 5, imageY, imageWidth, imageHeight, 3, 3, 'F')
           pdf.setTextColor(150, 150, 150)
           pdf.setFontSize(14)
-          pdf.text('✨ Imagine the scene ✨', pageWidth / 2, imageY + imageHeight / 2, { align: 'center' })
+          pdf.text('Imagine the scene', pageWidth / 2, imageY + imageHeight / 2, { align: 'center' })
         }
       } else {
         // Decorative placeholder when no image
@@ -141,7 +141,7 @@ export async function POST(request: NextRequest) {
         pdf.roundedRect(margin + 5, imageY, imageWidth, imageHeight, 3, 3, 'S')
         pdf.setTextColor(150, 120, 180)
         pdf.setFontSize(16)
-        pdf.text('✨ Let Your Imagination Soar ✨', pageWidth / 2, imageY + imageHeight / 2, { align: 'center' })
+        pdf.text('Let Your Imagination Soar', pageWidth / 2, imageY + imageHeight / 2, { align: 'center' })
       }
 
       // Story text box
