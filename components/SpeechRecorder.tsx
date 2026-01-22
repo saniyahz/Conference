@@ -137,6 +137,9 @@ export default function SpeechRecorder({ onComplete }: SpeechRecorderProps) {
   return (
     <div className="space-y-6">
       <div className="text-center">
+        <div className="bg-green-500 text-white font-bold py-2 px-4 rounded mb-4">
+          ✅ VERSION 5.0 ENHANCED - WITH GREEN BARS
+        </div>
         <h2 className="text-2xl font-bold text-purple-800 mb-2">
           Tell Us Your Story
         </h2>
