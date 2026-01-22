@@ -1,5 +1,7 @@
 'use client'
 
+console.log('🚀🚀🚀 SpeechRecorder.tsx LOADED - Version 3.0 - ' + new Date().toISOString())
+
 import { useState, useRef, useEffect } from 'react'
 import { Mic, MicOff, Play, Trash2 } from 'lucide-react'
 
