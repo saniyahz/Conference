@@ -6,13 +6,14 @@ import { useState, useRef, useEffect } from 'react'
 import { Mic, MicOff, Play, Trash2 } from 'lucide-react'
 
 interface SpeechRecorderProps {
-  onComplete: (text: string) => void
+  onComplete: (text: string, authorName: string) => void
 }
 
 export default function SpeechRecorder({ onComplete }: SpeechRecorderProps) {
   const [isRecording, setIsRecording] = useState(false)
   const [transcription, setTranscription] = useState('')
   const [interimText, setInterimText] = useState('')
+  const [authorName, setAuthorName] = useState('')
   const [isSupported, setIsSupported] = useState(true)
   const [isListening, setIsListening] = useState(false)
   const recognitionRef = useRef<any>(null)
