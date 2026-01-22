@@ -19,10 +19,30 @@ export default function StoryBook({ story, onReset }: StoryBookProps) {
   const [isSpeaking, setIsSpeaking] = useState(false)
   const [speechSupported, setSpeechSupported] = useState(true)
   const [isSaving, setIsSaving] = useState(false)
+  const [availableVoices, setAvailableVoices] = useState<SpeechSynthesisVoice[]>([])
+  const [selectedVoice, setSelectedVoice] = useState<string>('default')
 
   useEffect(() => {
     if (typeof window !== 'undefined') {
       setSpeechSupported('speechSynthesis' in window)
+
+      // Load available voices
+      const loadVoices = () => {
+        const voices = window.speechSynthesis.getVoices()
+        setAvailableVoices(voices)
+
+        // Auto-select a good default voice (prefer female for mother-like, English)
+        const preferredVoice = voices.find(v =>
+          v.lang.startsWith('en') && (v.name.includes('Female') || v.name.includes('Samantha') || v.name.includes('Karen'))
+        ) || voices.find(v => v.lang.startsWith('en'))
+
+        if (preferredVoice) {
+          setSelectedVoice(preferredVoice.name)
+        }
+      }
+
+      loadVoices()
+      window.speechSynthesis.onvoiceschanged = loadVoices
     }
   }, [])
 
@@ -44,8 +64,16 @@ export default function StoryBook({ story, onReset }: StoryBookProps) {
     if (!speechSupported) return
 
     const utterance = new SpeechSynthesisUtterance(text)
-    utterance.rate = 0.9
-    utterance.pitch = 1.1
+
+    // Find selected voice
+    const voice = availableVoices.find(v => v.name === selectedVoice)
+    if (voice) {
+      utterance.voice = voice
+    }
+
+    // More natural settings
+    utterance.rate = 0.85  // Slower, more story-telling pace
+    utterance.pitch = 1.0  // Natural pitch
     utterance.volume = 1
 
     utterance.onend = () => {
@@ -142,6 +170,29 @@ export default function StoryBook({ story, onReset }: StoryBookProps) {
           {story.title}
         </h1>
       </div>
+
+      {/* Voice Selector */}
+      {speechSupported && availableVoices.length > 0 && (
+        <div className="flex items-center justify-center gap-3 bg-blue-50 p-4 rounded-lg">
+          <label htmlFor="voice-select" className="font-semibold text-gray-700">
+            📢 Narrator Voice:
+          </label>
+          <select
+            id="voice-select"
+            value={selectedVoice}
+            onChange={(e) => setSelectedVoice(e.target.value)}
+            className="px-4 py-2 border-2 border-blue-300 rounded-lg bg-white focus:border-blue-500 focus:outline-none"
+          >
+            {availableVoices
+              .filter(voice => voice.lang.startsWith('en'))
+              .map((voice, index) => (
+                <option key={index} value={voice.name}>
+                  {voice.name} {voice.name.toLowerCase().includes('female') ? '(Mother-like)' : voice.name.toLowerCase().includes('male') ? '(Father-like)' : ''}
+                </option>
+              ))}
+          </select>
+        </div>
+      )}
 
       {/* Book Pages */}
       <div className="relative bg-gradient-to-br from-yellow-50 to-orange-50 rounded-2xl shadow-xl p-8 md:p-12 min-h-[500px] border-4 border-amber-200">

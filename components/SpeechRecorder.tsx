@@ -10,7 +10,9 @@ interface SpeechRecorderProps {
 export default function SpeechRecorder({ onComplete }: SpeechRecorderProps) {
   const [isRecording, setIsRecording] = useState(false)
   const [transcription, setTranscription] = useState('')
+  const [interimText, setInterimText] = useState('')
   const [isSupported, setIsSupported] = useState(true)
+  const [isListening, setIsListening] = useState(false)
   const recognitionRef = useRef<any>(null)
 
   useEffect(() => {
@@ -27,6 +29,11 @@ export default function SpeechRecorder({ onComplete }: SpeechRecorderProps) {
       recognition.continuous = true
       recognition.interimResults = true
       recognition.lang = 'en-US'
+      recognition.maxAlternatives = 1
+
+      recognition.onstart = () => {
+        setIsListening(true)
+      }
 
       recognition.onresult = (event: any) => {
         let finalTranscript = ''
@@ -36,6 +43,7 @@ export default function SpeechRecorder({ onComplete }: SpeechRecorderProps) {
           const transcript = event.results[i][0].transcript
           if (event.results[i].isFinal) {
             finalTranscript += transcript + ' '
+            setIsListening(true) // Show listening indicator when words are recognized
           } else {
             interimTranscript += transcript
           }
@@ -43,16 +51,26 @@ export default function SpeechRecorder({ onComplete }: SpeechRecorderProps) {
 
         if (finalTranscript) {
           setTranscription(prev => prev + finalTranscript)
+          setInterimText('')
+        } else {
+          setInterimText(interimTranscript)
         }
       }
 
       recognition.onerror = (event: any) => {
         console.error('Speech recognition error:', event.error)
-        setIsRecording(false)
+        if (event.error === 'no-speech') {
+          setIsListening(false)
+        }
+        if (event.error === 'aborted') {
+          setIsRecording(false)
+        }
       }
 
       recognition.onend = () => {
         setIsRecording(false)
+        setIsListening(false)
+        setInterimText('')
       }
 
       recognitionRef.current = recognition
@@ -142,20 +160,32 @@ export default function SpeechRecorder({ onComplete }: SpeechRecorderProps) {
         </button>
       </div>
 
-      <div className="text-center">
-        {isRecording ? (
-          <p className="text-red-600 font-semibold animate-pulse">
-            Listening... Speak now!
-          </p>
-        ) : (
+      <div className="text-center space-y-2">
+        {isRecording && (
+          <div className="space-y-2">
+            <p className={`font-semibold ${isListening ? 'text-green-600 animate-pulse' : 'text-orange-600'}`}>
+              {isListening ? '🎤 Listening... I can hear you!' : '🎤 Ready to listen... Start speaking!'}
+            </p>
+            {isListening && (
+              <div className="flex justify-center gap-1">
+                <div className="w-2 h-8 bg-green-500 rounded animate-pulse" style={{animationDelay: '0ms'}}></div>
+                <div className="w-2 h-12 bg-green-500 rounded animate-pulse" style={{animationDelay: '150ms'}}></div>
+                <div className="w-2 h-6 bg-green-500 rounded animate-pulse" style={{animationDelay: '300ms'}}></div>
+                <div className="w-2 h-10 bg-green-500 rounded animate-pulse" style={{animationDelay: '450ms'}}></div>
+                <div className="w-2 h-8 bg-green-500 rounded animate-pulse" style={{animationDelay: '600ms'}}></div>
+              </div>
+            )}
+          </div>
+        )}
+        {!isRecording && (
           <p className="text-gray-600">
-            {transcription ? 'Click the mic to add more' : 'Click the mic to start'}
+            {transcription ? '✅ Click the mic to add more' : '🎤 Click the mic to start'}
           </p>
         )}
       </div>
 
       {/* Transcription Display */}
-      {transcription && (
+      {(transcription || interimText) && (
         <div className="mt-6">
           <div className="bg-purple-50 p-6 rounded-xl border-2 border-purple-200">
             <div className="flex justify-between items-center mb-2">
@@ -168,7 +198,12 @@ export default function SpeechRecorder({ onComplete }: SpeechRecorderProps) {
                 Clear
               </button>
             </div>
-            <p className="text-gray-700 whitespace-pre-wrap">{transcription}</p>
+            <p className="text-gray-700 whitespace-pre-wrap">
+              {transcription}
+              {interimText && (
+                <span className="text-gray-400 italic">{interimText}</span>
+              )}
+            </p>
           </div>
 
           <div className="flex justify-center mt-6">

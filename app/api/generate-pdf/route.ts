@@ -13,7 +13,7 @@ export async function POST(request: NextRequest) {
       )
     }
 
-    // Create PDF
+    // Create PDF with professional book template
     const pdf = new jsPDF({
       orientation: 'portrait',
       unit: 'mm',
@@ -22,97 +22,179 @@ export async function POST(request: NextRequest) {
 
     const pageWidth = pdf.internal.pageSize.getWidth()
     const pageHeight = pdf.internal.pageSize.getHeight()
-    const margin = 20
+    const margin = 25
     const contentWidth = pageWidth - 2 * margin
 
-    // Title page
-    pdf.setFillColor(147, 51, 234) // Purple
+    // ========== COVER PAGE ==========
+    // Gradient background effect with multiple rectangles
+    pdf.setFillColor(88, 28, 135) // Deep purple
     pdf.rect(0, 0, pageWidth, pageHeight, 'F')
 
-    pdf.setTextColor(255, 255, 255)
-    pdf.setFontSize(32)
+    // Decorative stars
+    pdf.setFillColor(255, 215, 0) // Gold
+    const stars = [
+      { x: 30, y: 40 }, { x: 180, y: 50 }, { x: 40, y: 220 },
+      { x: 170, y: 240 }, { x: 105, y: 30 }
+    ]
+    stars.forEach(star => {
+      pdf.circle(star.x, star.y, 2, 'F')
+    })
+
+    // Title box
+    pdf.setFillColor(255, 255, 255, 0.95)
+    pdf.roundedRect(20, 80, pageWidth - 40, 90, 5, 5, 'F')
+
+    // Title
+    pdf.setTextColor(88, 28, 135)
+    pdf.setFontSize(28)
     pdf.setFont('helvetica', 'bold')
 
-    // Center the title
-    const titleLines = pdf.splitTextToSize(story.title, contentWidth)
-    const titleHeight = titleLines.length * 12
-    const titleY = (pageHeight - titleHeight) / 2
+    const titleLines = pdf.splitTextToSize(story.title, contentWidth - 20)
+    const titleStartY = 110
+    titleLines.forEach((line: string, index: number) => {
+      pdf.text(line, pageWidth / 2, titleStartY + (index * 12), { align: 'center' })
+    })
 
-    pdf.text(titleLines, pageWidth / 2, titleY, { align: 'center' })
+    // Subtitle
+    pdf.setFontSize(14)
+    pdf.setFont('helvetica', 'italic')
+    pdf.setTextColor(120, 60, 150)
+    pdf.text('A Magical Story Created Just For You', pageWidth / 2, 145, { align: 'center' })
 
-    pdf.setFontSize(16)
-    pdf.text('A Story Created By You', pageWidth / 2, pageHeight - 30, { align: 'center' })
+    // Date
+    pdf.setFontSize(10)
+    pdf.setFont('helvetica', 'normal')
+    pdf.setTextColor(255, 255, 255)
+    const today = new Date().toLocaleDateString('en-US', {
+      year: 'numeric',
+      month: 'long',
+      day: 'numeric'
+    })
+    pdf.text(today, pageWidth / 2, pageHeight - 20, { align: 'center' })
 
-    // Story pages
+    // ========== STORY PAGES ==========
     for (let i = 0; i < story.pages.length; i++) {
       pdf.addPage()
 
-      // Page background
-      pdf.setFillColor(255, 251, 235) // Light yellow
+      // Page background - soft gradient effect
+      pdf.setFillColor(255, 250, 240) // Warm ivory
       pdf.rect(0, 0, pageWidth, pageHeight, 'F')
 
-      // Page border
-      pdf.setDrawColor(251, 191, 36) // Amber
-      pdf.setLineWidth(2)
-      pdf.rect(10, 10, pageWidth - 20, pageHeight - 20)
+      // Decorative border
+      pdf.setDrawColor(218, 165, 32) // Goldenrod
+      pdf.setLineWidth(1.5)
+      pdf.roundedRect(15, 15, pageWidth - 30, pageHeight - 30, 3, 3, 'S')
 
-      // Page number
-      pdf.setTextColor(147, 51, 234)
+      // Inner decorative line
+      pdf.setDrawColor(255, 215, 0) // Gold
+      pdf.setLineWidth(0.5)
+      pdf.roundedRect(18, 18, pageWidth - 36, pageHeight - 36, 2, 2, 'S')
+
+      // Page number circle
+      pdf.setFillColor(88, 28, 135)
+      pdf.circle(pageWidth / 2, 25, 8, 'F')
+      pdf.setTextColor(255, 255, 255)
       pdf.setFontSize(12)
       pdf.setFont('helvetica', 'bold')
-      pdf.text(`Page ${i + 1}`, pageWidth / 2, 20, { align: 'center' })
+      pdf.text(`${i + 1}`, pageWidth / 2, 27, { align: 'center' })
 
-      // Image
+      // Image placeholder (decorative frame if no image)
+      const imageY = 40
+      const imageHeight = 85
+      const imageWidth = contentWidth - 10
+
       if (story.pages[i].imageUrl) {
         try {
-          const imageY = 30
-          const imageHeight = 80
-          const imageWidth = contentWidth
-          const imageX = margin
+          pdf.setFillColor(255, 255, 255)
+          pdf.roundedRect(margin + 5, imageY, imageWidth, imageHeight, 3, 3, 'F')
 
-          // Add image to PDF
           pdf.addImage(
             story.pages[i].imageUrl!,
             'PNG',
-            imageX,
+            margin + 5,
             imageY,
             imageWidth,
             imageHeight,
             undefined,
             'FAST'
           )
+
+          // Image border
+          pdf.setDrawColor(218, 165, 32)
+          pdf.setLineWidth(2)
+          pdf.roundedRect(margin + 5, imageY, imageWidth, imageHeight, 3, 3, 'S')
         } catch (error) {
-          console.error('Error adding image to PDF:', error)
+          console.error('Error adding image:', error)
+          // Draw decorative placeholder
+          pdf.setFillColor(240, 230, 255)
+          pdf.roundedRect(margin + 5, imageY, imageWidth, imageHeight, 3, 3, 'F')
+          pdf.setTextColor(150, 150, 150)
+          pdf.setFontSize(14)
+          pdf.text('✨ Imagine the scene ✨', pageWidth / 2, imageY + imageHeight / 2, { align: 'center' })
         }
+      } else {
+        // Decorative placeholder when no image
+        pdf.setFillColor(240, 230, 255)
+        pdf.roundedRect(margin + 5, imageY, imageWidth, imageHeight, 3, 3, 'F')
+        pdf.setDrawColor(180, 150, 200)
+        pdf.setLineWidth(1)
+        pdf.roundedRect(margin + 5, imageY, imageWidth, imageHeight, 3, 3, 'S')
+        pdf.setTextColor(150, 120, 180)
+        pdf.setFontSize(16)
+        pdf.text('✨ Let Your Imagination Soar ✨', pageWidth / 2, imageY + imageHeight / 2, { align: 'center' })
       }
 
-      // Text
-      pdf.setTextColor(0, 0, 0)
-      pdf.setFontSize(14)
+      // Story text box
+      const textY = imageY + imageHeight + 15
+      pdf.setFillColor(255, 255, 255, 0.9)
+      pdf.roundedRect(margin, textY, contentWidth, 75, 3, 3, 'F')
+
+      // Text content
+      pdf.setTextColor(40, 40, 40)
+      pdf.setFontSize(13)
       pdf.setFont('helvetica', 'normal')
 
-      const textY = story.pages[i].imageUrl ? 120 : 40
       const textLines = pdf.splitTextToSize(story.pages[i].text, contentWidth - 10)
+      let currentY = textY + 10
 
-      pdf.text(textLines, pageWidth / 2, textY, {
-        align: 'center',
-        maxWidth: contentWidth - 10,
+      textLines.forEach((line: string) => {
+        if (currentY < pageHeight - 40) {
+          pdf.text(line, margin + 5, currentY)
+          currentY += 6
+        }
       })
+
+      // Decorative footer
+      pdf.setDrawColor(218, 165, 32)
+      pdf.setLineWidth(0.5)
+      pdf.line(margin + 20, pageHeight - 25, pageWidth - margin - 20, pageHeight - 25)
     }
 
-    // Final page
+    // ========== BACK COVER ==========
     pdf.addPage()
-    pdf.setFillColor(147, 51, 234)
+    pdf.setFillColor(88, 28, 135)
     pdf.rect(0, 0, pageWidth, pageHeight, 'F')
 
-    pdf.setTextColor(255, 255, 255)
-    pdf.setFontSize(28)
+    // "The End" with decorative elements
+    pdf.setTextColor(255, 215, 0)
+    pdf.setFontSize(36)
     pdf.setFont('helvetica', 'bold')
-    pdf.text('The End', pageWidth / 2, pageHeight / 2 - 10, { align: 'center' })
+    pdf.text('The End', pageWidth / 2, pageHeight / 2 - 20, { align: 'center' })
 
-    pdf.setFontSize(16)
-    pdf.setFont('helvetica', 'normal')
+    pdf.setFontSize(18)
+    pdf.setFont('helvetica', 'italic')
+    pdf.setTextColor(255, 255, 255)
     pdf.text('Thank you for reading!', pageWidth / 2, pageHeight / 2 + 10, { align: 'center' })
+
+    pdf.setFontSize(12)
+    pdf.text('May your stories always bring joy', pageWidth / 2, pageHeight / 2 + 25, { align: 'center' })
+
+    // More decorative stars on back
+    stars.forEach(star => {
+      pdf.setFillColor(255, 215, 0)
+      pdf.circle(star.x, star.y + 20, 2, 'F')
+      pdf.circle(pageWidth - star.x, star.y, 2, 'F')
+    })
 
     // Generate PDF buffer
     const pdfBuffer = Buffer.from(pdf.output('arraybuffer'))
