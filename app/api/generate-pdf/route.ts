@@ -61,6 +61,18 @@ export async function POST(request: NextRequest) {
     pdf.setTextColor(120, 60, 150)
     pdf.text('A Magical Story Created Just For You', pageWidth / 2, 145, { align: 'center' })
 
+    // Author name
+    pdf.setFontSize(16)
+    pdf.setFont('helvetica', 'bold')
+    pdf.setTextColor(255, 255, 255)
+    pdf.text(`Written by: ${story.author || 'Young Author'}`, pageWidth / 2, pageHeight - 50, { align: 'center' })
+
+    // Enhanced by AI
+    pdf.setFontSize(12)
+    pdf.setFont('helvetica', 'italic')
+    pdf.setTextColor(255, 215, 0) // Gold
+    pdf.text('Enhanced by AI', pageWidth / 2, pageHeight - 35, { align: 'center' })
+
     // Date
     pdf.setFontSize(10)
     pdf.setFont('helvetica', 'normal')

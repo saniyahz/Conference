@@ -17,6 +17,7 @@ export type StoryPage = {
 
 export type Story = {
   title: string
+  author: string
   pages: StoryPage[]
 }
 
@@ -26,7 +27,7 @@ export default function Home() {
   const [story, setStory] = useState<Story | null>(null)
   const [transcription, setTranscription] = useState<string>('')
 
-  const handleTranscriptionComplete = async (text: string) => {
+  const handleTranscriptionComplete = async (text: string, authorName: string) => {
     setTranscription(text)
     setStep('generating')
 
@@ -43,7 +44,11 @@ export default function Home() {
       }
 
       const data = await response.json()
-      setStory(data.story)
+      // Add author name to the story
+      setStory({
+        ...data.story,
+        author: authorName
+      })
       setStep('book')
     } catch (error) {
       console.error('Error generating story:', error)

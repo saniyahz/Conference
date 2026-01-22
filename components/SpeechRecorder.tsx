@@ -102,7 +102,7 @@ export default function SpeechRecorder({ onComplete }: SpeechRecorderProps) {
 
   const handleSubmit = () => {
     if (transcription.trim()) {
-      onComplete(transcription.trim())
+      onComplete(transcription.trim(), authorName.trim() || 'Young Author')
     }
   }
 
@@ -211,6 +211,23 @@ export default function SpeechRecorder({ onComplete }: SpeechRecorderProps) {
                 <span className="text-gray-400 italic">{interimText}</span>
               )}
             </p>
+          </div>
+
+          {/* Author Name Input */}
+          <div className="mt-6 bg-blue-50 p-6 rounded-xl border-2 border-blue-200">
+            <label htmlFor="authorName" className="block text-sm font-semibold text-blue-800 mb-2">
+              📝 Your Name (Story Author):
+            </label>
+            <input
+              id="authorName"
+              type="text"
+              value={authorName}
+              onChange={(e) => setAuthorName(e.target.value)}
+              placeholder="Enter your name here..."
+              className="w-full px-4 py-3 border-2 border-blue-300 rounded-lg focus:border-blue-500 focus:outline-none text-gray-700"
+              maxLength={50}
+            />
+            <p className="text-xs text-gray-500 mt-2">This will appear as the author on your story book!</p>
           </div>
 
           <div className="flex justify-center mt-6">

@@ -172,6 +172,14 @@ export default function StoryBook({ story, onReset }: StoryBookProps) {
         <h1 className="text-3xl md:text-4xl font-bold text-purple-800 font-kids">
           {story.title}
         </h1>
+        <div className="mt-3 space-y-1">
+          <p className="text-lg text-purple-600 font-semibold">
+            Written by: {story.author || 'Young Author'}
+          </p>
+          <p className="text-sm text-gray-500 italic">
+            ✨ Enhanced by AI ✨
+          </p>
+        </div>
       </div>
 
       {/* Voice Selector */}
