@@ -1,9 +1,4 @@
 import { NextRequest, NextResponse } from 'next/server'
-import { HfInference } from '@huggingface/inference'
-
-const hf = new HfInference(process.env.HUGGING_FACE_API_KEY, {
-  use_cache: false,
-})
 
 export async function POST(request: NextRequest) {
   try {
@@ -42,37 +37,69 @@ Child's ideas: ${prompt}
 
 Write the story now:`
 
-    // Use Mistral or another available model
     let storyText = ''
 
     try {
-      // Try using Mistral-7B-Instruct
-      const response = await hf.textGeneration({
-        model: 'mistralai/Mistral-7B-Instruct-v0.2',
-        inputs: storyPrompt,
-        parameters: {
-          max_new_tokens: 500,
-          temperature: 0.8,
-          top_p: 0.95,
-          return_full_text: false,
-        },
-      })
+      // Direct API call to Hugging Face with correct endpoint
+      const response = await fetch(
+        'https://api-inference.huggingface.co/models/mistralai/Mistral-7B-Instruct-v0.2',
+        {
+          method: 'POST',
+          headers: {
+            'Authorization': `Bearer ${process.env.HUGGING_FACE_API_KEY}`,
+            'Content-Type': 'application/json',
+          },
+          body: JSON.stringify({
+            inputs: storyPrompt,
+            parameters: {
+              max_new_tokens: 500,
+              temperature: 0.8,
+              top_p: 0.95,
+              return_full_text: false,
+            },
+          }),
+        }
+      )
 
-      storyText = response.generated_text
+      if (!response.ok) {
+        throw new Error(`API request failed: ${response.statusText}`)
+      }
+
+      const data = await response.json()
+      storyText = data[0]?.generated_text || ''
     } catch (error) {
-      // Fallback to a simpler model if Mistral fails
+      // Fallback to simpler model
       console.log('Mistral failed, trying fallback model')
 
-      const response = await hf.textGeneration({
-        model: 'google/flan-t5-large',
-        inputs: storyPrompt,
-        parameters: {
-          max_new_tokens: 400,
-          temperature: 0.8,
-        },
-      })
+      try {
+        const response = await fetch(
+          'https://api-inference.huggingface.co/models/google/flan-t5-large',
+          {
+            method: 'POST',
+            headers: {
+              'Authorization': `Bearer ${process.env.HUGGING_FACE_API_KEY}`,
+              'Content-Type': 'application/json',
+            },
+            body: JSON.stringify({
+              inputs: storyPrompt,
+              parameters: {
+                max_new_tokens: 400,
+                temperature: 0.8,
+              },
+            }),
+          }
+        )
 
-      storyText = response.generated_text
+        if (!response.ok) {
+          throw new Error(`Fallback API request failed: ${response.statusText}`)
+        }
+
+        const data = await response.json()
+        storyText = data[0]?.generated_text || ''
+      } catch (fallbackError) {
+        console.error('Both models failed:', fallbackError)
+        throw new Error('All text generation models failed')
+      }
     }
 
     // Parse the story
@@ -84,17 +111,30 @@ Write the story now:`
         try {
           const imagePrompt = `children's book illustration, colorful, friendly, cartoon style: ${page.text.substring(0, 100)}`
 
-          const imageBlob = await hf.textToImage({
-            model: 'stabilityai/stable-diffusion-2-1',
-            inputs: imagePrompt,
-            parameters: {
-              negative_prompt: 'scary, dark, violent, adult, realistic',
-            },
-          })
+          const response = await fetch(
+            'https://api-inference.huggingface.co/models/stabilityai/stable-diffusion-2-1',
+            {
+              method: 'POST',
+              headers: {
+                'Authorization': `Bearer ${process.env.HUGGING_FACE_API_KEY}`,
+                'Content-Type': 'application/json',
+              },
+              body: JSON.stringify({
+                inputs: imagePrompt,
+                parameters: {
+                  negative_prompt: 'scary, dark, violent, adult, realistic',
+                },
+              }),
+            }
+          )
+
+          if (!response.ok) {
+            throw new Error(`Image generation failed: ${response.statusText}`)
+          }
 
           // Convert blob to base64
-          const arrayBuffer = await imageBlob.arrayBuffer()
-          const base64 = Buffer.from(arrayBuffer).toString('base64')
+          const imageBlob = await response.arrayBuffer()
+          const base64 = Buffer.from(imageBlob).toString('base64')
           const imageUrl = `data:image/png;base64,${base64}`
 
           return {
