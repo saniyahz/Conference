@@ -35,45 +35,147 @@ export async function POST(request: NextRequest) {
 }
 
 function generateEnhancedStory(prompt: string): string {
-  // Enhanced story templates with much better narratives
-  const templates = [
-    {
-      title: `The Magical Adventure of ${capitalize(prompt)}`,
-      pages: [
-        `Once upon a time, in a land filled with wonder and magic, there lived ${prompt}. Every morning, when the sun rose over the sparkling mountains, something extraordinary would happen. The birds would sing special songs, and the flowers would bloom in colors never seen before.`,
-        `One beautiful day, ${prompt} discovered a secret path hidden behind a waterfall. Following the mysterious trail through enchanted forests, they met friendly talking animals who became the best companions anyone could wish for. Together, they laughed, played, and shared amazing stories.`,
-        `As the adventure continued, they faced an exciting challenge that required courage and kindness. With the help of their new friends and believing in themselves, they found creative solutions to every problem. The journey taught them that friendship and bravery can overcome any obstacle.`,
-        `When the stars began to twinkle in the evening sky, ${prompt} returned home with a heart full of joy and wonderful memories. The magical adventure had changed them forever, filling their days with happiness and dreams of new adventures to come. And they lived happily ever after, always ready for the next great story!`,
-      ],
-    },
-    {
-      title: `${capitalize(prompt)} and the Secret Garden`,
-      pages: [
-        `In a cozy little town surrounded by rolling hills, ${prompt} loved to explore and discover new things. One sunny afternoon, while playing near an old stone wall covered in climbing roses, they noticed a tiny golden key half-buried in the soft earth.`,
-        `The golden key opened a hidden gate that revealed the most beautiful secret garden anyone had ever seen! Butterflies danced between rainbow-colored flowers, a gentle stream bubbled with crystal-clear water, and friendly creatures welcomed ${prompt} with warm smiles and cheerful songs.`,
-        `In the center of the garden stood a magnificent tree with branches that seemed to touch the sky. ${prompt} and their new garden friends worked together to help the tree bloom with magical fruits that granted wishes. Each fruit sparkled with a different color and could make dreams come true.`,
-        `As the sun began to set, painting the sky in shades of pink and gold, ${prompt} knew this special place would always be there whenever they needed magic and wonder. With hearts full of gratitude and pockets full of magical seeds to share, they promised to visit often and spread kindness wherever they went.`,
-      ],
-    },
-    {
-      title: `The Day ${capitalize(prompt)} Saved the Day`,
-      pages: [
-        `${capitalize(prompt)} was known throughout the land as someone with a kind heart and creative mind. Every day brought new opportunities to help others and make the world a better place. On this particular morning, something very special was about to happen.`,
-        `When the town's most treasured treasure went missing, everyone was worried and didn't know what to do. But ${prompt} remembered stories from wise elders about solving problems with patience, teamwork, and believing in yourself. Gathering friends from near and far, they began an exciting quest filled with riddles and adventures.`,
-        `Through forests of whispering trees, across bridges made of rainbows, and past mountains that touched the clouds, the brave team followed clues and helped everyone they met along the way. Each challenge made them stronger, wiser, and brought them closer together as friends.`,
-        `Just as the sun reached its highest point in the sky, ${prompt} discovered that the real treasure had been the journey itself - the friends made, the lessons learned, and the joy of working together. Everyone celebrated with a grand feast under the stars, knowing that kindness and courage always lead to the happiest endings.`,
-      ],
-    },
+  // Extract key concepts from the prompt
+  const concepts = extractConcepts(prompt.toLowerCase())
+
+  // Generate a story based on the concepts
+  if (concepts.character) {
+    return generateCharacterStory(concepts)
+  } else if (concepts.theme) {
+    return generateThemeStory(concepts, prompt)
+  } else {
+    return generateGeneralStory(prompt)
+  }
+}
+
+function extractConcepts(prompt: string) {
+  const concepts: any = {}
+
+  // Extract character names (looking for patterns like "dog called X", "cat named Y", etc.)
+  const characterPatterns = [
+    /(?:dog|cat|dragon|unicorn|princess|prince|bear|lion|elephant|monkey|rabbit|fox|wolf|bird|dinosaur|robot|alien|wizard|fairy|mermaid|pirate|knight)\s+(?:called|named)\s+(\w+)/i,
+    /(?:called|named)\s+(\w+)/i,
+    /about\s+(?:a\s+)?(\w+)/i
   ]
 
-  // Select a random template
-  const template = templates[Math.floor(Math.random() * templates.length)]
+  for (const pattern of characterPatterns) {
+    const match = prompt.match(pattern)
+    if (match && match[1]) {
+      concepts.characterName = capitalize(match[1])
+      break
+    }
+  }
 
-  return `TITLE: ${template.title}
-PAGE 1: ${template.pages[0]}
-PAGE 2: ${template.pages[1]}
-PAGE 3: ${template.pages[2]}
-PAGE 4: ${template.pages[3]}`
+  // Extract character type
+  const animals = ['dog', 'cat', 'dragon', 'unicorn', 'bear', 'lion', 'elephant', 'monkey', 'rabbit', 'fox', 'wolf', 'bird', 'dinosaur']
+  const magical = ['wizard', 'fairy', 'mermaid', 'dragon', 'unicorn', 'alien']
+  const people = ['princess', 'prince', 'pirate', 'knight', 'king', 'queen']
+
+  for (const animal of animals) {
+    if (prompt.includes(animal)) {
+      concepts.character = animal
+      concepts.type = 'animal'
+      break
+    }
+  }
+
+  for (const magic of magical) {
+    if (prompt.includes(magic)) {
+      concepts.character = magic
+      concepts.type = 'magical'
+      break
+    }
+  }
+
+  for (const person of people) {
+    if (prompt.includes(person)) {
+      concepts.character = person
+      concepts.type = 'person'
+      break
+    }
+  }
+
+  // Extract themes/actions
+  if (prompt.includes('adventure') || prompt.includes('explore') || prompt.includes('quest')) {
+    concepts.theme = 'adventure'
+  } else if (prompt.includes('magic') || prompt.includes('spell') || prompt.includes('wish')) {
+    concepts.theme = 'magic'
+  } else if (prompt.includes('friend') || prompt.includes('help')) {
+    concepts.theme = 'friendship'
+  } else if (prompt.includes('lost') || prompt.includes('find') || prompt.includes('search')) {
+    concepts.theme = 'quest'
+  }
+
+  return concepts
+}
+
+function generateCharacterStory(concepts: any): string {
+  const char = concepts.characterName || capitalize(concepts.character || 'Hero')
+  const charType = concepts.character || 'character'
+
+  const title = `The Amazing Adventure of ${char}`
+
+  const pages = [
+    `Once upon a time, in a magical land far away, there lived a wonderful ${charType} named ${char}. ${char} had the brightest eyes and the kindest heart anyone had ever seen. Every day was filled with excitement and wonder, and ${char} loved exploring the beautiful world around them.`,
+
+    `One sunny morning, ${char} discovered something amazing - a mysterious golden path that sparkled in the sunlight! With curiosity and courage, ${char} decided to follow this magical trail. Along the way, ${char} met incredible friends: wise old owls, playful squirrels, and friendly butterflies who all wanted to join the adventure.`,
+
+    `Together, ${char} and the new friends faced an exciting challenge. They had to work as a team, using their special talents and believing in each other. ${char} showed great bravery and kindness, helping everyone solve the puzzle. Through laughter, teamwork, and creative thinking, they discovered that the journey was even more fun when shared with friends.`,
+
+    `As the golden sun began to set, painting the sky in beautiful colors, ${char} returned home with a heart full of joy and wonderful memories. All the friends promised to meet again for more adventures. ${char} learned that being brave, kind, and helpful makes every day magical. And they all lived happily ever after, ready for the next great story!`
+  ]
+
+  return `TITLE: ${title}
+PAGE 1: ${pages[0]}
+PAGE 2: ${pages[1]}
+PAGE 3: ${pages[2]}
+PAGE 4: ${pages[3]}`
+}
+
+function generateThemeStory(concepts: any, prompt: string): string {
+  const theme = concepts.theme || 'adventure'
+  const subject = concepts.characterName || concepts.character || 'our hero'
+
+  const title = `The Magical ${capitalize(theme)} Story`
+
+  const pages = [
+    `In a land where dreams come true and anything is possible, something extraordinary was about to happen! ${capitalize(subject)} woke up one morning to discover that today would be the most special day ever. The sun shone brighter, the birds sang sweeter songs, and magic filled the air with sparkles of wonder.`,
+
+    `With excitement bubbling in their heart, ${subject} set out on an incredible journey. Along the winding path through enchanted forests and over rainbow bridges, they met amazing friends who each had special gifts to share. Together, they laughed, played, and discovered that friendship makes every adventure more wonderful.`,
+
+    `When they faced a tricky challenge, ${subject} remembered to be brave and kind. With help from all their new friends, they found creative solutions and worked together like a perfect team. Every obstacle became an opportunity to learn something new and grow stronger. The power of believing in yourself and your friends can overcome anything!`,
+
+    `As stars began to twinkle in the evening sky, ${subject} realized that this magical day had brought the greatest gift of all - wonderful friendships and beautiful memories. With hearts full of happiness and dreams of tomorrow's adventures, everyone celebrated together. And they all lived happily ever after, knowing that every day can be filled with magic when you believe!`
+  ]
+
+  return `TITLE: ${title}
+PAGE 1: ${pages[0]}
+PAGE 2: ${pages[1]}
+PAGE 3: ${pages[2]}
+PAGE 4: ${pages[3]}`
+}
+
+function generateGeneralStory(prompt: string): string {
+  const title = 'A Wonderful Adventure'
+
+  // Use the prompt as inspiration for the story
+  const words = prompt.split(' ').slice(0, 5).join(' ')
+
+  const pages = [
+    `This is a story all about ${words}! Once upon a time in a magical kingdom, something wonderful was about to begin. The day started like any other, but little did anyone know that amazing adventures were waiting just around the corner. Everything sparkled with possibility and magic was in the air!`,
+
+    `Our brave hero discovered something special and decided to go on an exciting quest! Meeting friendly creatures along the way, they formed a team of the best friends anyone could ask for. Together they explored mysterious forests, climbed tall mountains, and crossed sparkling rivers. Every step brought new surprises and joyful laughter.`,
+
+    `When challenges appeared, our hero showed great courage and kindness. With the help of wonderful friends and a belief in doing what's right, they found clever solutions to every problem. They learned that being brave doesn't mean not being scared - it means helping others even when things are difficult. Teamwork and friendship made them unstoppable!`,
+
+    `As the adventure came to an end, our hero returned home with precious memories and lifelong friends. They had learned valuable lessons about courage, kindness, and the power of believing in yourself. Every night before bed, they would remember this magical adventure and smile, knowing that tomorrow might bring another wonderful story. And they all lived happily ever after!`
+  ]
+
+  return `TITLE: ${title}
+PAGE 1: ${pages[0]}
+PAGE 2: ${pages[1]}
+PAGE 3: ${pages[2]}
+PAGE 4: ${pages[3]}`
 }
 
 function capitalize(str: string): string {
