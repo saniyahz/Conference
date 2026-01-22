@@ -1,5 +1,7 @@
 'use client'
 
+console.log('🔥🔥🔥 MAIN PAGE LOADED - Version 4.0 - ' + new Date().toISOString())
+
 import { useState } from 'react'
 import { useSession } from 'next-auth/react'
 import Link from 'next/link'
