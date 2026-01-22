@@ -8,6 +8,10 @@ const nextConfig = {
       },
     ],
   },
+  // Disable caching to force fresh builds
+  generateBuildId: async () => {
+    return 'build-' + Date.now()
+  },
 }
 
 module.exports = nextConfig
