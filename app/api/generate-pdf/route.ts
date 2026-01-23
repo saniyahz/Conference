@@ -126,8 +126,8 @@ export async function POST(request: NextRequest) {
 
       // IMAGE AREA (Top half of page)
       const imageY = 30
-      const imageHeight = 110
-      const imageWidth = contentWidth
+      const maxImageHeight = 110
+      const maxImageWidth = contentWidth
 
       if (story.pages[i].imageUrl) {
         try {
@@ -135,11 +135,26 @@ export async function POST(request: NextRequest) {
           console.log(`📄 Adding image ${i + 1} to PDF...`)
           const imageBase64 = await getImageAsBase64(story.pages[i].imageUrl!)
 
+          // DALL-E images are 1024x1024 (square), so maintain aspect ratio
+          // Calculate dimensions to fit within max width/height while preserving aspect
+          const aspectRatio = 1 // DALL-E images are square
+          let imageWidth = maxImageWidth
+          let imageHeight = maxImageWidth / aspectRatio
+
+          // If height exceeds max, scale down based on height
+          if (imageHeight > maxImageHeight) {
+            imageHeight = maxImageHeight
+            imageWidth = imageHeight * aspectRatio
+          }
+
+          // Center the image horizontally if it's smaller than max width
+          const imageX = margin + (maxImageWidth - imageWidth) / 2
+
           // Add the image
           pdf.addImage(
             imageBase64,
             'PNG',
-            margin,
+            imageX,
             imageY,
             imageWidth,
             imageHeight,
@@ -150,7 +165,7 @@ export async function POST(request: NextRequest) {
           // Simple border around image
           pdf.setDrawColor(180, 180, 180)
           pdf.setLineWidth(0.5)
-          pdf.roundedRect(margin, imageY, imageWidth, imageHeight, 2, 2, 'S')
+          pdf.roundedRect(imageX, imageY, imageWidth, imageHeight, 2, 2, 'S')
           console.log(`✅ Image ${i + 1} added to PDF successfully`)
         } catch (error) {
           console.error('Error adding image:', error)
