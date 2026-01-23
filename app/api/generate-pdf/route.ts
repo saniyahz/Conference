@@ -205,7 +205,12 @@ export async function POST(request: NextRequest) {
     pdf.setFontSize(12)
     pdf.text('May your stories always bring joy', pageWidth / 2, pageHeight / 2 + 25, { align: 'center' })
 
-    // More decorative stars on back
+    // Decorative stars on back cover
+    const stars = [
+      { x: 30, y: 40 }, { x: 60, y: 80 }, { x: 90, y: 50 },
+      { x: 120, y: 100 }, { x: 150, y: 70 }, { x: 40, y: 160 },
+      { x: 80, y: 180 }, { x: 110, y: 200 }, { x: 140, y: 220 }
+    ]
     stars.forEach(star => {
       pdf.setFillColor(255, 215, 0)
       pdf.circle(star.x, star.y + 20, 2, 'F')
