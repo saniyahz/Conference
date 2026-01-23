@@ -17,6 +17,7 @@ export default function SpeechRecorder({ onComplete }: SpeechRecorderProps) {
   const [authorName, setAuthorName] = useState('')
   const [isSupported, setIsSupported] = useState(true)
   const recognitionRef = useRef<any>(null)
+  const shouldBeRecordingRef = useRef(false) // Track if we want to keep recording
 
   useEffect(() => {
     console.log('✅ Speech Recorder SIMPLIFIED - Fast & Responsive')
@@ -66,15 +67,37 @@ export default function SpeechRecorder({ onComplete }: SpeechRecorderProps) {
         console.error('Speech error:', event.error)
         if (event.error === 'audio-capture') {
           alert('❌ Cannot access microphone! Please allow microphone access and try again.')
+          shouldBeRecordingRef.current = false
           setIsRecording(false)
           setIsStarting(false)
+        }
+        // Ignore no-speech errors - we'll auto-restart anyway
+        if (event.error === 'no-speech') {
+          console.log('⚠️ No speech detected, but will keep listening...')
         }
       }
 
       recognition.onend = () => {
-        console.log('🛑 Recognition ended')
-        setIsRecording(false)
-        setIsStarting(false)
+        console.log('🔄 Recognition ended')
+
+        // Auto-restart if we should still be recording
+        if (shouldBeRecordingRef.current) {
+          console.log('🔁 Auto-restarting to continue listening...')
+          setTimeout(() => {
+            if (shouldBeRecordingRef.current) {
+              try {
+                recognition.start()
+                console.log('✅ Restarted successfully')
+              } catch (e) {
+                console.log('Already starting...')
+              }
+            }
+          }, 100)
+        } else {
+          // User manually stopped
+          setIsRecording(false)
+          setIsStarting(false)
+        }
       }
 
       recognitionRef.current = recognition
@@ -85,6 +108,7 @@ export default function SpeechRecorder({ onComplete }: SpeechRecorderProps) {
     if (recognitionRef.current) {
       setInterimText('')
       setIsStarting(true) // Show "Starting..." state
+      shouldBeRecordingRef.current = true // Enable auto-restart
       try {
         recognitionRef.current.start()
         console.log('🎤 Starting microphone...')
@@ -97,6 +121,7 @@ export default function SpeechRecorder({ onComplete }: SpeechRecorderProps) {
 
   const stopRecording = () => {
     if (recognitionRef.current) {
+      shouldBeRecordingRef.current = false // Disable auto-restart
       setIsRecording(false)
       setIsStarting(false)
       try {
@@ -154,7 +179,7 @@ export default function SpeechRecorder({ onComplete }: SpeechRecorderProps) {
         <div className="bg-blue-100 border-2 border-blue-400 rounded-lg p-4 mb-4">
           <p className="text-lg font-bold text-blue-900">
             <Volume2 className="w-6 h-6 inline-block mr-2" />
-            Speak LOUD and CLOSE to the microphone for best results!
+            Speak LOUD and CLOSE to the microphone! You can pause between sentences - it keeps listening!
           </p>
         </div>
 
