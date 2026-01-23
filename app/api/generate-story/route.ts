@@ -113,16 +113,29 @@ function generateCharacterStory(concepts: any): string {
   const char = concepts.characterName || capitalize(concepts.character || 'Hero')
   const charType = concepts.character || 'character'
 
+  // Create specific problems and solutions for different character types
+  let problem, solution
+  if (concepts.type === 'animal') {
+    problem = `the magical Crystal of Friendship had lost its sparkle, and without it, all the animals in the forest were becoming lonely and sad`
+    solution = `${char} discovered that the crystal would shine again if everyone worked together and showed kindness to each other. By organizing a big friendship festival where everyone helped one another, the crystal began to glow brighter than ever before!`
+  } else if (concepts.type === 'magical') {
+    problem = `an evil spell had turned all the colors in the rainbow gray, making the whole kingdom sad and gloomy`
+    solution = `${char} learned that true magic comes from believing in yourself and spreading joy to others. By performing acts of kindness and making people smile, the colors slowly returned one by one until the rainbow was more beautiful than ever!`
+  } else {
+    problem = `a mysterious fog had covered the village, making everyone forget how to laugh and play`
+    solution = `${char} remembered that laughter and joy come from sharing happy moments with friends. By organizing fun games and telling silly jokes, the fog lifted and everyone remembered how wonderful it is to play together!`
+  }
+
   const title = `The Amazing Adventure of ${char}`
 
   const pages = [
-    `Once upon a time, in a magical land far away, there lived a wonderful ${charType} named ${char}. ${char} had the brightest eyes and the kindest heart anyone had ever seen. Every day was filled with excitement and wonder, and ${char} loved exploring the beautiful world around them.`,
+    `Once upon a time, in a magical land far away, there lived a wonderful ${charType} named ${char}. ${char} had the brightest eyes and the kindest heart anyone had ever seen. Every day was filled with excitement and wonder, and ${char} loved exploring the beautiful world around them. But one day, something unexpected happened that would change everything.`,
 
-    `One sunny morning, ${char} discovered something amazing - a mysterious golden path that sparkled in the sunlight! With curiosity and courage, ${char} decided to follow this magical trail. Along the way, ${char} met incredible friends: wise old owls, playful squirrels, and friendly butterflies who all wanted to join the adventure.`,
+    `One morning, ${char} woke up to discover that ${problem}. Everyone was worried and didn't know what to do! ${char} knew they had to help. "I may be just one ${charType}," said ${char}, "but if I try my best and work with my friends, we can solve this together!" So ${char} set out on an important quest, meeting wise old owls, playful squirrels, and friendly butterflies along the way.`,
 
-    `Together, ${char} and the new friends faced an exciting challenge. They had to work as a team, using their special talents and believing in each other. ${char} showed great bravery and kindness, helping everyone solve the puzzle. Through laughter, teamwork, and creative thinking, they discovered that the journey was even more fun when shared with friends.`,
+    `Together, ${char} and the new friends worked as a team to solve the problem. ${solution} ${char} showed great bravery by never giving up, even when things seemed difficult. The friends learned that working together and believing in each other makes anything possible. Through laughter, teamwork, and creative thinking, they saved the day!`,
 
-    `As the golden sun began to set, painting the sky in beautiful colors, ${char} returned home with a heart full of joy and wonderful memories. All the friends promised to meet again for more adventures. ${char} learned that being brave, kind, and helpful makes every day magical. And they all lived happily ever after, ready for the next great story!`
+    `As the golden sun began to set, painting the sky in beautiful colors, ${char} and all their friends celebrated their success. Everyone in the land was happy again! ${char} learned that even small acts of kindness and courage can make a big difference. From that day on, ${char} knew that with good friends and a brave heart, any problem could be solved. And they all lived happily ever after, ready for the next great adventure!`
   ]
 
   return `TITLE: ${title}

@@ -22,108 +22,106 @@ export async function POST(request: NextRequest) {
 
     const pageWidth = pdf.internal.pageSize.getWidth()
     const pageHeight = pdf.internal.pageSize.getHeight()
-    const margin = 25
+    const margin = 20
     const contentWidth = pageWidth - 2 * margin
 
-    // ========== COVER PAGE ==========
-    // Gradient background effect with multiple rectangles
-    pdf.setFillColor(88, 28, 135) // Deep purple
+    // ========== COVER PAGE (WHITE BACKGROUND FOR PRINTING) ==========
+    // Cream/off-white background
+    pdf.setFillColor(255, 253, 250)
     pdf.rect(0, 0, pageWidth, pageHeight, 'F')
 
-    // Decorative stars
-    pdf.setFillColor(255, 215, 0) // Gold
-    const stars = [
-      { x: 30, y: 40 }, { x: 180, y: 50 }, { x: 40, y: 220 },
-      { x: 170, y: 240 }, { x: 105, y: 30 }
-    ]
-    stars.forEach(star => {
-      pdf.circle(star.x, star.y, 2, 'F')
-    })
+    // Decorative border
+    pdf.setDrawColor(88, 28, 135) // Purple
+    pdf.setLineWidth(2)
+    pdf.roundedRect(15, 15, pageWidth - 30, pageHeight - 30, 3, 3, 'S')
 
-    // Title box
-    pdf.setFillColor(255, 255, 255, 0.95)
-    pdf.roundedRect(20, 80, pageWidth - 40, 90, 5, 5, 'F')
+    // Inner decorative border
+    pdf.setDrawColor(180, 160, 200) // Light purple
+    pdf.setLineWidth(0.5)
+    pdf.roundedRect(18, 18, pageWidth - 36, pageHeight - 36, 2, 2, 'S')
 
-    // Title
+    // Title area
     pdf.setTextColor(88, 28, 135)
-    pdf.setFontSize(28)
+    pdf.setFontSize(32)
     pdf.setFont('helvetica', 'bold')
 
-    const titleLines = pdf.splitTextToSize(story.title, contentWidth - 20)
-    const titleStartY = 110
+    const titleLines = pdf.splitTextToSize(story.title, contentWidth - 30)
+    const titleStartY = 80
     titleLines.forEach((line: string, index: number) => {
-      pdf.text(line, pageWidth / 2, titleStartY + (index * 12), { align: 'center' })
+      pdf.text(line, pageWidth / 2, titleStartY + (index * 14), { align: 'center' })
     })
+
+    // Decorative line under title
+    pdf.setDrawColor(88, 28, 135)
+    pdf.setLineWidth(1)
+    pdf.line(40, titleStartY + (titleLines.length * 14) + 10, pageWidth - 40, titleStartY + (titleLines.length * 14) + 10)
 
     // Subtitle
     pdf.setFontSize(14)
     pdf.setFont('helvetica', 'italic')
-    pdf.setTextColor(120, 60, 150)
-    pdf.text('A Magical Story Created Just For You', pageWidth / 2, 145, { align: 'center' })
+    pdf.setTextColor(100, 100, 100)
+    pdf.text('A Magical Story', pageWidth / 2, titleStartY + (titleLines.length * 14) + 25, { align: 'center' })
 
-    // Author name
-    pdf.setFontSize(16)
+    // Author section
+    const authorY = pageHeight / 2 + 20
+    pdf.setFontSize(18)
     pdf.setFont('helvetica', 'bold')
-    pdf.setTextColor(255, 255, 255)
-    pdf.text(`Written by: ${story.author || 'Young Author'}`, pageWidth / 2, pageHeight - 50, { align: 'center' })
+    pdf.setTextColor(88, 28, 135)
+    pdf.text('Written by:', pageWidth / 2, authorY, { align: 'center' })
 
-    // Enhanced by AI
-    pdf.setFontSize(12)
+    pdf.setFontSize(22)
+    pdf.setFont('helvetica', 'bold')
+    pdf.setTextColor(0, 0, 0)
+    pdf.text(story.author || 'Young Author', pageWidth / 2, authorY + 12, { align: 'center' })
+
+    // Enhanced by AI badge
+    pdf.setFontSize(11)
     pdf.setFont('helvetica', 'italic')
-    pdf.setTextColor(255, 215, 0) // Gold
-    pdf.text('Enhanced by AI', pageWidth / 2, pageHeight - 35, { align: 'center' })
+    pdf.setTextColor(120, 120, 120)
+    pdf.text('Enhanced by AI', pageWidth / 2, authorY + 24, { align: 'center' })
 
-    // Date
+    // Date at bottom
     pdf.setFontSize(10)
     pdf.setFont('helvetica', 'normal')
-    pdf.setTextColor(255, 255, 255)
+    pdf.setTextColor(100, 100, 100)
     const today = new Date().toLocaleDateString('en-US', {
       year: 'numeric',
       month: 'long',
       day: 'numeric'
     })
-    pdf.text(today, pageWidth / 2, pageHeight - 20, { align: 'center' })
+    pdf.text(today, pageWidth / 2, pageHeight - 25, { align: 'center' })
 
-    // ========== STORY PAGES ==========
+    // ========== STORY PAGES (PROFESSIONAL BOOK FORMAT) ==========
     for (let i = 0; i < story.pages.length; i++) {
       pdf.addPage()
 
-      // Page background - soft gradient effect
-      pdf.setFillColor(255, 250, 240) // Warm ivory
+      // White/cream background for printing
+      pdf.setFillColor(255, 253, 250)
       pdf.rect(0, 0, pageWidth, pageHeight, 'F')
 
-      // Decorative border
-      pdf.setDrawColor(218, 165, 32) // Goldenrod
-      pdf.setLineWidth(1.5)
-      pdf.roundedRect(15, 15, pageWidth - 30, pageHeight - 30, 3, 3, 'S')
+      // Simple elegant border
+      pdf.setDrawColor(88, 28, 135) // Purple
+      pdf.setLineWidth(1)
+      pdf.roundedRect(15, 15, pageWidth - 30, pageHeight - 30, 2, 2, 'S')
 
-      // Inner decorative line
-      pdf.setDrawColor(255, 215, 0) // Gold
-      pdf.setLineWidth(0.5)
-      pdf.roundedRect(18, 18, pageWidth - 36, pageHeight - 36, 2, 2, 'S')
+      // Page number at bottom
+      pdf.setTextColor(100, 100, 100)
+      pdf.setFontSize(10)
+      pdf.setFont('helvetica', 'normal')
+      pdf.text(`${i + 1}`, pageWidth / 2, pageHeight - 20, { align: 'center' })
 
-      // Page number circle
-      pdf.setFillColor(88, 28, 135)
-      pdf.circle(pageWidth / 2, 25, 8, 'F')
-      pdf.setTextColor(255, 255, 255)
-      pdf.setFontSize(12)
-      pdf.setFont('helvetica', 'bold')
-      pdf.text(`${i + 1}`, pageWidth / 2, 27, { align: 'center' })
-
-      // Image placeholder (decorative frame if no image)
-      const imageY = 40
-      const imageHeight = 85
-      const imageWidth = contentWidth - 10
+      // IMAGE AREA (Top half of page)
+      const imageY = 30
+      const imageHeight = 110
+      const imageWidth = contentWidth
 
       if (story.pages[i].imageUrl) {
         try {
-          pdf.setFillColor(255, 255, 255)
-          pdf.roundedRect(margin + 5, imageY, imageWidth, imageHeight, 3, 3, 'F')
-
+          // Add the image
           pdf.addImage(
             story.pages[i].imageUrl!,
             'PNG',
-            margin + 5,
+            margin,
             imageY,
             imageWidth,
             imageHeight,
@@ -131,48 +129,54 @@ export async function POST(request: NextRequest) {
             'FAST'
           )
 
-          // Image border
-          pdf.setDrawColor(218, 165, 32)
-          pdf.setLineWidth(2)
-          pdf.roundedRect(margin + 5, imageY, imageWidth, imageHeight, 3, 3, 'S')
+          // Simple border around image
+          pdf.setDrawColor(180, 180, 180)
+          pdf.setLineWidth(0.5)
+          pdf.roundedRect(margin, imageY, imageWidth, imageHeight, 2, 2, 'S')
         } catch (error) {
           console.error('Error adding image:', error)
-          // Draw decorative placeholder
-          pdf.setFillColor(240, 230, 255)
-          pdf.roundedRect(margin + 5, imageY, imageWidth, imageHeight, 3, 3, 'F')
+          // Light placeholder box
+          pdf.setFillColor(245, 245, 250)
+          pdf.roundedRect(margin, imageY, imageWidth, imageHeight, 2, 2, 'F')
+          pdf.setDrawColor(200, 200, 200)
+          pdf.setLineWidth(0.5)
+          pdf.roundedRect(margin, imageY, imageWidth, imageHeight, 2, 2, 'S')
+
           pdf.setTextColor(150, 150, 150)
-          pdf.setFontSize(14)
-          pdf.text('Imagine the scene', pageWidth / 2, imageY + imageHeight / 2, { align: 'center' })
+          pdf.setFontSize(12)
+          pdf.setFont('helvetica', 'italic')
+          pdf.text('[Illustration will appear here]', pageWidth / 2, imageY + imageHeight / 2, { align: 'center' })
         }
       } else {
-        // Decorative placeholder when no image
-        pdf.setFillColor(240, 230, 255)
-        pdf.roundedRect(margin + 5, imageY, imageWidth, imageHeight, 3, 3, 'F')
-        pdf.setDrawColor(180, 150, 200)
-        pdf.setLineWidth(1)
-        pdf.roundedRect(margin + 5, imageY, imageWidth, imageHeight, 3, 3, 'S')
-        pdf.setTextColor(150, 120, 180)
-        pdf.setFontSize(16)
-        pdf.text('Let Your Imagination Soar', pageWidth / 2, imageY + imageHeight / 2, { align: 'center' })
+        // Decorative placeholder when no image (light and printable)
+        pdf.setFillColor(245, 245, 250)
+        pdf.roundedRect(margin, imageY, imageWidth, imageHeight, 2, 2, 'F')
+        pdf.setDrawColor(200, 200, 200)
+        pdf.setLineWidth(0.5)
+        pdf.roundedRect(margin, imageY, imageWidth, imageHeight, 2, 2, 'S')
+
+        pdf.setTextColor(150, 150, 150)
+        pdf.setFontSize(12)
+        pdf.setFont('helvetica', 'italic')
+        pdf.text('[Illustration will appear here]', pageWidth / 2, imageY + imageHeight / 2, { align: 'center' })
       }
 
-      // Story text box
+      // TEXT AREA (Bottom half - uses remaining space efficiently)
       const textY = imageY + imageHeight + 15
-      pdf.setFillColor(255, 255, 255, 0.9)
-      pdf.roundedRect(margin, textY, contentWidth, 75, 3, 3, 'F')
+      const textAreaHeight = pageHeight - textY - 35 // Leave room for page number
 
-      // Text content
-      pdf.setTextColor(40, 40, 40)
-      pdf.setFontSize(13)
+      // Story text - larger font and better spacing for kids
+      pdf.setTextColor(0, 0, 0)
+      pdf.setFontSize(14)
       pdf.setFont('helvetica', 'normal')
 
-      const textLines = pdf.splitTextToSize(story.pages[i].text, contentWidth - 10)
-      let currentY = textY + 10
+      const textLines = pdf.splitTextToSize(story.pages[i].text, contentWidth - 4)
+      let currentY = textY
 
       textLines.forEach((line: string) => {
-        if (currentY < pageHeight - 40) {
-          pdf.text(line, margin + 5, currentY)
-          currentY += 6
+        if (currentY < pageHeight - 35) {
+          pdf.text(line, margin + 2, currentY)
+          currentY += 7 // Better line spacing for readability
         }
       })
 
