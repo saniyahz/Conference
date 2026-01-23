@@ -169,34 +169,34 @@ export async function POST(request: NextRequest) {
           console.log(`✅ Image ${i + 1} added to PDF successfully`)
         } catch (error) {
           console.error('Error adding image:', error)
-          // Light placeholder box
+          // Light placeholder box - use max dimensions since image failed to load
           pdf.setFillColor(245, 245, 250)
-          pdf.roundedRect(margin, imageY, imageWidth, imageHeight, 2, 2, 'F')
+          pdf.roundedRect(margin, imageY, maxImageWidth, maxImageHeight, 2, 2, 'F')
           pdf.setDrawColor(200, 200, 200)
           pdf.setLineWidth(0.5)
-          pdf.roundedRect(margin, imageY, imageWidth, imageHeight, 2, 2, 'S')
+          pdf.roundedRect(margin, imageY, maxImageWidth, maxImageHeight, 2, 2, 'S')
 
           pdf.setTextColor(150, 150, 150)
           pdf.setFontSize(12)
           pdf.setFont('helvetica', 'italic')
-          pdf.text('[Illustration will appear here]', pageWidth / 2, imageY + imageHeight / 2, { align: 'center' })
+          pdf.text('[Illustration will appear here]', pageWidth / 2, imageY + maxImageHeight / 2, { align: 'center' })
         }
       } else {
         // Decorative placeholder when no image (light and printable)
         pdf.setFillColor(245, 245, 250)
-        pdf.roundedRect(margin, imageY, imageWidth, imageHeight, 2, 2, 'F')
+        pdf.roundedRect(margin, imageY, maxImageWidth, maxImageHeight, 2, 2, 'F')
         pdf.setDrawColor(200, 200, 200)
         pdf.setLineWidth(0.5)
-        pdf.roundedRect(margin, imageY, imageWidth, imageHeight, 2, 2, 'S')
+        pdf.roundedRect(margin, imageY, maxImageWidth, maxImageHeight, 2, 2, 'S')
 
         pdf.setTextColor(150, 150, 150)
         pdf.setFontSize(12)
         pdf.setFont('helvetica', 'italic')
-        pdf.text('[Illustration will appear here]', pageWidth / 2, imageY + imageHeight / 2, { align: 'center' })
+        pdf.text('[Illustration will appear here]', pageWidth / 2, imageY + maxImageHeight / 2, { align: 'center' })
       }
 
       // TEXT AREA (Bottom half - uses remaining space efficiently)
-      const textY = imageY + imageHeight + 15
+      const textY = imageY + maxImageHeight + 15
       const textAreaHeight = pageHeight - textY - 35 // Leave room for page number
 
       // Story text - larger font and better spacing for kids

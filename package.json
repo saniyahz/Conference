@@ -9,6 +9,7 @@
     "lint": "next lint"
   },
   "dependencies": {
+    "@google/generative-ai": "^0.24.1",
     "@huggingface/inference": "^2.6.4",
     "@prisma/client": "^5.8.1",
     "bcryptjs": "^2.4.3",
