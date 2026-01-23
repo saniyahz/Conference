@@ -2,6 +2,20 @@ import { NextRequest, NextResponse } from 'next/server'
 import jsPDF from 'jspdf'
 import { Story } from '@/app/page'
 
+// Helper function to convert image URL to base64
+async function getImageAsBase64(url: string): Promise<string> {
+  try {
+    const response = await fetch(url)
+    const arrayBuffer = await response.arrayBuffer()
+    const buffer = Buffer.from(arrayBuffer)
+    const base64 = buffer.toString('base64')
+    return `data:image/png;base64,${base64}`
+  } catch (error) {
+    console.error('Error fetching image:', error)
+    throw error
+  }
+}
+
 export async function POST(request: NextRequest) {
   try {
     const { story }: { story: Story } = await request.json()
@@ -117,9 +131,13 @@ export async function POST(request: NextRequest) {
 
       if (story.pages[i].imageUrl) {
         try {
+          // Convert image URL to base64 so jsPDF can use it
+          console.log(`📄 Adding image ${i + 1} to PDF...`)
+          const imageBase64 = await getImageAsBase64(story.pages[i].imageUrl!)
+
           // Add the image
           pdf.addImage(
-            story.pages[i].imageUrl!,
+            imageBase64,
             'PNG',
             margin,
             imageY,
@@ -133,6 +151,7 @@ export async function POST(request: NextRequest) {
           pdf.setDrawColor(180, 180, 180)
           pdf.setLineWidth(0.5)
           pdf.roundedRect(margin, imageY, imageWidth, imageHeight, 2, 2, 'S')
+          console.log(`✅ Image ${i + 1} added to PDF successfully`)
         } catch (error) {
           console.error('Error adding image:', error)
           // Light placeholder box
