@@ -44,8 +44,8 @@ export async function POST(request: NextRequest) {
           prompt: truncatedPrompt,
           n: 1,
           size: '1024x1024',
-          quality: 'standard',
-          style: 'vivid', // More detailed and hyper-real
+          quality: 'hd', // HD quality for professional storybook look
+          style: 'natural', // Natural style for children's book illustrations
         })
 
         if (response.data && response.data[0].url) {
