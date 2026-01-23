@@ -205,35 +205,55 @@ export default function StoryBook({ story, onReset }: StoryBookProps) {
         </div>
       )}
 
-      {/* Book Pages */}
-      <div className="relative bg-gradient-to-br from-yellow-50 to-orange-50 rounded-2xl shadow-xl p-8 md:p-12 min-h-[500px] border-4 border-amber-200">
+      {/* Book Pages - Side by side layout like Gemini */}
+      <div className="relative bg-white rounded-2xl shadow-2xl overflow-hidden border-2 border-gray-200" style={{ minHeight: '600px' }}>
         {/* Page Number */}
-        <div className="absolute top-4 right-4 bg-purple-600 text-white px-4 py-2 rounded-full font-semibold">
-          Page {currentPage + 1} of {story.pages.length}
+        <div className="absolute top-4 right-4 bg-purple-600 text-white px-4 py-2 rounded-full font-semibold z-10">
+          {currentPage + 1}/{story.pages.length}
         </div>
 
-        {/* Page Content */}
-        <div className="space-y-6">
-          {/* Image */}
-          {story.pages[currentPage].imageUrl && (
-            <div className="flex justify-center">
-              <div className="relative w-full max-w-md h-64 md:h-80 rounded-xl overflow-hidden shadow-lg border-4 border-white">
-                <Image
-                  src={story.pages[currentPage].imageUrl}
-                  alt={`Page ${currentPage + 1} illustration`}
-                  fill
-                  className="object-cover"
-                  unoptimized
-                />
+        {/* Side-by-side Page Content - Image Left, Text Right */}
+        <div className="grid md:grid-cols-2 h-full">
+          {/* Left Side - Image */}
+          <div className="relative min-h-[400px] md:min-h-[600px] bg-gradient-to-br from-purple-50 to-pink-50">
+            {story.pages[currentPage].imageUrl ? (
+              <Image
+                src={story.pages[currentPage].imageUrl}
+                alt={`Page ${currentPage + 1} illustration`}
+                fill
+                className="object-cover"
+                unoptimized
+                priority
+              />
+            ) : (
+              <div className="flex items-center justify-center h-full">
+                <p className="text-gray-400 italic">Loading illustration...</p>
               </div>
-            </div>
-          )}
+            )}
+          </div>
 
-          {/* Text */}
-          <div className="bg-white/80 backdrop-blur-sm p-6 rounded-xl shadow-md">
-            <p className="text-lg md:text-xl text-gray-800 leading-relaxed">
-              {story.pages[currentPage].text}
-            </p>
+          {/* Right Side - Text */}
+          <div className="flex flex-col justify-center p-8 md:p-12 bg-gradient-to-br from-yellow-50/30 to-orange-50/30">
+            {/* Story Title at top of text page */}
+            <div className="mb-6">
+              <h2 className="text-sm font-semibold text-gray-500 uppercase tracking-wide mb-2">
+                {story.author || 'Young Author'}
+              </h2>
+              <div className="h-px bg-purple-200 w-16"></div>
+            </div>
+
+            {/* Story Text */}
+            <div className="flex-1 flex items-center">
+              <p className="text-base md:text-lg lg:text-xl text-gray-800 leading-relaxed font-serif">
+                {story.pages[currentPage].text}
+              </p>
+            </div>
+
+            {/* Page indicator at bottom */}
+            <div className="mt-6 text-center">
+              <div className="inline-block h-px bg-purple-200 w-24"></div>
+              <div className="text-sm text-gray-400 mt-2">{currentPage + 1}</div>
+            </div>
           </div>
         </div>
 
