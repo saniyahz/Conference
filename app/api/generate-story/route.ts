@@ -106,60 +106,71 @@ Create a unique, magical 12-page story based on their idea! Make it fun, engagin
 }
 
 function generateImagePrompts(story: any, originalPrompt: string): string[] {
-  // Simple art style for consistent, kid-friendly images (like Gemini)
-  const artStyle = "Children's book illustration, colorful, warm, whimsical, magical"
+  // Simple art style for consistent, kid-friendly images
+  const artStyle = "Children's book illustration, colorful, warm, whimsical, magical, detailed"
 
-  // Extract any character mentions from the prompt
+  // Extract character details from the original prompt
   const lowerPrompt = originalPrompt.toLowerCase()
-  let character = 'friendly character'
 
-  // Try to extract character type
-  const animals = ['dog', 'cat', 'dragon', 'unicorn', 'bear', 'lion', 'elephant', 'monkey', 'rabbit', 'fox', 'dinosaur', 'bird', 'tiger', 'panda', 'penguin']
-  for (const animal of animals) {
-    if (lowerPrompt.includes(animal)) {
-      character = animal
-      break
-    }
+  // Extract specific character description (like "dog with a horn", "cat named Luna", etc.)
+  let characterDescription = ''
+
+  // Try to extract full character description
+  if (lowerPrompt.includes('dog')) {
+    // Get everything after "dog" until we hit common words
+    const dogMatch = originalPrompt.match(/dog[^.!?,]*/i)
+    characterDescription = dogMatch ? dogMatch[0] : 'dog'
+  } else if (lowerPrompt.includes('cat')) {
+    const catMatch = originalPrompt.match(/cat[^.!?,]*/i)
+    characterDescription = catMatch ? catMatch[0] : 'cat'
+  } else if (lowerPrompt.includes('dragon')) {
+    const dragonMatch = originalPrompt.match(/dragon[^.!?,]*/i)
+    characterDescription = dragonMatch ? dragonMatch[0] : 'dragon'
+  } else if (lowerPrompt.includes('unicorn')) {
+    characterDescription = 'unicorn'
+  } else {
+    // Try to extract any character description
+    const characterMatch = originalPrompt.match(/(?:a|an|the)\s+([^.!?,]+?)(?:\s+who|\s+that|goes|went|$)/i)
+    characterDescription = characterMatch ? characterMatch[1] : 'friendly character'
   }
 
-  const people = ['princess', 'prince', 'knight', 'wizard', 'fairy', 'pirate', 'astronaut', 'superhero']
-  for (const person of people) {
-    if (lowerPrompt.includes(person)) {
-      character = person
-      break
+  console.log('🎨 Character description extracted:', characterDescription)
+
+  // Generate prompts for 12 pages - each based on the story content
+  const prompts = story.pages.map((page: any, index: number) => {
+    // Extract key elements from the page text
+    const pageText = page.text.toLowerCase()
+
+    // Build a prompt that combines the character and the page content
+    let sceneDescription = ''
+
+    // Try to infer the scene from the text
+    if (index === 0) {
+      sceneDescription = `${characterDescription} with bright expressive eyes in a cozy beautiful home with warm lighting`
+    } else if (index === 1) {
+      sceneDescription = `${characterDescription} in a magical land with sparkling nature and beautiful scenery`
+    } else if (pageText.includes('forest') || pageText.includes('tree')) {
+      sceneDescription = `${characterDescription} in an enchanted forest with mystical trees and magical atmosphere`
+    } else if (pageText.includes('friend') || pageText.includes('together')) {
+      sceneDescription = `${characterDescription} with friendly animal companions in a beautiful setting`
+    } else if (pageText.includes('problem') || pageText.includes('sad') || pageText.includes('worry')) {
+      sceneDescription = `${characterDescription} looking concerned but determined, dramatic lighting with storm or gray clouds`
+    } else if (pageText.includes('idea') || pageText.includes('plan') || pageText.includes('think')) {
+      sceneDescription = `${characterDescription} thinking and planning with friends in a magical clearing`
+    } else if (pageText.includes('work') || pageText.includes('help') || pageText.includes('together')) {
+      sceneDescription = `${characterDescription} and friends working together cooperatively with magical sparkles`
+    } else if (pageText.includes('happy') || pageText.includes('joy') || pageText.includes('celebrate')) {
+      sceneDescription = `${characterDescription} celebrating with friends in a beautiful meadow, everyone happy and joyful`
+    } else if (pageText.includes('learn') || pageText.includes('discover')) {
+      sceneDescription = `${characterDescription} with friends sharing a peaceful moment at sunset`
+    } else if (pageText.includes('end') || index === story.pages.length - 1) {
+      sceneDescription = `${characterDescription} happy and content at home with stars and moonlight, perfect peaceful ending`
+    } else {
+      sceneDescription = `${characterDescription} on an adventure in a magical land`
     }
-  }
 
-  // Generate prompts for 12 pages - each one slightly different to match the story progression
-  const prompts = [
-    // Pages 1-3: Introduction
-    `${artStyle}. A cute ${character} with bright eyes in a beautiful home with cozy furniture, warm lighting, and happy atmosphere.`,
-
-    `${artStyle}. The ${character} in a magical land with sparkling trees, colorful flowers, butterflies, and a beautiful sunrise.`,
-
-    `${artStyle}. The ${character} exploring their wonderful world with enchanted nature, friendly animals, and magical details everywhere.`,
-
-    // Pages 4-6: Adventure and Problem
-    `${artStyle}. The ${character} setting out on an adventure, walking on a glowing path through an enchanted forest with mystical trees.`,
-
-    `${artStyle}. The ${character} discovering something mysterious or unusual, with dramatic lighting and magical atmosphere.`,
-
-    `${artStyle}. The ${character} facing a challenge, looking determined, with concerned animal friends nearby in a forest setting.`,
-
-    // Pages 7-9: Solution
-    `${artStyle}. The ${character} thinking and planning with friends, gathered together in a magical clearing with soft glowing light.`,
-
-    `${artStyle}. The ${character} and animal friends working together as a team, cooperating with magical sparkles showing their effort.`,
-
-    `${artStyle}. The ${character} solving the problem with bright magical light, rainbow colors, and triumphant atmosphere.`,
-
-    // Pages 10-12: Resolution
-    `${artStyle}. The ${character} celebrating with all their friends in a beautiful meadow, everyone happy and joyful.`,
-
-    `${artStyle}. The ${character} with friends sharing a peaceful moment at sunset with orange, pink, and gold sky colors.`,
-
-    `${artStyle}. The ${character} happy and content in their magical home at twilight with stars beginning to appear, perfect ending scene.`,
-  ]
+    return `${artStyle}. ${sceneDescription}. Make sure the ${characterDescription} is the main focus of the image and clearly visible.`
+  })
 
   return prompts
 }
