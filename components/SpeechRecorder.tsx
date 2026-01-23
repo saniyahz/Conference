@@ -83,16 +83,19 @@ export default function SpeechRecorder({ onComplete }: SpeechRecorderProps) {
         // Auto-restart if we should still be recording
         if (shouldBeRecordingRef.current) {
           console.log('🔁 Auto-restarting to continue listening...')
+          setIsRecording(false) // Turn red off
+          setIsStarting(true) // Show yellow "starting" state
           setTimeout(() => {
             if (shouldBeRecordingRef.current) {
               try {
                 recognition.start()
-                console.log('✅ Restarted successfully')
+                console.log('✅ Restarting...')
               } catch (e) {
                 console.log('Already starting...')
+                setIsStarting(false)
               }
             }
-          }, 100)
+          }, 300) // Longer delay for more reliable restart
         } else {
           // User manually stopped
           setIsRecording(false)
