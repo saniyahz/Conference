@@ -33,10 +33,14 @@ export default function SpeechRecorder({ onComplete }: SpeechRecorderProps) {
       recognition.continuous = true
       recognition.interimResults = true
       recognition.lang = 'en-US'
-      recognition.maxAlternatives = 1
+      recognition.maxAlternatives = 3 // More alternatives for better kid voice recognition
+
+      // Auto-restart flag to keep listening for kids (they pause a lot!)
+      let shouldRestart = false
 
       recognition.onstart = () => {
         setIsListening(true)
+        console.log('🎤 Microphone started - listening for kids voices!')
       }
 
       recognition.onresult = (event: any) => {
@@ -48,6 +52,7 @@ export default function SpeechRecorder({ onComplete }: SpeechRecorderProps) {
           if (event.results[i].isFinal) {
             finalTranscript += transcript + ' '
             setIsListening(true) // Show listening indicator when words are recognized
+            console.log('✅ Got speech:', transcript)
           } else {
             interimTranscript += transcript
           }
@@ -63,19 +68,43 @@ export default function SpeechRecorder({ onComplete }: SpeechRecorderProps) {
 
       recognition.onerror = (event: any) => {
         console.error('Speech recognition error:', event.error)
+
+        // DON'T stop on no-speech - kids voices are quiet!
         if (event.error === 'no-speech') {
-          setIsListening(false)
-        }
-        if (event.error === 'aborted') {
+          console.log('⚠️ No speech detected - but keeping microphone on for kids!')
+          setIsListening(true) // Keep showing as listening
+          // Don't stop - let it keep trying
+        } else if (event.error === 'aborted') {
           setIsRecording(false)
+          shouldRestart = false
+        } else {
+          // Other errors - try to restart
+          console.log('🔄 Error occurred, will restart listening...')
         }
       }
 
       recognition.onend = () => {
-        setIsRecording(false)
-        setIsListening(false)
-        setInterimText('')
+        console.log('🔄 Recognition ended')
+        // Auto-restart if still recording (kids pause between words!)
+        if (shouldRestart && isRecording) {
+          console.log('🔁 Auto-restarting for kids...')
+          setTimeout(() => {
+            try {
+              recognition.start()
+            } catch (e) {
+              console.log('Already restarting...')
+            }
+          }, 100)
+        } else {
+          setIsRecording(false)
+          setIsListening(false)
+          setInterimText('')
+        }
       }
+
+      // Store restart flag reference
+      recognition.shouldRestart = () => shouldRestart
+      recognition.setShouldRestart = (value: boolean) => { shouldRestart = value }
 
       recognitionRef.current = recognition
     }
@@ -84,15 +113,26 @@ export default function SpeechRecorder({ onComplete }: SpeechRecorderProps) {
   const startRecording = () => {
     if (recognitionRef.current) {
       setTranscription('')
-      recognitionRef.current.start()
-      setIsRecording(true)
+      setInterimText('')
+      // Enable auto-restart for kids who pause
+      recognitionRef.current.setShouldRestart(true)
+      try {
+        recognitionRef.current.start()
+        setIsRecording(true)
+        console.log('🎤 Started recording - optimized for kids voices!')
+      } catch (e) {
+        console.log('Recognition already started')
+      }
     }
   }
 
   const stopRecording = () => {
     if (recognitionRef.current) {
+      // Disable auto-restart
+      recognitionRef.current.setShouldRestart(false)
       recognitionRef.current.stop()
       setIsRecording(false)
+      console.log('🛑 Stopped recording')
     }
   }
 
@@ -138,14 +178,18 @@ export default function SpeechRecorder({ onComplete }: SpeechRecorderProps) {
   return (
     <div className="space-y-6">
       <div className="text-center">
-        <div className="bg-green-500 text-white font-bold py-2 px-4 rounded mb-4">
-          ✅ VERSION 5.0 ENHANCED - WITH GREEN BARS
+        <div className="bg-gradient-to-r from-green-500 to-blue-500 text-white font-bold py-3 px-6 rounded-lg mb-4 shadow-lg">
+          🎤 OPTIMIZED FOR KIDS' VOICES! Speak clearly and the mic will hear you! 🎤
         </div>
         <h2 className="text-2xl font-bold text-purple-800 mb-2">
           Tell Us Your Story
         </h2>
-        <p className="text-gray-600">
-          Click the microphone and start speaking. Tell us about characters, adventures, or anything you can imagine!
+        <p className="text-gray-600 text-lg">
+          <strong>Kids:</strong> Click the microphone, speak clearly, and watch the green bars!
+          Tell us about characters, adventures, or anything you can imagine!
+        </p>
+        <p className="text-sm text-blue-600 mt-2">
+          💡 Tip: Speak a bit louder and slower so the microphone can hear you better!
         </p>
       </div>
 
@@ -169,24 +213,28 @@ export default function SpeechRecorder({ onComplete }: SpeechRecorderProps) {
 
       <div className="text-center space-y-2">
         {isRecording && (
-          <div className="space-y-2">
-            <p className={`font-semibold ${isListening ? 'text-green-600 animate-pulse' : 'text-orange-600'}`}>
-              {isListening ? '🎤 Listening... I can hear you!' : '🎤 Ready to listen... Start speaking!'}
+          <div className="space-y-3">
+            <p className={`text-xl font-bold ${isListening ? 'text-green-600 animate-pulse' : 'text-blue-600'}`}>
+              {isListening ? '✅ HEARING YOU! Keep talking!' : '👂 LISTENING... Speak now!'}
             </p>
-            {isListening && (
-              <div className="flex justify-center gap-1">
-                <div className="w-2 h-8 bg-green-500 rounded animate-pulse" style={{animationDelay: '0ms'}}></div>
-                <div className="w-2 h-12 bg-green-500 rounded animate-pulse" style={{animationDelay: '150ms'}}></div>
-                <div className="w-2 h-6 bg-green-500 rounded animate-pulse" style={{animationDelay: '300ms'}}></div>
-                <div className="w-2 h-10 bg-green-500 rounded animate-pulse" style={{animationDelay: '450ms'}}></div>
-                <div className="w-2 h-8 bg-green-500 rounded animate-pulse" style={{animationDelay: '600ms'}}></div>
-              </div>
-            )}
+            {/* Always show green bars when recording to give kids confidence */}
+            <div className="flex justify-center gap-1 bg-gray-100 p-4 rounded-lg">
+              <div className="w-3 h-12 bg-green-500 rounded animate-pulse" style={{animationDelay: '0ms', animationDuration: '0.8s'}}></div>
+              <div className="w-3 h-16 bg-green-400 rounded animate-pulse" style={{animationDelay: '100ms', animationDuration: '0.7s'}}></div>
+              <div className="w-3 h-10 bg-green-500 rounded animate-pulse" style={{animationDelay: '200ms', animationDuration: '0.9s'}}></div>
+              <div className="w-3 h-14 bg-green-400 rounded animate-pulse" style={{animationDelay: '300ms', animationDuration: '0.6s'}}></div>
+              <div className="w-3 h-12 bg-green-500 rounded animate-pulse" style={{animationDelay: '400ms', animationDuration: '0.8s'}}></div>
+              <div className="w-3 h-16 bg-green-400 rounded animate-pulse" style={{animationDelay: '500ms', animationDuration: '0.7s'}}></div>
+              <div className="w-3 h-10 bg-green-500 rounded animate-pulse" style={{animationDelay: '600ms', animationDuration: '0.9s'}}></div>
+            </div>
+            <p className="text-sm text-gray-600 italic">
+              {interimText ? `Hearing: "${interimText}"` : 'Microphone is ON and listening for your voice...'}
+            </p>
           </div>
         )}
         {!isRecording && (
-          <p className="text-gray-600">
-            {transcription ? '✅ Click the mic to add more' : '🎤 Click the mic to start'}
+          <p className="text-gray-600 text-lg font-semibold">
+            {transcription ? '✅ Great! Click the mic to add more or create your story below' : '🎤 Click the big microphone to start recording'}
           </p>
         )}
       </div>
