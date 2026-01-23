@@ -17,7 +17,7 @@ export async function POST(request: NextRequest) {
     console.log('📖 Generating unique story with Google Gemini from:', prompt)
 
     // Use Gemini to generate a unique, kid-friendly story
-    const model = genAI.getGenerativeModel({ model: 'gemini-pro' })
+    const model = genAI.getGenerativeModel({ model: 'gemini-1.5-flash' })
 
     const systemPrompt = `You are a creative children's story writer creating stories for the Google Gemini Storybook format. Create engaging, unique stories for kids aged 4-8 based on their ideas.
 
