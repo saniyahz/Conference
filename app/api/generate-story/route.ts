@@ -87,52 +87,45 @@ PAGE 4:
 }
 
 function generateImagePrompts(story: any, originalPrompt: string): string[] {
-  // Vibrant, colorful art style like Gemini Storybook - very specific and detailed
-  const artStyle = "Vibrant colorful children's book illustration, Disney Pixar animation style, highly saturated rich colors, dramatic lighting with glowing effects, magical sparkles and stars, whimsical fantasy atmosphere, professional digital painting, ultra detailed, cinematic quality"
+  // Vibrant, colorful art style like Gemini Storybook
+  const baseStyle = "Vibrant colorful children's book illustration, Disney Pixar animation style, highly saturated rich colors, dramatic lighting, magical sparkles, whimsical atmosphere, professional digital art"
 
-  // Extract character details from the original prompt
-  const lowerPrompt = originalPrompt.toLowerCase()
+  console.log('🎨 Generating image prompts from actual story pages...')
 
-  // Extract specific character description
-  let characterDescription = ''
+  // Generate a specific image prompt for each page based on its content
+  const prompts = story.pages.map((page: any, index: number) => {
+    const pageText = page.text
 
-  // Try to extract full character description - checking for common animals
-  if (lowerPrompt.includes('lion')) {
-    const lionMatch = originalPrompt.match(/lion[^.!?,]*/i)
-    characterDescription = lionMatch ? lionMatch[0] : 'lion'
-  } else if (lowerPrompt.includes('dog')) {
-    const dogMatch = originalPrompt.match(/dog[^.!?,]*/i)
-    characterDescription = dogMatch ? dogMatch[0] : 'dog'
-  } else if (lowerPrompt.includes('cat')) {
-    const catMatch = originalPrompt.match(/cat[^.!?,]*/i)
-    characterDescription = catMatch ? catMatch[0] : 'cat'
-  } else if (lowerPrompt.includes('dragon')) {
-    const dragonMatch = originalPrompt.match(/dragon[^.!?,]*/i)
-    characterDescription = dragonMatch ? dragonMatch[0] : 'dragon'
-  } else if (lowerPrompt.includes('unicorn')) {
-    characterDescription = 'unicorn'
-  } else {
-    // Try to extract any character description
-    const characterMatch = originalPrompt.match(/(?:a|an|the)\s+([^.!?,]+?)(?:\s+who|\s+that|goes|went|$)/i)
-    characterDescription = characterMatch ? characterMatch[1] : 'friendly character'
-  }
+    // Extract first two sentences for main visual content (usually has key details)
+    const sentences = pageText.split(/[.!?]+/).filter((s: string) => s.trim().length > 10)
+    const keyContent = sentences.slice(0, 2).join('. ')
 
-  console.log('🎨 Character description extracted:', characterDescription)
+    // Create scene-specific prompt based on story arc
+    let prompt = `${baseStyle}. `
 
-  // Generate detailed prompts for 4 pages - ultra vibrant like Gemini
-  const prompts = [
-    // Page 1: Introduction - vibrant, colorful establishing shot
-    `${artStyle}. A cute adorable ${characterDescription} with huge expressive eyes and friendly smile, in a magical vibrant world with glowing colors, rainbow skies, sparkling nature, bright cheerful atmosphere. Ultra colorful and detailed. The character is the main focus with dramatic lighting highlighting them.`,
+    if (index === 0) {
+      // Page 1: Character introduction and setting
+      prompt += `Opening scene: ${keyContent}. Show the main character with big expressive eyes in a magical, colorful world. Bright, cheerful establishing shot.`
+    } else if (index === 1) {
+      // Page 2: Adventure begins / Problem discovered
+      prompt += `Adventure scene: ${keyContent}. Show dynamic action with the character facing the challenge. Exciting, vibrant atmosphere with glowing magical effects.`
+    } else if (index === 2) {
+      // Page 3: Working to solve problem
+      prompt += `Problem-solving scene: ${keyContent}. Show the character working hard or with friends, determined expressions. Warm, cooperative mood with magical energy.`
+    } else {
+      // Page 4: Happy resolution
+      prompt += `Happy ending scene: ${keyContent}. Joyful celebration with all characters smiling and cheering. Maximum vibrance with sparkles, rainbow colors, magical happiness.`
+    }
 
-    // Page 2: Adventure/Problem - dynamic, exciting scene
-    `${artStyle}. ${characterDescription} on an exciting adventure, dynamic action pose, discovering something mysterious with glowing magical effects, vibrant dramatic landscape with rich saturated colors, mystical glowing lights and sparkles everywhere. Very colorful and energetic scene.`,
+    prompt += ` Children's book style, safe for kids 4-8 years old.`
 
-    // Page 3: Solving/Teamwork - warm, cooperative scene with multiple characters
-    `${artStyle}. ${characterDescription} working together with colorful friendly animal characters (rabbits, birds, squirrels), all with big expressive eyes, cooperating as a team with magical glowing energy connecting them, vibrant forest clearing with rainbow light beams, ultra saturated warm colors. Heartwarming teamwork scene.`,
+    return prompt
+  })
 
-    // Page 4: Happy ending - celebration with maximum vibrancy
-    `${artStyle}. ${characterDescription} celebrating joyfully with all their colorful animal friends, everyone dancing and cheering, magical sparkles and fireworks in a vibrant sunset sky with purple pink orange gold colors, glowing magical effects everywhere, ultra bright and cheerful. Perfect happy ending with maximum color and joy.`
-  ]
+  console.log(`✅ Generated ${prompts.length} page-specific image prompts`)
+  prompts.forEach((p, i) => {
+    console.log(`Page ${i + 1} prompt: ${p.substring(0, 100)}...`)
+  })
 
   return prompts
 }
