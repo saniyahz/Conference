@@ -23,32 +23,64 @@ export type Story = {
 
 export default function Home() {
   const { data: session } = useSession()
-  const [step, setStep] = useState<'record' | 'generating' | 'book'>('record')
+  const [step, setStep] = useState<'record' | 'generating' | 'generating-images' | 'book'>('record')
   const [story, setStory] = useState<Story | null>(null)
   const [transcription, setTranscription] = useState<string>('')
+  const [loadingMessage, setLoadingMessage] = useState('Creating your magical story...')
 
   const handleTranscriptionComplete = async (text: string, authorName: string) => {
     setTranscription(text)
     setStep('generating')
+    setLoadingMessage('Creating your magical story...')
 
     try {
-      // Generate story from transcription
-      const response = await fetch('/api/generate-story', {
+      // Step 1: Generate story text
+      const storyResponse = await fetch('/api/generate-story', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ prompt: text }),
       })
 
-      if (!response.ok) {
+      if (!storyResponse.ok) {
         throw new Error('Failed to generate story')
       }
 
-      const data = await response.json()
-      // Add author name to the story
-      setStory({
-        ...data.story,
-        author: authorName
+      const storyData = await storyResponse.json()
+
+      // Step 2: Generate images for the story
+      setStep('generating-images')
+      setLoadingMessage('Creating beautiful illustrations... (this may take 1-2 minutes)')
+
+      const imagesResponse = await fetch('/api/generate-images', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ imagePrompts: storyData.imagePrompts }),
       })
+
+      if (!imagesResponse.ok) {
+        // If images fail, continue with story but no images
+        console.warn('Image generation failed, continuing without images')
+        setStory({
+          ...storyData.story,
+          author: authorName
+        })
+        setStep('book')
+        return
+      }
+
+      const imagesData = await imagesResponse.json()
+
+      // Step 3: Combine story with images
+      const storyWithImages = {
+        ...storyData.story,
+        author: authorName,
+        pages: storyData.story.pages.map((page: any, index: number) => ({
+          ...page,
+          imageUrl: imagesData.imageUrls[index] || undefined
+        }))
+      }
+
+      setStory(storyWithImages)
       setStep('book')
     } catch (error) {
       console.error('Error generating story:', error)
@@ -119,8 +151,8 @@ export default function Home() {
             <SpeechRecorder onComplete={handleTranscriptionComplete} />
           )}
 
-          {step === 'generating' && (
-            <LoadingSpinner message="Creating your magical story..." />
+          {(step === 'generating' || step === 'generating-images') && (
+            <LoadingSpinner message={loadingMessage} />
           )}
 
           {step === 'book' && story && (

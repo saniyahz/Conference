@@ -17,13 +17,15 @@ export async function POST(request: NextRequest) {
     // Parse the story
     const story = parseStory(storyText, prompt)
 
-    // For now, return story without images since Stable Diffusion API is deprecated
-    // You can integrate with a paid service like DALL-E or Midjourney for production
+    // Generate detailed image prompts for each page with character AND scenery
+    const imagePrompts = generateImagePrompts(story, prompt)
+
     return NextResponse.json({
       story: {
         title: story.title,
         pages: story.pages,
       },
+      imagePrompts,
     })
   } catch (error) {
     console.error('Error generating story:', error)
@@ -193,6 +195,33 @@ PAGE 4: ${pages[3]}`
 
 function capitalize(str: string): string {
   return str.charAt(0).toUpperCase() + str.slice(1)
+}
+
+function generateImagePrompts(story: any, originalPrompt: string): string[] {
+  // Extract character info from the original prompt
+  const concepts = extractConcepts(originalPrompt.toLowerCase())
+  const char = concepts.characterName || concepts.character || 'hero'
+  const charType = concepts.character || 'character'
+
+  // Define art style for consistency across all images
+  const artStyle = "Children's book illustration style, warm and friendly, colorful and vibrant, soft lighting, magical atmosphere"
+
+  // Create detailed prompts for each page with character AND rich scenery
+  const prompts = [
+    // Page 1: Introduction scene
+    `${artStyle}. A ${charType} named ${char} in a beautiful magical land. Show ${char} with bright eyes and a kind expression, surrounded by a enchanted forest with sparkling trees, colorful flowers, butterflies, and a glowing sunrise in the background. The scene is peaceful and full of wonder. Make it look like a professional children's book cover.`,
+
+    // Page 2: Adventure begins
+    `${artStyle}. ${char} the ${charType} discovering a mysterious golden sparkling path in an enchanted forest. Show ${char} looking excited and curious, with wise old owls perched on tree branches, playful squirrels nearby, and colorful butterflies flying around. The path glows with magical light, leading through mystical trees with twisted trunks and glowing mushrooms. Rainbow-colored flowers line the path.`,
+
+    // Page 3: Solving the problem together
+    `${artStyle}. ${char} the ${charType} and a group of animal friends working together as a team. Show ${char} in the center, surrounded by owls, squirrels, rabbits, and butterflies, all helping each other. A magical crystal or rainbow appears in the sky above them, glowing brightly. The scene shows teamwork and friendship, with everyone smiling. Set in a beautiful clearing in an enchanted forest with magical sparkles everywhere.`,
+
+    // Page 4: Happy ending celebration
+    `${artStyle}. ${char} the ${charType} celebrating with all their friends during a beautiful sunset. Show ${char} and many animal friends gathered together in a magical meadow, with the sky painted in beautiful colors of orange, pink, and gold. Sparkles and magical lights fill the air. Everyone looks happy and joyful. In the background, show a magical village or castle in the distance. The scene conveys happiness, friendship, and a perfect happy ending.`,
+  ]
+
+  return prompts
 }
 
 function parseStory(text: string, originalPrompt: string) {
