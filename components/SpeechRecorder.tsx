@@ -11,6 +11,7 @@ interface SpeechRecorderProps {
 
 export default function SpeechRecorder({ onComplete }: SpeechRecorderProps) {
   const [isRecording, setIsRecording] = useState(false)
+  const [isStarting, setIsStarting] = useState(false)
   const [transcription, setTranscription] = useState('')
   const [interimText, setInterimText] = useState('')
   const [authorName, setAuthorName] = useState('')
@@ -34,7 +35,9 @@ export default function SpeechRecorder({ onComplete }: SpeechRecorderProps) {
       // maxAlternatives = 1 (default) for SPEED
 
       recognition.onstart = () => {
-        console.log('🎤 STARTED')
+        console.log('🎤 MICROPHONE READY - Start speaking now!')
+        setIsStarting(false)
+        setIsRecording(true)
       }
 
       recognition.onresult = (event: any) => {
@@ -64,12 +67,14 @@ export default function SpeechRecorder({ onComplete }: SpeechRecorderProps) {
         if (event.error === 'audio-capture') {
           alert('❌ Cannot access microphone! Please allow microphone access and try again.')
           setIsRecording(false)
+          setIsStarting(false)
         }
       }
 
       recognition.onend = () => {
         console.log('🛑 Recognition ended')
         setIsRecording(false)
+        setIsStarting(false)
       }
 
       recognitionRef.current = recognition
@@ -79,12 +84,13 @@ export default function SpeechRecorder({ onComplete }: SpeechRecorderProps) {
   const startRecording = () => {
     if (recognitionRef.current) {
       setInterimText('')
-      setIsRecording(true)
+      setIsStarting(true) // Show "Starting..." state
       try {
         recognitionRef.current.start()
-        console.log('🎤 STARTED')
+        console.log('🎤 Starting microphone...')
       } catch (e) {
         console.log('Already started')
+        setIsStarting(false)
       }
     }
   }
@@ -92,6 +98,7 @@ export default function SpeechRecorder({ onComplete }: SpeechRecorderProps) {
   const stopRecording = () => {
     if (recognitionRef.current) {
       setIsRecording(false)
+      setIsStarting(false)
       try {
         recognitionRef.current.stop()
         console.log('🛑 STOPPED')
@@ -162,14 +169,17 @@ export default function SpeechRecorder({ onComplete }: SpeechRecorderProps) {
       {/* Recording Controls */}
       <div className="flex justify-center">
         <button
-          onClick={isRecording ? stopRecording : startRecording}
+          onClick={(isRecording || isStarting) ? stopRecording : startRecording}
+          disabled={isStarting}
           className={`p-8 rounded-full transition-all transform hover:scale-105 shadow-lg ${
             isRecording
               ? 'bg-red-500 hover:bg-red-600 animate-pulse'
+              : isStarting
+              ? 'bg-yellow-500 animate-pulse cursor-wait'
               : 'bg-purple-600 hover:bg-purple-700'
           }`}
         >
-          {isRecording ? (
+          {(isRecording || isStarting) ? (
             <MicOff className="w-16 h-16 text-white" />
           ) : (
             <Mic className="w-16 h-16 text-white" />
@@ -178,6 +188,14 @@ export default function SpeechRecorder({ onComplete }: SpeechRecorderProps) {
       </div>
 
       <div className="text-center space-y-2">
+        {isStarting && (
+          <div className="space-y-3">
+            <p className="text-xl font-bold text-yellow-600 animate-pulse">
+              ⏳ Starting microphone... Please wait!
+            </p>
+          </div>
+        )}
+
         {isRecording && (
           <div className="space-y-3">
             <p className="text-xl font-bold text-green-600 animate-pulse">
@@ -191,7 +209,7 @@ export default function SpeechRecorder({ onComplete }: SpeechRecorderProps) {
           </div>
         )}
 
-        {!isRecording && (
+        {!isRecording && !isStarting && (
           <p className="text-gray-600 text-lg font-semibold">
             {transcription ? '✅ Got it! Click mic to add more or create story below' : 'Click the microphone to start'}
           </p>
