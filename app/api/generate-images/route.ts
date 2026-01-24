@@ -49,8 +49,10 @@ export async function POST(request: NextRequest) {
             }
           ) as string[]
 
+          console.log(`🔍 Raw output from Replicate:`, typeof output, Array.isArray(output), output)
+
           if (output && output.length > 0 && output[0]) {
-            console.log(`✅ Image ${imageIndex + 1} generated successfully`)
+            console.log(`✅ Image ${imageIndex + 1} generated successfully:`, output[0])
             return output[0]
           } else {
             console.error(`❌ No output for image ${imageIndex + 1}`)
