@@ -22,14 +22,16 @@ export default function StoryBook({ story, onReset }: StoryBookProps) {
   const [isLoadingAudio, setIsLoadingAudio] = useState(false)
   const [isSaving, setIsSaving] = useState(false)
   const [currentAudio, setCurrentAudio] = useState<HTMLAudioElement | null>(null)
-  const [selectedVoice, setSelectedVoice] = useState<string>('warm-mother')
+  const [selectedVoice, setSelectedVoice] = useState<string>('v2/en_speaker_6')
 
-  // High-quality AI voices from Replicate
+  // Bark TTS speaker presets - using actual Bark history_prompt values
   const aiVoices = [
-    { id: 'warm-mother', name: 'Warm Mother', description: "A warm, friendly, gentle female voice perfect for children's stories, speaking slowly and clearly with expression and enthusiasm" },
-    { id: 'gentle-father', name: 'Gentle Father', description: "A deep, calm, reassuring male voice ideal for bedtime stories, speaking with gentle warmth and steady pacing" },
-    { id: 'playful-storyteller', name: 'Playful Storyteller', description: "An energetic, expressive voice with dramatic flair, perfect for exciting adventures and bringing characters to life" },
-    { id: 'soft-grandma', name: 'Soft Grandma', description: "A sweet, elderly female voice with a tender, loving quality, ideal for soothing bedtime reading" },
+    { id: 'v2/en_speaker_6', name: 'Warm Mother', description: 'Gentle female voice' },
+    { id: 'v2/en_speaker_9', name: 'Friendly Narrator', description: 'Clear storytelling voice' },
+    { id: 'v2/en_speaker_3', name: 'Calm Father', description: 'Deep male voice' },
+    { id: 'v2/en_speaker_1', name: 'Cheerful Reader', description: 'Energetic voice' },
+    { id: 'v2/en_speaker_5', name: 'Sweet Grandma', description: 'Elderly female voice' },
+    { id: 'v2/en_speaker_0', name: 'Classic Storyteller', description: 'Traditional narrator' },
   ]
 
   useEffect(() => {
@@ -62,16 +64,13 @@ export default function StoryBook({ story, onReset }: StoryBookProps) {
     setIsSpeaking(false)
 
     try {
-      // Get voice description
-      const voice = aiVoices.find(v => v.id === selectedVoice)
-
-      // Call API to generate speech
+      // Call API to generate speech with Bark speaker preset
       const response = await fetch('/api/generate-speech', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           text,
-          voice: voice?.description
+          voice: selectedVoice  // Send the Bark speaker preset ID
         }),
       })
 

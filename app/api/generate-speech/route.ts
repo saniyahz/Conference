@@ -16,8 +16,11 @@ export async function POST(request: NextRequest) {
       )
     }
 
+    // Use default voice if not provided
+    const speakerPreset = voice || 'v2/en_speaker_6'
+
     console.log('🔊 Generating speech with Replicate TTS (Suno Bark)')
-    console.log('Voice:', voice || 'default')
+    console.log('Speaker preset:', speakerPreset)
     console.log('Text length:', text.length, 'characters')
 
     // Limit text length to avoid timeouts (Bark works best with shorter text)
@@ -28,13 +31,13 @@ export async function POST(request: NextRequest) {
       console.log(`⚠️  Text truncated from ${text.length} to ${maxLength} characters for better TTS performance`)
     }
 
-    // Use Suno Bark - simpler and more reliable than Parler TTS
-    // It uses speaker presets instead of voice descriptions
+    // Use Suno Bark with history_prompt for voice selection
     const output = await replicate.run(
       "suno-ai/bark:b76242b40d67c76ab6742e987628a2a9ac019e11d56ab96c4e91ce03b79b2787",
       {
         input: {
           prompt: truncatedText,
+          history_prompt: speakerPreset,  // Bark speaker preset
           text_temp: 0.7,
           waveform_temp: 0.7,
         }
