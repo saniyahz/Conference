@@ -70,6 +70,9 @@ export default function Home() {
 
       const imagesData = await imagesResponse.json()
 
+      console.log('🖼️ Received image URLs:', imagesData.imageUrls)
+      console.log('🖼️ Number of images:', imagesData.imageUrls?.length)
+
       // Step 3: Combine story with images
       const storyWithImages = {
         ...storyData.story,

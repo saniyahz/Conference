@@ -34,6 +34,8 @@ export default function StoryBook({ story, onReset }: StoryBookProps) {
 
   useEffect(() => {
     console.log('✅ StoryBook v3.0 - High-Quality AI Voices - ' + new Date().toISOString())
+    console.log('📚 Story pages:', story.pages.length)
+    console.log('🖼️ Page image URLs:', story.pages.map((p, i) => `Page ${i+1}: ${p.imageUrl?.substring(0, 50)}...`))
   }, [])
 
   const nextPage = () => {
