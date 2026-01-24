@@ -43,9 +43,8 @@ async function generateImageWithRetry(
                 aspect_ratio: "1:1",
                 output_format: "png",
                 output_quality: 90,
-                // Increase guidance_scale to make model follow prompt more strictly
-                guidance_scale: 7.5,  // Higher value = stricter adherence to prompt
                 num_inference_steps: 4,
+                // Note: FLUX-schnell doesn't support guidance_scale
               }
             }
           )

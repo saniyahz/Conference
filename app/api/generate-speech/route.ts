@@ -19,27 +19,25 @@ export async function POST(request: NextRequest) {
     // Use default voice if not provided
     const speakerPreset = voice || 'v2/en_speaker_6'
 
-    console.log('🔊 Generating speech with Replicate TTS (Suno Bark)')
-    console.log('Speaker preset:', speakerPreset)
+    console.log('🔊 Generating speech with Replicate TTS')
+    console.log('Voice preset:', speakerPreset)
     console.log('Text length:', text.length, 'characters')
 
-    // Limit text length to avoid timeouts (Bark works best with shorter text)
-    const maxLength = 200
+    // Limit text length to avoid timeouts
+    const maxLength = 500
     const truncatedText = text.length > maxLength ? text.substring(0, maxLength) + '...' : text
 
     if (text.length > maxLength) {
       console.log(`⚠️  Text truncated from ${text.length} to ${maxLength} characters for better TTS performance`)
     }
 
-    // Use Suno Bark with history_prompt for voice selection
+    // Use Parler-TTS - a high-quality open-source TTS model
     const output = await replicate.run(
-      "suno-ai/bark:b76242b40d67c76ab6742e987628a2a9ac019e11d56ab96c4e91ce03b79b2787",
+      "parler-tts/parler-tts-mini-v1:44f45efa8e0e70e8c69aef3c4b028c7c6bb63c6e8b88da5e98e6b5b3e32f5d62",
       {
         input: {
-          prompt: truncatedText,
-          history_prompt: speakerPreset,  // Bark speaker preset
-          text_temp: 0.7,
-          waveform_temp: 0.7,
+          text: truncatedText,
+          description: "A warm, friendly, gentle female voice perfect for children's stories, speaking slowly and clearly with expression and enthusiasm",
         }
       }
     )
