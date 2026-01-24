@@ -20,42 +20,36 @@ async function generateImageWithRetry(
     try {
       console.log(`🎨 Generating image ${imageIndex + 1}/${imagePromptsLength} (attempt ${attempt}/${maxRetries})`)
 
-          // CRITICAL: FLUX models often add text/letters/words to images despite instructions
-          // ULTRA-STRONG MULTI-LAYER STRATEGY to prevent text:
-          // 1. MAXIMUM emphasis on visual-only nature at START, MIDDLE, and END of prompt
-          // 2. Use EXTREMELY emphatic variations of "no text" instruction
-          // 3. Emphasize illustration/painting style that naturally avoids text
-          // 4. Explicitly state what NOT to include (letters, words, captions, signs, labels, etc.)
-          // 5. Repeat the instruction multiple times for emphasis
+          // Using SDXL with negative prompts - much more effective at preventing text than FLUX
+          const cleanPrompt = `Beautiful children's book watercolor illustration: ${prompt}. Soft pastel colors, gentle, whimsical, storybook art style.`
 
-          const textPreventionPrefix = `ABSOLUTELY NO TEXT ANYWHERE IN IMAGE. ZERO LETTERS. ZERO WORDS. ZERO TYPOGRAPHY. ZERO SIGNS. ZERO LABELS. ZERO CAPTIONS. This is a pure wordless watercolor painting illustration for a children's book.`
+          // SDXL's negative prompt feature is KEY to preventing text
+          const negativePrompt = `text, letters, words, typography, writing, captions, labels, signs, numbers, alphabet, characters, font, calligraphy, handwriting, speech bubbles, any form of written language, watermark, signature`
 
-          const textPreventionMiddle = `REMINDER: This is a VISUAL-ONLY illustration - do NOT include any text, letters, words, signs, labels, captions, typography, or written language of any kind.`
-
-          const textPreventionSuffix = `CRITICAL FINAL REMINDER: This image must be completely wordless and text-free. NO text characters, NO letters, NO words, NO typography, NO signs, NO labels, NO captions anywhere in the image whatsoever. Pure visual illustration only - like a wordless picture book illustration or fine art watercolor painting with ZERO text elements.`
-
-          const enhancedPrompt = `${textPreventionPrefix} ${prompt}. ${textPreventionMiddle} ${textPreventionSuffix}`
-
-          console.log('📝 Enhanced prompt preview:', enhancedPrompt.substring(0, 150) + '...')
+          console.log('📝 Prompt:', cleanPrompt.substring(0, 100) + '...')
+          console.log('🚫 Negative prompt:', negativePrompt)
 
           const output = await replicate.run(
-            "black-forest-labs/flux-schnell",
+            "stability-ai/sdxl:39ed52f2a78e934b3ba6e2a89f5b1c712de7dfea535525255b1aa35c5565e08b",
             {
               input: {
-                prompt: enhancedPrompt,
+                prompt: cleanPrompt,
+                negative_prompt: negativePrompt,
+                width: 1024,
+                height: 1024,
                 num_outputs: 1,
-                aspect_ratio: "1:1",
-                output_format: "png",
-                output_quality: 90,
-                num_inference_steps: 4,
-                // Note: FLUX-schnell doesn't support guidance_scale
+                scheduler: "K_EULER",
+                num_inference_steps: 25,
+                guidance_scale: 7.5,
+                refine: "expert_ensemble_refiner",
+                high_noise_frac: 0.8
               }
             }
           )
 
           console.log(`🔍 Raw output from Replicate:`, typeof output, Array.isArray(output), output)
 
-          // Handle stream output - FLUX Schnell returns a stream that needs to be read
+          // Handle output - SDXL returns array of URLs
           let imageUrl = ''
 
           if (Array.isArray(output) && output.length > 0) {
@@ -146,7 +140,7 @@ export async function POST(request: NextRequest) {
       )
     }
 
-    console.log('✅ Replicate API Token found, generating', imagePrompts.length, 'images with FLUX')
+    console.log('✅ Replicate API Token found, generating', imagePrompts.length, 'images with SDXL')
 
     // Generate images for each prompt using Replicate FLUX with delays between requests
     const imageUrls: string[] = []

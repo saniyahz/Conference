@@ -1,6 +1,6 @@
 'use client'
 
-console.log('🚀🚀🚀 StoryBook.tsx LOADED - Version 6.0 - FIXED - ' + new Date().toISOString())
+console.log('🚀🚀🚀 StoryBook.tsx LOADED - Version 7.0 - Using Replicate TTS - ' + new Date().toISOString())
 
 import { useState, useEffect } from 'react'
 import { useSession } from 'next-auth/react'
@@ -22,57 +22,9 @@ export default function StoryBook({ story, onReset }: StoryBookProps) {
   const [isLoadingAudio, setIsLoadingAudio] = useState(false)
   const [isSaving, setIsSaving] = useState(false)
   const [currentAudio, setCurrentAudio] = useState<HTMLAudioElement | null>(null)
-  const [selectedVoice, setSelectedVoice] = useState<SpeechSynthesisVoice | null>(null)
-  const [availableVoices, setAvailableVoices] = useState<SpeechSynthesisVoice[]>([])
-  const [speechSupported, setSpeechSupported] = useState(true)
 
   useEffect(() => {
-    console.log('✅ StoryBook v6.0 - SIMPLIFIED Text-to-Speech')
-
-    // Check if speech synthesis is supported
-    if (!('speechSynthesis' in window)) {
-      console.error('❌ Speech synthesis not supported')
-      setSpeechSupported(false)
-      return
-    }
-
-    // Load voices
-    const loadVoices = () => {
-      const voices = window.speechSynthesis.getVoices()
-      if (voices.length === 0) return
-
-      console.log('🎤 Loaded', voices.length, 'voices')
-
-      // Filter English voices
-      const englishVoices = voices.filter(v => v.lang.startsWith('en'))
-      const voicesToUse = englishVoices.length > 0 ? englishVoices : voices
-      setAvailableVoices(voicesToUse)
-
-      // Pick default voice
-      if (!selectedVoice) {
-        const defaultVoice = voicesToUse[0]
-        setSelectedVoice(defaultVoice)
-        console.log('🎤 Default voice:', defaultVoice?.name)
-      }
-    }
-
-    // Initial load
-    loadVoices()
-
-    // Listen for voice changes (async loading)
-    if (window.speechSynthesis.onvoiceschanged !== undefined) {
-      window.speechSynthesis.onvoiceschanged = loadVoices
-    }
-
-    // Retry after delay
-    const timer = setTimeout(loadVoices, 500)
-
-    return () => {
-      clearTimeout(timer)
-      if (window.speechSynthesis.onvoiceschanged !== undefined) {
-        window.speechSynthesis.onvoiceschanged = null
-      }
-    }
+    console.log('✅ StoryBook v7.0 - Using Replicate TTS API')
   }, [])
 
   const nextPage = () => {
@@ -90,133 +42,81 @@ export default function StoryBook({ story, onReset }: StoryBookProps) {
   }
 
   const speakText = async (text: string) => {
-    if (!speechSupported) {
-      alert('Text-to-speech is not supported in your browser. Please try Chrome, Safari, or Edge.')
-      return
-    }
+    console.log('🔊 Starting Replicate TTS...')
 
-    console.log('🔊 Starting SIMPLIFIED text-to-speech...')
-
-    // Stop any current speech
-    window.speechSynthesis.cancel()
+    // Stop any current audio
+    stopSpeaking()
 
     setIsLoadingAudio(true)
     setIsSpeaking(false)
 
-    // Small delay to ensure previous speech is fully stopped
-    await new Promise(resolve => setTimeout(resolve, 100))
-
     try {
-      // Get voices - keep trying if not loaded yet
-      let voices: SpeechSynthesisVoice[] = []
-      for (let i = 0; i < 3; i++) {
-        voices = window.speechSynthesis.getVoices()
-        if (voices.length > 0) break
-        await new Promise(resolve => setTimeout(resolve, 300))
+      // Call Replicate TTS API
+      console.log('🎤 Calling /api/generate-speech...')
+      const response = await fetch('/api/generate-speech', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ text }),
+      })
+
+      if (!response.ok) {
+        const error = await response.json()
+        throw new Error(error.error || 'Failed to generate voice')
       }
 
-      console.log('🎤 Found', voices.length, 'voices')
+      const data = await response.json()
+      const audioUrl = data.audioUrl
 
-      // Create utterance
-      const utterance = new SpeechSynthesisUtterance(text)
-
-      // Try to use selected voice, or pick a good default
-      if (selectedVoice && voices.find(v => v.name === selectedVoice.name)) {
-        utterance.voice = selectedVoice
-        console.log('✅ Using selected voice:', selectedVoice.name)
-      } else if (voices.length > 0) {
-        // Pick first English voice or any voice
-        const englishVoice = voices.find(v => v.lang.startsWith('en'))
-        utterance.voice = englishVoice || voices[0]
-        console.log('✅ Using auto-selected voice:', utterance.voice?.name)
+      if (!audioUrl) {
+        throw new Error('No audio URL received from API')
       }
 
-      // Set parameters
-      utterance.rate = 0.85
-      utterance.pitch = 1.1
-      utterance.volume = 1.0
-      utterance.lang = utterance.voice?.lang || 'en-US'
+      console.log('✅ Got audio URL:', audioUrl)
 
-      // Track state
-      let hasStarted = false
-      let hasEnded = false
+      // Create and play audio element
+      const audio = new Audio(audioUrl)
 
-      // Event handlers
-      utterance.onstart = () => {
-        console.log('✅ Speech started')
-        hasStarted = true
+      audio.onloadeddata = () => {
+        console.log('✅ Audio loaded, starting playback')
+        setIsLoadingAudio(false)
+        setIsSpeaking(true)
+      }
+
+      audio.onplay = () => {
+        console.log('✅ Audio playing')
         setIsSpeaking(true)
         setIsLoadingAudio(false)
       }
 
-      utterance.onend = () => {
-        console.log('✅ Speech ended')
-        hasEnded = true
+      audio.onended = () => {
+        console.log('✅ Audio ended')
         setIsSpeaking(false)
-        setIsLoadingAudio(false)
+        setCurrentAudio(null)
       }
 
-      utterance.onerror = (event) => {
-        console.error('❌ Speech error:', event.error)
-        hasEnded = true
+      audio.onerror = (e) => {
+        console.error('❌ Audio playback error:', e)
         setIsSpeaking(false)
         setIsLoadingAudio(false)
-
-        if (event.error !== 'canceled' && event.error !== 'interrupted') {
-          alert(`Speech error: ${event.error}. Try:\n1. Clicking "Read Aloud" again\n2. Selecting a different voice\n3. Refreshing the page`)
-        }
+        setCurrentAudio(null)
+        alert('Failed to play audio. Please try again.')
       }
 
-      // Start speaking
-      console.log('🗣️ Starting speech...')
-      window.speechSynthesis.speak(utterance)
+      setCurrentAudio(audio)
 
-      // Check if it started after a timeout
-      setTimeout(() => {
-        if (!hasStarted && !hasEnded) {
-          console.log('⚠️ Speech may not have started, checking...')
-          if (window.speechSynthesis.speaking || window.speechSynthesis.pending) {
-            console.log('✅ Speech is actually running')
-            setIsSpeaking(true)
-            setIsLoadingAudio(false)
-          } else {
-            console.error('❌ Speech failed to start')
-            setIsLoadingAudio(false)
-            alert('Speech failed to start. Please try again or select a different voice.')
-          }
-        }
-      }, 2000)
-
-      // Keep speech alive on some browsers
-      const keepAliveInterval = setInterval(() => {
-        if (hasEnded) {
-          clearInterval(keepAliveInterval)
-          return
-        }
-        if (window.speechSynthesis.paused) {
-          console.log('🔄 Resuming paused speech')
-          window.speechSynthesis.resume()
-        }
-      }, 1000)
-
-      // Cleanup
-      utterance.addEventListener('end', () => clearInterval(keepAliveInterval))
-      utterance.addEventListener('error', () => clearInterval(keepAliveInterval))
+      // Start playing
+      await audio.play()
 
     } catch (error) {
-      console.error('❌ Speech error:', error)
+      console.error('❌ TTS error:', error)
       setIsLoadingAudio(false)
       setIsSpeaking(false)
-      alert('Failed to read aloud: ' + (error as Error).message)
+      alert('Failed to generate voice. Please try again.')
     }
   }
 
   const stopSpeaking = () => {
-    // Stop browser speech synthesis
-    if ('speechSynthesis' in window) {
-      window.speechSynthesis.cancel()
-    }
-    // Stop HTML audio if it was being used
+    // Stop audio playback
     if (currentAudio) {
       currentAudio.pause()
       currentAudio.currentTime = 0
@@ -314,45 +214,12 @@ export default function StoryBook({ story, onReset }: StoryBookProps) {
         </div>
       </div>
 
-      {/* Voice Selector */}
-      {speechSupported && availableVoices.length > 0 && (
-        <div className="bg-gradient-to-r from-blue-50 to-purple-50 p-6 rounded-xl border-2 border-purple-200">
-          <div className="flex flex-col md:flex-row items-center justify-center gap-4">
-            <label htmlFor="voice-select" className="font-bold text-gray-800 text-lg">
-              🎭 Choose Narrator Voice:
-            </label>
-            <select
-              id="voice-select"
-              value={selectedVoice?.name || ''}
-              onChange={(e) => {
-                const voice = availableVoices.find(v => v.name === e.target.value)
-                if (voice) {
-                  setSelectedVoice(voice)
-                  console.log('🎤 Voice changed to:', voice.name)
-                }
-              }}
-              className="px-6 py-3 border-2 border-purple-300 rounded-lg bg-white focus:border-purple-500 focus:outline-none font-semibold text-gray-700 cursor-pointer hover:border-purple-400 transition-all"
-            >
-              {availableVoices.map((voice) => (
-                <option key={voice.name} value={voice.name}>
-                  {voice.name} ({voice.lang})
-                </option>
-              ))}
-            </select>
-          </div>
-          <p className="text-center text-sm text-gray-600 mt-2 italic">
-            Using your device's natural voices
-          </p>
-        </div>
-      )}
-
-      {!speechSupported && (
-        <div className="bg-yellow-50 p-6 rounded-xl border-2 border-yellow-300">
-          <p className="text-center text-yellow-800 font-semibold">
-            ⚠️ Text-to-speech is not supported in your browser. Please use Chrome, Safari, or Edge for the read aloud feature.
-          </p>
-        </div>
-      )}
+      {/* Voice Info */}
+      <div className="bg-gradient-to-r from-blue-50 to-purple-50 p-4 rounded-xl border-2 border-purple-200">
+        <p className="text-center text-gray-700 font-semibold">
+          🎤 Professional AI narrator voice powered by Replicate TTS
+        </p>
+      </div>
 
       {/* Book Pages - Side by side layout like Gemini */}
       <div className="relative bg-white rounded-2xl shadow-2xl overflow-hidden border-2 border-gray-200" style={{ minHeight: '600px' }}>
@@ -431,17 +298,14 @@ export default function StoryBook({ story, onReset }: StoryBookProps) {
         {/* Text-to-Speech */}
         <button
           onClick={toggleSpeak}
-          disabled={isLoadingAudio || !speechSupported}
+          disabled={isLoadingAudio}
           className={`px-6 py-3 rounded-full font-semibold flex items-center gap-2 transition-all transform hover:scale-105 ${
             isSpeaking
               ? 'bg-red-500 hover:bg-red-600 text-white'
               : isLoadingAudio
               ? 'bg-gray-400 text-white cursor-wait'
-              : !speechSupported
-              ? 'bg-gray-400 text-white cursor-not-allowed'
               : 'bg-blue-500 hover:bg-blue-600 text-white'
           }`}
-          title={!speechSupported ? 'Text-to-speech not supported in this browser' : ''}
         >
           {isLoadingAudio ? (
             <>
