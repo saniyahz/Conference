@@ -105,71 +105,62 @@ PAGE 10:
 }
 
 function generateImagePrompts(story: any, originalPrompt: string): string[] {
-  // Soft pastel art style - gentle and calming
-  // Use positive framing (what we WANT) instead of negative (NO TEXT) - FLUX follows this better
-  const baseStyle = "Wordless illustration, textless children's book art, silent picture book style, soft pastel watercolor, gentle visual storytelling, muted pastel colors (baby pink, lavender, mint green, peach, cream, powder blue), soft diffused lighting, dreamy ethereal atmosphere, delicate gentle tones, cozy and warm"
-
-  console.log('🎨 Generating image prompts from actual story pages...')
+  console.log('🎨 Generating CONSISTENT character image prompts...')
 
   // Extract character details from the first page for CONSISTENCY across all images
   const firstPageText = story.pages[0]?.text || ''
   const characterDescription = extractCharacterDescription(firstPageText, originalPrompt)
-  console.log('👤 Character description for consistency:', characterDescription)
+  console.log('👤 FIXED Character description for ALL pages:', characterDescription)
+
+  // CRITICAL: Character consistency is THE MOST IMPORTANT thing
+  // Put character at the VERY BEGINNING and REPEAT it to reinforce
+  const characterConsistencyPrefix = `SAME CHARACTER IN EVERY IMAGE: ${characterDescription}. CRITICAL: Character must look identical to previous images. Same face, same features, same appearance.`
+
+  // Simplified style - less words to confuse the AI
+  const baseStyle = "Soft pastel watercolor illustration, wordless children's book art, gentle colors (pink, lavender, mint, peach, cream), dreamy atmosphere, textless"
 
   // Generate a specific image prompt for each page based on its content
   const prompts = story.pages.map((page: any, index: number) => {
     const pageText = page.text
 
-    // Extract first two sentences for main visual content (usually has key details)
+    // Extract first two sentences for scene context
     const sentences = pageText.split(/[.!?]+/).filter((s: string) => s.trim().length > 10)
     const keyContent = sentences.slice(0, 2).join('. ')
 
-    // Create scene-specific prompt based on story arc
-    // IMPORTANT: Include character description FIRST for consistency
-    let prompt = `${baseStyle}. ${characterDescription}. `
+    // Build prompt: CHARACTER FIRST (most important), then style, then scene
+    let prompt = `${characterConsistencyPrefix} ${baseStyle}. `
 
-    // Different scenes for 10-page book
+    // Simplified scene descriptions - less text = better AI following
     if (index === 0) {
-      // Page 1: Character introduction
-      prompt += `Opening scene: ${keyContent}. Show the main character with gentle expressive eyes in a soft, dreamy world. Peaceful, warm establishing shot with pastel sky.`
+      prompt += `Scene: ${keyContent}. Character introduction, peaceful setting`
     } else if (index === 1) {
-      // Page 2: Daily life
-      prompt += `Daily life scene: ${keyContent}. Show the character enjoying peaceful moments with friends. Soft, cozy atmosphere with gentle pastel tones.`
+      prompt += `Scene: ${keyContent}. Character with friends, cozy atmosphere`
     } else if (index === 2) {
-      // Page 3: Adventure begins
-      prompt += `Adventure beginning: ${keyContent}. Show gentle curiosity and wonder. Soft magical elements with delicate sparkles in pastel colors.`
+      prompt += `Scene: ${keyContent}. Adventure begins, gentle wonder`
     } else if (index === 3) {
-      // Page 4: Problem discovered
-      prompt += `Discovery scene: ${keyContent}. Show the character with gentle concern but hopeful expression. Soft dramatic mood with muted pastel palette.`
+      prompt += `Scene: ${keyContent}. Character discovers challenge`
     } else if (index === 4) {
-      // Page 5: Gathering courage
-      prompt += `Courage scene: ${keyContent}. Show determination with soft brave energy. Warm encouraging atmosphere in gentle tones.`
+      prompt += `Scene: ${keyContent}. Character shows determination`
     } else if (index === 5) {
-      // Page 6: First attempt
-      prompt += `Action scene: ${keyContent}. Show the character trying their best. Soft dynamic movement with pastel colors and gentle lighting.`
+      prompt += `Scene: ${keyContent}. Character takes action`
     } else if (index === 6) {
-      // Page 7: Learning moment
-      prompt += `Learning scene: ${keyContent}. Show thoughtful reflection and wisdom. Calm, peaceful mood with soft warm light.`
+      prompt += `Scene: ${keyContent}. Character learns lesson`
     } else if (index === 7) {
-      // Page 8: Teamwork
-      prompt += `Teamwork scene: ${keyContent}. Show friends working together with gentle cooperation. Warm friendly atmosphere in soft pastel hues.`
+      prompt += `Scene: ${keyContent}. Teamwork with friends`
     } else if (index === 8) {
-      // Page 9: Success
-      prompt += `Triumph scene: ${keyContent}. Show gentle joy and success. Soft celebration with delicate pastel rainbow colors and warm glow.`
+      prompt += `Scene: ${keyContent}. Success and celebration`
     } else {
-      // Page 10: Happy ending
-      prompt += `Happy ending scene: ${keyContent}. Joyful celebration with all characters in a cozy, loving embrace. Soft magical happiness with gentle pastel colors and warm golden light.`
+      prompt += `Scene: ${keyContent}. Happy ending with friends`
     }
 
-    prompt += ` Wordless visual scene, textless illustration, silent storybook watercolor art, safe and comforting for kids 4-8 years old.`
+    // Reinforce character consistency at the END too
+    prompt += `. REMEMBER: Keep the SAME character appearance as described: ${characterDescription}`
 
     return prompt
   })
 
-  console.log(`✅ Generated ${prompts.length} page-specific image prompts`)
-  prompts.forEach((p, i) => {
-    console.log(`Page ${i + 1} prompt: ${p.substring(0, 100)}...`)
-  })
+  console.log(`✅ Generated ${prompts.length} CONSISTENT character prompts`)
+  console.log('📋 Sample prompt structure:', prompts[0].substring(0, 200) + '...')
 
   return prompts
 }
