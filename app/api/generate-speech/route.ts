@@ -43,25 +43,39 @@ export async function POST(request: NextRequest) {
 
     console.log('🔍 TTS output type:', typeof output)
     console.log('🔍 TTS output is array?:', Array.isArray(output))
+    console.log('🔍 TTS raw output:', output)
 
-    // Try to extract URL - Replicate usually returns a string URL or an object that converts to URL
+    // Try to extract URL - Bark returns a FileOutput object or URL string
     let audioUrl = ''
 
-    // Most common case: output is already a string URL
+    // Case 1: Direct string URL
     if (typeof output === 'string') {
       audioUrl = output
       console.log('✓ Got direct string URL')
     }
-    // Array of URLs (take first one)
+    // Case 2: Array of URLs or FileOutput objects
     else if (Array.isArray(output) && output.length > 0) {
-      audioUrl = String(output[0])
-      console.log('✓ Got URL from array')
+      const firstItem = output[0]
+      // Try toString() on the first item
+      audioUrl = String(firstItem)
+      console.log('✓ Got URL from array:', audioUrl)
     }
-    // Object - try converting to string
+    // Case 3: FileOutput object - has toString() that returns the URL
     else if (output && typeof output === 'object') {
-      // FileOutput objects have a toString() that returns the URL
+      // FileOutput objects convert to URL via toString()
       audioUrl = String(output)
-      console.log('✓ Got URL from object toString()')
+      console.log('✓ Got URL from FileOutput object:', audioUrl)
+
+      // Fallback: check for common properties
+      if (!audioUrl.startsWith('http')) {
+        if ('url' in output) {
+          audioUrl = String((output as any).url)
+          console.log('✓ Got URL from .url property:', audioUrl)
+        } else if ('audio_out' in output) {
+          audioUrl = String((output as any).audio_out)
+          console.log('✓ Got URL from .audio_out property:', audioUrl)
+        }
+      }
     }
 
     console.log('🔍 Final audio URL:', audioUrl)
