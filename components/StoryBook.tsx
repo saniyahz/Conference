@@ -107,29 +107,63 @@ export default function StoryBook({ story, onReset }: StoryBookProps) {
 
     try {
       console.log('🔊 Starting text-to-speech...')
+      console.log('📝 Text to speak:', text)
 
       // Cancel any ongoing speech first
       window.speechSynthesis.cancel()
 
+      // Wait a bit after cancel to ensure it's fully stopped (Chrome issue workaround)
+      await new Promise(resolve => setTimeout(resolve, 100))
+
+      // Ensure voices are loaded - try to reload if needed
+      let voiceToUse = selectedVoice
+      if (!voiceToUse) {
+        console.log('⚠️  No voice selected, attempting to load voices...')
+        const voices = window.speechSynthesis.getVoices()
+        console.log('🎤 Voices available on demand:', voices.length)
+
+        if (voices.length > 0) {
+          const englishVoices = voices.filter(v => v.lang.startsWith('en'))
+          voiceToUse =
+            englishVoices.find(v => v.name.toLowerCase().includes('female')) ||
+            englishVoices.find(v => v.name.toLowerCase().includes('samantha')) ||
+            englishVoices[0] ||
+            voices[0]
+
+          console.log('🎤 Using fallback voice:', voiceToUse?.name)
+          setSelectedVoice(voiceToUse)
+          setAvailableVoices(englishVoices.length > 0 ? englishVoices : voices)
+        }
+      }
+
       // Create utterance
       const utterance = new SpeechSynthesisUtterance(text)
 
-      // Set voice if one is selected
-      if (selectedVoice) {
-        utterance.voice = selectedVoice
-        console.log('🎤 Using voice:', selectedVoice.name)
+      // Set voice
+      if (voiceToUse) {
+        utterance.voice = voiceToUse
+        console.log('🎤 Using voice:', voiceToUse.name, 'Lang:', voiceToUse.lang)
       } else {
-        console.warn('⚠️  No voice selected, using default')
+        console.warn('⚠️  No voice available, browser will use default')
       }
 
       // Configure speech parameters for kids
       utterance.rate = 0.9   // Slightly slower for better comprehension
       utterance.pitch = 1.1  // Slightly higher pitch for warmth
       utterance.volume = 1.0 // Full volume
+      utterance.lang = 'en-US' // Explicitly set language
+
+      console.log('🔧 Utterance configured:', {
+        voice: utterance.voice?.name,
+        rate: utterance.rate,
+        pitch: utterance.pitch,
+        volume: utterance.volume,
+        lang: utterance.lang
+      })
 
       // Event handlers
       utterance.onstart = () => {
-        console.log('✅ Speech started')
+        console.log('✅ Speech started successfully')
         setIsSpeaking(true)
         setIsLoadingAudio(false)
       }
@@ -142,13 +176,17 @@ export default function StoryBook({ story, onReset }: StoryBookProps) {
 
       utterance.onerror = (event) => {
         console.error('❌ Speech synthesis error:', event)
+        console.error('❌ Error type:', event.error)
+        console.error('❌ Error char index:', event.charIndex)
         setIsSpeaking(false)
         setIsLoadingAudio(false)
 
         if (event.error === 'not-allowed') {
-          alert('Speech was blocked. Please make sure audio is enabled and try again.')
+          alert('Speech was blocked. Please make sure audio is enabled and try clicking again.')
         } else if (event.error === 'network') {
-          alert('Network error occurred. Some voices require internet connection.')
+          alert('Network error occurred. Some voices require internet connection. Try selecting a different voice.')
+        } else if (event.error === 'canceled') {
+          console.log('Speech was canceled (this is normal if you stopped it)')
         } else {
           alert(`Speech error: ${event.error}. Please try again or select a different voice.`)
         }
@@ -163,8 +201,19 @@ export default function StoryBook({ story, onReset }: StoryBookProps) {
       }
 
       // Speak the text
-      console.log('🗣️  Speaking:', text.substring(0, 50) + '...')
+      console.log('🗣️  Calling speechSynthesis.speak()...')
       window.speechSynthesis.speak(utterance)
+      console.log('✅ speak() called, waiting for speech to start...')
+
+      // Fallback: if speech doesn't start within 3 seconds, there's an issue
+      setTimeout(() => {
+        if (isLoadingAudio) {
+          console.error('❌ Speech failed to start within 3 seconds')
+          setIsLoadingAudio(false)
+          setIsSpeaking(false)
+          alert('Speech failed to start. Please try again or reload the page.')
+        }
+      }, 3000)
 
     } catch (error) {
       console.error('❌ Error in speakText:', error)
