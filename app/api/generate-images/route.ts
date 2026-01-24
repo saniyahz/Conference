@@ -47,15 +47,52 @@ export async function POST(request: NextRequest) {
                 output_quality: 90,
               }
             }
-          ) as string[]
+          )
 
           console.log(`🔍 Raw output from Replicate:`, typeof output, Array.isArray(output), output)
 
-          if (output && output.length > 0 && output[0]) {
-            console.log(`✅ Image ${imageIndex + 1} generated successfully:`, output[0])
-            return output[0]
+          // Handle stream output - FLUX Schnell returns a stream that needs to be read
+          let imageUrl = ''
+
+          if (Array.isArray(output) && output.length > 0) {
+            // If it's an array, take the first element
+            const firstOutput = output[0]
+
+            // Check if it's already a string URL
+            if (typeof firstOutput === 'string') {
+              imageUrl = firstOutput
+            } else if (firstOutput && typeof firstOutput === 'object') {
+              // If it's a stream or object, try to read it
+              // The stream might contain the URL as data
+              try {
+                // Try converting to string (might be a URL object)
+                imageUrl = String(firstOutput)
+                // If it looks like a stream object, we need to iterate
+                if (imageUrl.includes('ReadableStream') || imageUrl.includes('[object')) {
+                  // Use async iteration to read the stream
+                  const chunks: string[] = []
+                  for await (const chunk of output as any) {
+                    if (typeof chunk === 'string') {
+                      chunks.push(chunk)
+                    }
+                  }
+                  imageUrl = chunks.join('')
+                }
+              } catch (e) {
+                console.error('Error reading stream:', e)
+              }
+            }
+          } else if (typeof output === 'string') {
+            imageUrl = output
+          }
+
+          console.log(`🔍 Processed image URL:`, imageUrl)
+
+          if (imageUrl && imageUrl.startsWith('http')) {
+            console.log(`✅ Image ${imageIndex + 1} generated successfully:`, imageUrl.substring(0, 80) + '...')
+            return imageUrl
           } else {
-            console.error(`❌ No output for image ${imageIndex + 1}`)
+            console.error(`❌ No valid URL for image ${imageIndex + 1}`)
             return ''
           }
         } catch (error: any) {
