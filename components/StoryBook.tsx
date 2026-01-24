@@ -243,9 +243,26 @@ export default function StoryBook({ story, onReset }: StoryBookProps) {
       }
 
       // CRITICAL FIX 6: Speak the text (ensure synthesis is ready)
+      // Some browsers require resume() to be called first
+      try {
+        if (window.speechSynthesis.paused) {
+          window.speechSynthesis.resume()
+        }
+      } catch (e) {
+        console.warn('⚠️ Could not resume speech synthesis:', e)
+      }
+
       console.log('🗣️ Calling speechSynthesis.speak()...')
       window.speechSynthesis.speak(utterance)
       console.log('✅ speak() called, waiting for speech to start...')
+
+      // CRITICAL FIX 6.5: Force resume after speak() for some browsers (Chrome sometimes pauses)
+      setTimeout(() => {
+        if (window.speechSynthesis.paused && !speechEnded) {
+          console.log('🔄 Speech was paused, resuming...')
+          window.speechSynthesis.resume()
+        }
+      }, 100)
 
       // CRITICAL FIX 7: Better timeout with recovery
       const timeoutId = setTimeout(() => {

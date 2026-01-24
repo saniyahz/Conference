@@ -154,8 +154,8 @@ function generateImagePrompts(story: any, originalPrompt: string): string[] {
   const characterDetails = `The main character is: ${characterDescription}`
   const consistencyRule = `ABSOLUTE RULE: This exact same character must appear in every single image with IDENTICAL appearance - same face, same eyes, same ears, same body, same colors, same clothing, same features. DO NOT change the character's appearance between images.`
 
-  // Enhanced style with more visual cues
-  const baseStyle = "Soft pastel watercolor children's book illustration style, gentle dreamy atmosphere with colors like soft pink, lavender, mint green, peach, and cream"
+  // Enhanced style with more visual cues - emphasize pure visual art style to avoid text
+  const baseStyle = "Soft pastel watercolor painting illustration for children's book, gentle dreamy atmosphere with colors like soft pink, lavender, mint green, peach, and cream. Pure visual art with no text or words - like a wordless picture book or fine art watercolor"
 
   // Generate a specific image prompt for each page based on its content
   const prompts = story.pages.map((page: any, index: number) => {
@@ -166,14 +166,14 @@ function generateImagePrompts(story: any, originalPrompt: string): string[] {
     const visualScene = extractVisualElements(pageText, index)
 
     // BUILD PROMPT WITH MAXIMUM CHARACTER EMPHASIS
-    // Structure: Header → Character → Consistency Rule → Style → Visual Scene → Repeat Character
-    let prompt = `${characterHeader} ${characterDetails}. ${consistencyRule} ${baseStyle}. `
+    // Structure: Style First → Character → Visual Scene → Consistency → NO TEXT Reminder
+    let prompt = `${baseStyle}. ${characterHeader} ${characterDetails}. `
 
     // Add VISUAL-ONLY scene description (no narrative text that could be rendered as text in image)
     prompt += visualScene
 
-    // TRIPLE REINFORCEMENT: Repeat character description at the end
-    prompt += `. CRITICAL REMINDER: Use the EXACT SAME character throughout - ${characterDescription}. This character's appearance must be IDENTICAL to all previous images.`
+    // TRIPLE REINFORCEMENT: Character consistency + NO TEXT emphasis
+    prompt += `. ${consistencyRule} CRITICAL: Use the EXACT SAME character throughout - ${characterDescription}. ABSOLUTELY NO TEXT: This is a wordless illustration - do not include any text, letters, words, signs, labels, or captions.`
 
     return prompt
   })
