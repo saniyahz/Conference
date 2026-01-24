@@ -30,13 +30,60 @@ export async function POST(request: NextRequest) {
           description: voice || "A warm, friendly, gentle female voice perfect for children's stories, speaking slowly and clearly with expression and enthusiasm",
         }
       }
-    ) as { audio: string }
+    )
 
-    if (output && output.audio) {
+    console.log('🔍 TTS output type:', typeof output, output)
+
+    // Handle stream output - TTS might return a stream
+    let audioUrl = ''
+
+    if (output && typeof output === 'object') {
+      // Check if it has an audio property
+      if ('audio' in output && typeof (output as any).audio === 'string') {
+        audioUrl = (output as any).audio
+      } else if ('audio' in output && (output as any).audio) {
+        // Try to read the stream
+        try {
+          const chunks: string[] = []
+          for await (const chunk of (output as any).audio as any) {
+            if (typeof chunk === 'string') {
+              chunks.push(chunk)
+            }
+          }
+          audioUrl = chunks.join('')
+        } catch (e) {
+          console.error('Error reading audio stream:', e)
+        }
+      } else {
+        // The output itself might be a stream or the URL
+        try {
+          const chunks: string[] = []
+          for await (const chunk of output as any) {
+            if (typeof chunk === 'string') {
+              chunks.push(chunk)
+            } else if (chunk && typeof chunk === 'object' && 'audio' in chunk) {
+              audioUrl = String(chunk.audio)
+              break
+            }
+          }
+          if (!audioUrl && chunks.length > 0) {
+            audioUrl = chunks.join('')
+          }
+        } catch (e) {
+          console.error('Error reading TTS stream:', e)
+        }
+      }
+    } else if (typeof output === 'string') {
+      audioUrl = output
+    }
+
+    console.log('🔍 Processed audio URL:', audioUrl?.substring(0, 80))
+
+    if (audioUrl && audioUrl.startsWith('http')) {
       console.log('✅ Speech generated successfully')
-      return NextResponse.json({ audioUrl: output.audio })
+      return NextResponse.json({ audioUrl })
     } else {
-      console.error('❌ No audio output from TTS')
+      console.error('❌ No valid audio URL from TTS')
       return NextResponse.json(
         { error: 'Failed to generate speech' },
         { status: 500 }
