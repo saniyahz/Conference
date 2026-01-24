@@ -30,6 +30,17 @@ export default function Home() {
 
   const handleTranscriptionComplete = async (text: string, authorName: string) => {
     setTranscription(text)
+
+    // Check for inappropriate content early
+    const inappropriateWords = ['sex', 'sexy', 'nude', 'naked', 'porn', 'xxx', 'adult', 'erotic', 'nsfw']
+    const lowerText = text.toLowerCase()
+    const hasInappropriateContent = inappropriateWords.some(word => lowerText.includes(word))
+
+    if (hasInappropriateContent) {
+      alert('This story idea contains content that isn\'t appropriate for a children\'s story app. Please try a different, kid-friendly idea! Think of fun adventures with animals, magical creatures, or everyday heroes.')
+      return
+    }
+
     setStep('generating')
     setLoadingMessage('Creating your magical story...')
 
@@ -42,7 +53,8 @@ export default function Home() {
       })
 
       if (!storyResponse.ok) {
-        throw new Error('Failed to generate story')
+        const errorData = await storyResponse.json()
+        throw new Error(errorData.error || 'Failed to generate story')
       }
 
       const storyData = await storyResponse.json()
@@ -85,9 +97,10 @@ export default function Home() {
 
       setStory(storyWithImages)
       setStep('book')
-    } catch (error) {
+    } catch (error: any) {
       console.error('Error generating story:', error)
-      alert('Failed to generate story. Please try again.')
+      const errorMessage = error.message || 'Failed to generate story. Please try again.'
+      alert(errorMessage)
       setStep('record')
     }
   }

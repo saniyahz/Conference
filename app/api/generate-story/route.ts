@@ -95,8 +95,29 @@ PAGE 10:
       },
       imagePrompts,
     })
-  } catch (error) {
+  } catch (error: any) {
     console.error('Error generating story:', error)
+
+    // Check if it's a content moderation error
+    const errorMessage = error.message || String(error)
+    const isContentError =
+      errorMessage.includes('safety') ||
+      errorMessage.includes('content policy') ||
+      errorMessage.includes('inappropriate') ||
+      errorMessage.includes('moderation') ||
+      errorMessage.includes('blocked') ||
+      errorMessage.includes('violated')
+
+    if (isContentError) {
+      return NextResponse.json(
+        {
+          error: 'This story idea contains content that isn\'t appropriate for a children\'s story app. Please try a different, kid-friendly idea! Think of fun adventures with animals, magical creatures, or everyday heroes.',
+          isContentError: true
+        },
+        { status: 400 }
+      )
+    }
+
     return NextResponse.json(
       { error: 'Failed to generate story. Please try again.' },
       { status: 500 }
