@@ -104,86 +104,74 @@ PAGE 10:
   }
 }
 
-// Extract VISUAL elements only from story text to prevent text rendering in images
-function extractVisualElements(pageText: string, pageIndex: number): string {
-  // Remove any quoted dialogue or text that might be rendered
-  const cleanText = pageText.replace(/"[^"]*"/g, '').replace(/'[^']*'/g, '')
-
-  // Extract key visual keywords (action verbs, settings, emotions)
-  // Focus on visual description rather than narrative storytelling
-  const visualKeywords: { [key: string]: string[] } = {
-    forest: ['lush green forest', 'tall trees', 'dappled sunlight', 'woodland path'],
-    journey: ['walking together', 'exploring', 'traveling', 'adventuring'],
-    friends: ['group of friends', 'companions', 'walking together', 'happy group'],
-    home: ['cozy home', 'peaceful village', 'comfortable setting', 'warm home'],
-    challenge: ['facing obstacle', 'problem-solving', 'thinking carefully', 'looking concerned'],
-    solution: ['working together', 'helping each other', 'cooperating', 'teamwork'],
-    celebration: ['happy celebration', 'joyful scene', 'dancing', 'smiling friends'],
-    discovery: ['finding something', 'looking at discovery', 'examining closely', 'surprised expressions']
-  }
-
-  // Page-specific visual scenes (VISUAL ONLY - no story text)
-  const sceneDescriptions = [
-    'Character introduction scene with peaceful, happy atmosphere. Character standing in a calm, welcoming environment with soft lighting',
-    'Character in daily life surrounded by friends and familiar objects. Cheerful, comfortable setting with warm colors',
-    'Character beginning an adventure, looking excited and curious. Setting suggests journey ahead with anticipation',
-    'Character encountering a challenge or obstacle. Thoughtful expression, problem-solving posture, concerned but determined',
-    'Character showing determination and courage. Strong posture, focused expression, ready for action',
-    'Character taking decisive action to solve problem. Dynamic pose showing movement and purpose',
-    'Character learning an important lesson. Reflective moment with gentle, understanding expression',
-    'Character working collaboratively with friends. Teamwork scene with cooperative body language',
-    'Character celebrating success with friends. Joyful, triumphant scene with happy expressions',
-    'Character in happy conclusion scene. Peaceful, satisfied atmosphere with warm, positive lighting'
+// Create ULTRA-SIMPLE visual-only scene descriptions (NO text can render from these)
+function createMinimalVisualScene(pageIndex: number): string {
+  // CRITICAL: Use ONLY basic visual keywords - NO sentences that could be interpreted as text
+  // Format: "character + action + setting" using minimal words
+  const simpleScenes = [
+    'character standing, peaceful home, happy',
+    'character with friends, cozy setting, smiling',
+    'character walking outdoors, beginning journey, excited',
+    'character looking thoughtful, facing challenge, determined',
+    'character brave pose, ready for action, confident',
+    'character solving problem, focused, working',
+    'character reflecting, learning moment, gentle',
+    'character with friends, teamwork, cooperating',
+    'character celebrating, success, joyful',
+    'character happy, peaceful ending, content'
   ]
 
-  // Return pure visual description for this page
-  return sceneDescriptions[pageIndex] || sceneDescriptions[0]
+  return simpleScenes[pageIndex] || simpleScenes[0]
 }
 
 function generateImagePrompts(story: any, originalPrompt: string): string[] {
-  console.log('🎨 Generating SUPER CONSISTENT character image prompts...')
+  console.log('🎨 Generating MINIMAL visual-only prompts (NO TEXT POSSIBLE)...')
 
-  // Extract character details from the first page for CONSISTENCY across all images
+  // Extract character for consistency
   const firstPageText = story.pages[0]?.text || ''
-  const characterDescription = extractCharacterDescription(firstPageText, originalPrompt)
-  console.log('👤 ULTRA-DETAILED Character description for ALL pages:', characterDescription)
+  const characterType = extractSimpleCharacterType(firstPageText, originalPrompt)
+  console.log('👤 Simple character type:', characterType)
 
-  // CRITICAL: Character consistency is ABSOLUTELY THE MOST IMPORTANT thing
-  // TRIPLE EMPHASIS: Beginning, middle, and end of prompt
-  const characterHeader = `[MAIN CHARACTER - KEEP IDENTICAL IN ALL IMAGES]`
-  const characterDetails = `The main character is: ${characterDescription}`
-  const consistencyRule = `ABSOLUTE RULE: This exact same character must appear in every single image with IDENTICAL appearance - same face, same eyes, same ears, same body, same colors, same clothing, same features. DO NOT change the character's appearance between images.`
+  // ULTRA-MINIMAL style - just visual keywords, NO sentences
+  const baseStyle = "children's book watercolor illustration, soft pastel colors, wordless picture"
 
-  // Enhanced style with more visual cues - emphasize pure visual art style to avoid text
-  const baseStyle = "Soft pastel watercolor painting illustration for children's book, gentle dreamy atmosphere with colors like soft pink, lavender, mint green, peach, and cream. Pure visual art with no text or words - like a wordless picture book or fine art watercolor"
-
-  // Generate a specific image prompt for each page based on its content
+  // Generate MINIMAL prompts for each page
   const prompts = story.pages.map((page: any, index: number) => {
-    const pageText = page.text
+    // Get simple visual scene (just keywords, no sentences)
+    const visualScene = createMinimalVisualScene(index)
 
-    // Extract VISUAL elements only (no narrative text to prevent text rendering)
-    // Parse for key visual elements: actions, emotions, settings
-    const visualScene = extractVisualElements(pageText, index)
+    // CRITICAL: Keep prompt EXTREMELY SHORT - only essential visual keywords
+    // Format: style + character + simple action (NO complex descriptions that could be rendered as text)
+    const prompt = `${baseStyle}, ${characterType}, ${visualScene}`
 
-    // BUILD PROMPT WITH MAXIMUM CHARACTER EMPHASIS
-    // Structure: Style First → Character → Visual Scene → Consistency → NO TEXT Reminder
-    let prompt = `${baseStyle}. ${characterHeader} ${characterDetails}. `
-
-    // Add VISUAL-ONLY scene description (no narrative text that could be rendered as text in image)
-    prompt += visualScene
-
-    // TRIPLE REINFORCEMENT: Character consistency + NO TEXT emphasis
-    prompt += `. ${consistencyRule} CRITICAL: Use the EXACT SAME character throughout - ${characterDescription}. ABSOLUTELY NO TEXT: This is a wordless illustration - do not include any text, letters, words, signs, labels, or captions.`
-
+    console.log(`Page ${index + 1} prompt:`, prompt)
     return prompt
   })
 
-  console.log(`✅ Generated ${prompts.length} ULTRA-CONSISTENT character prompts`)
-  console.log('📋 Full sample prompt for page 1:')
-  console.log(prompts[0])
-  console.log('📋 Character description length:', characterDescription.length, 'characters')
-
+  console.log(`✅ Generated ${prompts.length} MINIMAL visual prompts`)
   return prompts
+}
+
+// Extract just the character type (animal/person) without detailed description
+function extractSimpleCharacterType(firstPageText: string, originalPrompt: string): string {
+  const lowerText = firstPageText.toLowerCase()
+  const lowerPrompt = originalPrompt.toLowerCase()
+
+  // Simple character types (just the animal/person, no details)
+  const characters = [
+    'mouse', 'rabbit', 'bunny', 'cat', 'dog', 'bear', 'fox', 'dragon',
+    'unicorn', 'elephant', 'lion', 'pig', 'duck', 'bird', 'dinosaur',
+    'princess', 'prince', 'fairy', 'wizard', 'knight', 'pirate'
+  ]
+
+  for (const char of characters) {
+    if (lowerText.includes(char) || lowerPrompt.includes(char)) {
+      console.log(`✅ Found character: ${char}`)
+      return char
+    }
+  }
+
+  return 'child character'
 }
 
 function parseStory(text: string, originalPrompt: string) {
@@ -251,61 +239,6 @@ function parseStory(text: string, originalPrompt: string) {
   }
 }
 
-function extractCharacterDescription(firstPageText: string, originalPrompt: string): string {
-  const lowerText = firstPageText.toLowerCase()
-  const lowerPrompt = originalPrompt.toLowerCase()
-
-  // ULTRA-DETAILED character descriptions with MAXIMUM specificity for consistency
-  // Include: size, colors, specific features, distinctive markings, clothing details
-  const characterMappings: { [key: string]: string } = {
-    'mouse': 'a small mouse character (about 6 inches tall) with large round pink ears with darker pink inner ear detail, three thin black whiskers on each side, perfectly round shiny black eyes, tiny delicate pink paws with visible toes, wearing a simple blue vest over white shirt',
-    'mice': 'small mouse characters (about 6 inches tall) with large round pink ears with darker pink inner ear detail, three thin black whiskers on each side, perfectly round shiny black eyes, tiny delicate pink paws, wearing simple blue vests over white shirts',
-    'rabbit': 'a medium-sized rabbit character with very long floppy ears (reaching past shoulders), pure white fluffy fur with slight gray tints on ear tips, bright pink button nose, large warm brown eyes with long lashes, cotton ball fluffy white tail, wearing a red hoodie',
-    'bunny': 'a medium-sized bunny character with very long floppy ears (reaching past shoulders), pure white fluffy fur with slight gray tints on ear tips, bright pink button nose, large warm brown eyes with long lashes, cotton ball fluffy white tail, wearing a red hoodie',
-    'cat': 'a sleek cat character with tall pointed triangular ears, six thin whiskers (three each side), large expressive green eyes, soft gray and white striped fur pattern running vertically down body, long curved tail with white tip, wearing a yellow collar with small bell',
-    'dog': 'a medium-sized dog character with long floppy brown ears, constantly wagging bushy brown tail, big expressive dark brown eyes, golden-brown furry coat with white chest patch, pink tongue often visible, wearing a blue bandana around neck',
-    'bear': 'a cuddly bear character with small round ears on top of round head, soft chocolate brown fur all over, gentle dark eyes with slight sparkle, large warm paws with visible toe pads, wearing red overalls with single front pocket',
-    'fox': 'a clever fox character with tall pointed ears with black tips, large bushy tail (half body length) with white tip, bright amber eyes, vibrant orange-red fur on back and head, pure white fur on chest and belly, black legs, wearing green scarf',
-    'dragon': 'a small friendly dragon character (toddler-sized) with small rounded wings (lavender colored), smooth emerald green scales covering body, very large expressive blue eyes with long lashes, two small rounded horns on head, long tail with heart-shaped tip, wearing tiny crown',
-    'unicorn': 'a graceful unicorn character with flowing pastel rainbow mane (pink, blue, purple streaks), long spiral pearlescent horn on forehead, large gentle purple eyes, pure white coat with slight shimmer, four delicate hooves, long flowing tail matching mane colors, wearing flower crown',
-    'elephant': 'a gentle elephant character with very large gray floppy ears (wider than body), long flexible trunk with visible wrinkles, small wise dark eyes with long lashes, wrinkled gray skin texture, four sturdy legs, small tail with tuft, wearing colorful patterned vest',
-    'lion': 'a brave lion character with magnificent fluffy golden-orange mane (full circle around face), golden-tan body fur, kind amber eyes, small round ears barely visible in mane, long tail with dark brown tuft at end, wearing red cape',
-    'pig': 'a cheerful pig character with bright pink skin, prominent round snout with two large nostrils, small curly tail, floppy ears, small happy eyes, four little hooves, slightly chubby round body, wearing blue farmer overalls',
-    'duck': 'a friendly duck character with bright yellow fluffy feathers, flat orange beak, orange webbed feet, small black dot eyes, small wings on sides, rounded body shape, wearing small blue sailor hat',
-    'bird': 'a small bird character (robin-sized) with vibrant red breast feathers, brown wing feathers, small yellow pointed beak, bright black eyes, delicate thin legs, small tail feathers, wearing tiny bow tie',
-    'dinosaur': 'a friendly young dinosaur character (T-Rex style but cute) with bright green scales, row of small rounded purple spikes down back, very large expressive eyes, small arms, strong legs, long thick tail, small sharp but friendly teeth visible in smile, wearing bowtie',
-    'princess': 'a kind young princess character (8 years old appearance) with long flowing brown hair with crown braid, sparkling blue eyes, rosy cheeks, wearing elegant pink ball gown with white lace trim, small golden crown with three points and pink jewel, white gloves',
-    'prince': 'a brave young prince character (8 years old appearance) with short neat brown hair, determined green eyes, kind smile, wearing royal blue jacket with gold buttons and trim, white pants, black boots, small golden crown, red cape',
-    'fairy': 'a magical fairy character (human child-sized) with large translucent wings (butterfly-style with pink and blue gradient), long blonde hair with flowers woven in, bright green eyes, pointed ears, wearing flowing dress made of flower petals (lavender and pink), carrying star-topped wand',
-    'wizard': 'a wise wizard character with tall pointed purple hat with silver stars, long white flowing beard reaching chest, twinkling blue eyes behind small round glasses, wrinkled kind face, wearing deep purple robes with silver moon and star pattern, holding wooden staff with crystal top',
-    'knight': 'a brave knight character with shining silver armor covering body, red plume on helmet, kind face visible through raised visor (showing brown eyes and friendly smile), red cape with golden clasp, silver sword at side, wearing royal crest on chest',
-    'pirate': 'a friendly pirate character with black eye patch over left eye, red and white striped bandana on head, wild curly black hair, big adventurous smile, small beard, wearing brown leather vest over white puffy shirt, black pants, brown boots, small parrot friend on shoulder',
-  }
-
-  // Search for character type in both story text and original prompt
-  let characterDesc = ''
-  let characterType = ''
-
-  for (const [animal, description] of Object.entries(characterMappings)) {
-    if (lowerText.includes(animal) || lowerPrompt.includes(animal)) {
-      characterDesc = description
-      characterType = animal
-      console.log(`✅ Found character type: ${animal}`)
-      console.log(`📝 Using ultra-detailed description (${description.length} chars)`)
-      break
-    }
-  }
-
-  // Fallback: generic but still detailed character
-  if (!characterDesc) {
-    characterDesc = 'a gentle character (child-sized, about 4 feet tall) with large kind brown eyes, warm friendly smile showing slight dimples, rosy cheeks, wearing simple comfortable blue clothing (shirt and pants), brown shoes, with expressive friendly features'
-    characterType = 'generic character'
-    console.log(`⚠️ No specific character type found, using generic description`)
-  }
-
-  // Return MAXIMUM detail with emphasis on consistency
-  return `${characterDesc}. CONSISTENCY CRITICAL: Every single visual detail must match exactly - same colors, same sizes, same features, same clothing, same proportions. This is a ${characterType} and must look identical in every image.`
-}
 
 function extractCharacterName(prompt: string): string {
   const lowerPrompt = prompt.toLowerCase()
