@@ -32,61 +32,44 @@ export async function POST(request: NextRequest) {
       }
     )
 
-    console.log('🔍 TTS raw output:', JSON.stringify(output, null, 2))
     console.log('🔍 TTS output type:', typeof output)
-    console.log('🔍 TTS output constructor:', output?.constructor?.name)
+    console.log('🔍 TTS output is array?:', Array.isArray(output))
 
-    // Replicate typically returns FileOutput objects for audio
-    // These can be URLs (strings) or FileOutput objects with a url() method
+    // Try to extract URL - Replicate usually returns a string URL or an object that converts to URL
     let audioUrl = ''
 
-    try {
-      // Case 1: Output is a direct string URL
-      if (typeof output === 'string') {
-        console.log('✓ Output is direct string URL')
-        audioUrl = output
-      }
-      // Case 2: Output is an object with toString() that gives URL
-      else if (output && typeof output === 'object') {
-        // Try getting URL from toString() method (common for FileOutput)
-        const stringOutput = String(output)
-        console.log('✓ String conversion:', stringOutput)
-        if (stringOutput.startsWith('http')) {
-          audioUrl = stringOutput
-        }
-        // Try accessing .url property or method
-        else if ('url' in output) {
-          const urlProp = (output as any).url
-          audioUrl = typeof urlProp === 'function' ? urlProp() : urlProp
-          console.log('✓ Got URL from .url property/method:', audioUrl)
-        }
-        // Try direct property access
-        else if ('audio' in output) {
-          audioUrl = String((output as any).audio)
-          console.log('✓ Got URL from .audio property:', audioUrl)
-        }
-      }
-
-      // Final validation
-      if (!audioUrl || !audioUrl.startsWith('http')) {
-        console.error('❌ Could not extract valid URL from output')
-        console.error('Raw output:', output)
-        throw new Error('Invalid audio URL format from TTS model')
-      }
-    } catch (e) {
-      console.error('Error processing TTS output:', e)
-      throw e
+    // Most common case: output is already a string URL
+    if (typeof output === 'string') {
+      audioUrl = output
+      console.log('✓ Got direct string URL')
+    }
+    // Array of URLs (take first one)
+    else if (Array.isArray(output) && output.length > 0) {
+      audioUrl = String(output[0])
+      console.log('✓ Got URL from array')
+    }
+    // Object - try converting to string
+    else if (output && typeof output === 'object') {
+      // FileOutput objects have a toString() that returns the URL
+      audioUrl = String(output)
+      console.log('✓ Got URL from object toString()')
     }
 
-    console.log('🔍 Final audio URL:', audioUrl?.substring(0, 100))
+    console.log('🔍 Final audio URL:', audioUrl)
 
     if (audioUrl && audioUrl.startsWith('http')) {
       console.log('✅ Speech generated successfully')
       return NextResponse.json({ audioUrl })
     } else {
-      console.error('❌ No valid audio URL from TTS')
+      console.error('❌ Could not extract valid URL from output')
+      console.error('❌ Output details:', {
+        type: typeof output,
+        isArray: Array.isArray(output),
+        keys: output && typeof output === 'object' ? Object.keys(output) : [],
+        stringValue: String(output)
+      })
       return NextResponse.json(
-        { error: 'Failed to generate speech' },
+        { error: 'Failed to extract audio URL from TTS response' },
         { status: 500 }
       )
     }
