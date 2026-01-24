@@ -106,8 +106,8 @@ PAGE 10:
 
 function generateImagePrompts(story: any, originalPrompt: string): string[] {
   // Soft pastel art style - gentle and calming
-  // IMPORTANT: Explicitly exclude text to prevent FLUX from adding letters/words
-  const baseStyle = "Soft pastel children's book illustration, gentle watercolor style, muted pastel colors (baby pink, lavender, mint green, peach, cream, powder blue), soft diffused lighting, dreamy ethereal atmosphere, delicate gentle tones, cozy and warm, professional children's book art, NO TEXT, NO LETTERS, NO WORDS, NO TYPOGRAPHY, pure illustration only"
+  // CRITICAL: FLUX models often add text/letters - must be EXTREMELY explicit about excluding them
+  const baseStyle = "Soft pastel children's book illustration, gentle watercolor style, muted pastel colors (baby pink, lavender, mint green, peach, cream, powder blue), soft diffused lighting, dreamy ethereal atmosphere, delicate gentle tones, cozy and warm, professional children's book art"
 
   console.log('🎨 Generating image prompts from actual story pages...')
 
@@ -155,7 +155,7 @@ function generateImagePrompts(story: any, originalPrompt: string): string[] {
       prompt += `Happy ending scene: ${keyContent}. Joyful celebration with all characters in a cozy, loving embrace. Soft magical happiness with gentle pastel colors and warm golden light.`
     }
 
-    prompt += ` Soft children's book watercolor style, safe and comforting for kids 4-8 years old.`
+    prompt += ` Soft children's book watercolor style, safe and comforting for kids 4-8 years old. Picture only, no text or letters.`
 
     return prompt
   })

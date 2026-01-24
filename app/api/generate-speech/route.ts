@@ -32,58 +32,53 @@ export async function POST(request: NextRequest) {
       }
     )
 
-    console.log('🔍 TTS output type:', typeof output, output)
+    console.log('🔍 TTS raw output:', JSON.stringify(output, null, 2))
+    console.log('🔍 TTS output type:', typeof output)
+    console.log('🔍 TTS output constructor:', output?.constructor?.name)
 
-    // Handle different output formats from Replicate
+    // Replicate typically returns FileOutput objects for audio
+    // These can be URLs (strings) or FileOutput objects with a url() method
     let audioUrl = ''
 
     try {
       // Case 1: Output is a direct string URL
       if (typeof output === 'string') {
+        console.log('✓ Output is direct string URL')
         audioUrl = output
       }
-      // Case 2: Output is an async iterable (stream)
-      else if (output && typeof output === 'object' && Symbol.asyncIterator in output) {
-        console.log('📡 Reading TTS stream...')
-        const chunks: string[] = []
-        for await (const chunk of output as any) {
-          if (typeof chunk === 'string' && chunk.startsWith('http')) {
-            // Found the URL directly in the stream
-            audioUrl = chunk
-            break
-          } else if (typeof chunk === 'string') {
-            chunks.push(chunk)
-          }
+      // Case 2: Output is an object with toString() that gives URL
+      else if (output && typeof output === 'object') {
+        // Try getting URL from toString() method (common for FileOutput)
+        const stringOutput = String(output)
+        console.log('✓ String conversion:', stringOutput)
+        if (stringOutput.startsWith('http')) {
+          audioUrl = stringOutput
         }
-        // If we collected chunks, join them
-        if (!audioUrl && chunks.length > 0) {
-          audioUrl = chunks.join('')
+        // Try accessing .url property or method
+        else if ('url' in output) {
+          const urlProp = (output as any).url
+          audioUrl = typeof urlProp === 'function' ? urlProp() : urlProp
+          console.log('✓ Got URL from .url property/method:', audioUrl)
+        }
+        // Try direct property access
+        else if ('audio' in output) {
+          audioUrl = String((output as any).audio)
+          console.log('✓ Got URL from .audio property:', audioUrl)
         }
       }
-      // Case 3: Output is an array with URL
-      else if (Array.isArray(output) && output.length > 0) {
-        audioUrl = typeof output[0] === 'string' ? output[0] : String(output[0])
-      }
-      // Case 4: Output is an object with audio property
-      else if (output && typeof output === 'object' && 'audio' in output) {
-        const audio = (output as any).audio
-        if (typeof audio === 'string') {
-          audioUrl = audio
-        } else if (audio && Symbol.asyncIterator in audio) {
-          // Audio property is a stream
-          for await (const chunk of audio as any) {
-            if (typeof chunk === 'string' && chunk.startsWith('http')) {
-              audioUrl = chunk
-              break
-            }
-          }
-        }
+
+      // Final validation
+      if (!audioUrl || !audioUrl.startsWith('http')) {
+        console.error('❌ Could not extract valid URL from output')
+        console.error('Raw output:', output)
+        throw new Error('Invalid audio URL format from TTS model')
       }
     } catch (e) {
       console.error('Error processing TTS output:', e)
+      throw e
     }
 
-    console.log('🔍 Processed audio URL:', audioUrl?.substring(0, 80))
+    console.log('🔍 Final audio URL:', audioUrl?.substring(0, 100))
 
     if (audioUrl && audioUrl.startsWith('http')) {
       console.log('✅ Speech generated successfully')

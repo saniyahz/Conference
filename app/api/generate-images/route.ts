@@ -36,8 +36,9 @@ export async function POST(request: NextRequest) {
         try {
           console.log(`🎨 Generating image ${imageIndex + 1}/${imagePrompts.length} (attempt ${attempt}/${maxRetries})`)
 
-          // Add explicit "no text" instruction to the prompt to prevent FLUX from adding letters
-          const enhancedPrompt = `${prompt} | IMPORTANT: NO TEXT, NO LETTERS, NO WORDS, NO TYPOGRAPHY, NO WRITING in the image - pure illustration only`
+          // Add VERY STRONG "no text" instruction at BOTH beginning and end
+          // FLUX models sometimes add text - we need to be extremely explicit
+          const enhancedPrompt = `NO TEXT NO LETTERS NO WORDS NO TYPOGRAPHY, ${prompt}, ABSOLUTELY NO TEXT OR LETTERS OR WORDS OR WRITING ANYWHERE IN THE IMAGE, pure visual illustration only without any text elements`
 
           const output = await replicate.run(
             "black-forest-labs/flux-schnell",
