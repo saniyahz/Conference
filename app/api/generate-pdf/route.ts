@@ -129,11 +129,12 @@ export async function POST(request: NextRequest) {
       const maxImageHeight = 110
       const maxImageWidth = contentWidth
 
-      if (story.pages[i].imageUrl && story.pages[i].imageUrl!.trim() !== '') {
+      const imageUrl = story.pages[i].imageUrl
+      if (imageUrl && typeof imageUrl === 'string' && imageUrl.trim() !== '') {
         try {
           // Convert image URL to base64 so jsPDF can use it
           console.log(`📄 Adding image ${i + 1} to PDF...`)
-          const imageBase64 = await getImageAsBase64(story.pages[i].imageUrl!)
+          const imageBase64 = await getImageAsBase64(imageUrl)
 
           // DALL-E images are 1024x1024 (square), so maintain aspect ratio
           // Calculate dimensions to fit within max width/height while preserving aspect
