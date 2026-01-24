@@ -64,46 +64,71 @@ export default function StoryBook({ story, onReset }: StoryBookProps) {
     setIsSpeaking(false)
 
     try {
-      // Call API to generate speech with Bark speaker preset
-      const response = await fetch('/api/generate-speech', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          text,
-          voice: selectedVoice  // Send the Bark speaker preset ID
-        }),
-      })
+      // Use browser's Web Speech API (works offline, no external API needed)
+      if ('speechSynthesis' in window) {
+        const utterance = new SpeechSynthesisUtterance(text)
 
-      if (!response.ok) {
-        throw new Error('Failed to generate speech')
+        // Wait for voices to load
+        let voices = window.speechSynthesis.getVoices()
+        if (voices.length === 0) {
+          await new Promise<void>((resolve) => {
+            window.speechSynthesis.onvoiceschanged = () => {
+              voices = window.speechSynthesis.getVoices()
+              resolve()
+            }
+          })
+        }
+
+        // Try to find a good English voice
+        const femaleVoice = voices.find(v => v.lang.startsWith('en') && v.name.toLowerCase().includes('female'))
+        const maleVoice = voices.find(v => v.lang.startsWith('en') && v.name.toLowerCase().includes('male'))
+        const anyEnglishVoice = voices.find(v => v.lang.startsWith('en'))
+
+        // Map speaker presets to voice preferences
+        if (selectedVoice === 'v2/en_speaker_3') {
+          // Male voice
+          utterance.voice = maleVoice || anyEnglishVoice || voices[0]
+        } else {
+          // Female voices (default)
+          utterance.voice = femaleVoice || anyEnglishVoice || voices[0]
+        }
+
+        utterance.rate = 0.85  // Slightly slower for kids
+        utterance.pitch = 1.1  // Slightly higher pitch for warmth
+
+        utterance.onend = () => {
+          setIsSpeaking(false)
+          setIsLoadingAudio(false)
+        }
+
+        utterance.onerror = (event) => {
+          console.error('Speech synthesis error:', event)
+          setIsSpeaking(false)
+          setIsLoadingAudio(false)
+          alert('Failed to generate voice. Please try again.')
+        }
+
+        window.speechSynthesis.cancel() // Cancel any ongoing speech
+        window.speechSynthesis.speak(utterance)
+        setIsSpeaking(true)
+        setIsLoadingAudio(false)
+        return
       }
 
-      const { audioUrl } = await response.json()
-
-      // Create and play audio
-      const audio = new Audio(audioUrl)
-      audio.onended = () => {
-        setIsSpeaking(false)
-        setCurrentAudio(null)
-      }
-      audio.onerror = () => {
-        setIsSpeaking(false)
-        setCurrentAudio(null)
-        alert('Failed to play audio. Please try again.')
-      }
-
-      setCurrentAudio(audio)
-      await audio.play()
-      setIsSpeaking(true)
-      setIsLoadingAudio(false)
+      throw new Error('Speech synthesis not supported')
     } catch (error) {
       console.error('Error generating speech:', error)
       setIsLoadingAudio(false)
-      alert('Failed to generate voice. Please try again.')
+      alert('Failed to generate voice. Your browser may not support text-to-speech.')
     }
   }
 
   const stopSpeaking = () => {
+    // Stop browser speech synthesis
+    if ('speechSynthesis' in window) {
+      window.speechSynthesis.cancel()
+    }
+    // Stop HTML audio if it was being used
     if (currentAudio) {
       currentAudio.pause()
       currentAudio.currentTime = 0
