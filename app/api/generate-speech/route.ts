@@ -43,14 +43,15 @@ export async function POST(request: NextRequest) {
 
     console.log('🚀 Calling Replicate API...')
 
-    // Use Parler-TTS - a high-quality open-source TTS model
-    // Updated to working version hash from cjwbw
+    // Use Bark - a reliable, high-quality TTS model
     const output = await replicate.run(
-      "cjwbw/parler-tts:bf38249a8cc143b97b5108570d1c81b8321881dd91fe7837877e7dfa3a0fad27",
+      "suno-ai/bark:b76242b40d67c76ab6742e987628a2a9ac019e11d56ab96c4e91ce03b79b2787",
       {
         input: {
-          text: truncatedText,
-          description: "A warm, friendly, gentle female voice perfect for children's stories, speaking slowly and clearly with expression and enthusiasm",
+          prompt: truncatedText,
+          text_temp: 0.7,
+          waveform_temp: 0.7,
+          output_full: false
         }
       }
     )

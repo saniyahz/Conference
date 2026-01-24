@@ -20,30 +20,22 @@ async function generateImageWithRetry(
     try {
       console.log(`🎨 Generating image ${imageIndex + 1}/${imagePromptsLength} (attempt ${attempt}/${maxRetries})`)
 
-          // EXTREMELY simplified prompt - just essential visual elements
-          // Remove all complex descriptions that could be interpreted as text
-          const simplePrompt = `watercolor painting ${prompt}`
+          // Use FLUX for better quality and no text artifacts
+          // Simplify prompt to just describe the scene visually
+          const cleanPrompt = `children's book watercolor illustration: ${prompt}. No text, no words, no letters.`
 
-          // Comprehensive negative prompt to block ALL forms of text
-          const negativePrompt = `text, words, letters, numbers, writing, typography, alphabet, characters, symbols, signs, labels, captions, subtitles, titles, watermarks, signatures, handwriting, calligraphy, fonts, glyphs, script, language, speech bubbles, dialogue, quotes, books with visible pages, newspapers, posters with text, readable content, legible text, any written language`
-
-          console.log('📝 Simple prompt:', simplePrompt)
-          console.log('🚫 Comprehensive negative prompt:', negativePrompt.substring(0, 100) + '...')
+          console.log('📝 Clean prompt:', cleanPrompt)
 
           const output = await replicate.run(
-            "stability-ai/sdxl:39ed52f2a78e934b3ba6e2a89f5b1c712de7dfea535525255b1aa35c5565e08b",
+            "black-forest-labs/flux-schnell",
             {
               input: {
-                prompt: simplePrompt,
-                negative_prompt: negativePrompt,
-                width: 1024,
-                height: 1024,
+                prompt: cleanPrompt,
+                aspect_ratio: "1:1",
+                output_format: "png",
+                output_quality: 90,
                 num_outputs: 1,
-                scheduler: "K_EULER",
-                num_inference_steps: 30,
-                guidance_scale: 8.5,
-                refine: "expert_ensemble_refiner",
-                high_noise_frac: 0.8
+                disable_safety_checker: false
               }
             }
           )
