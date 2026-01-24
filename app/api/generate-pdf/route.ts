@@ -129,7 +129,7 @@ export async function POST(request: NextRequest) {
       const maxImageHeight = 110
       const maxImageWidth = contentWidth
 
-      if (story.pages[i].imageUrl) {
+      if (story.pages[i].imageUrl && story.pages[i].imageUrl!.trim() !== '') {
         try {
           // Convert image URL to base64 so jsPDF can use it
           console.log(`📄 Adding image ${i + 1} to PDF...`)

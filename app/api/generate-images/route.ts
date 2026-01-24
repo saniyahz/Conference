@@ -27,43 +27,77 @@ export async function POST(request: NextRequest) {
 
     console.log('✅ Replicate API Token found, generating', imagePrompts.length, 'images with FLUX')
 
-    // Generate images for each prompt using Replicate FLUX
+    // Helper function to sleep/delay
+    const sleep = (ms: number) => new Promise(resolve => setTimeout(resolve, ms))
+
+    // Helper function to generate a single image with retry logic
+    async function generateImageWithRetry(prompt: string, imageIndex: number, maxRetries = 3): Promise<string> {
+      for (let attempt = 1; attempt <= maxRetries; attempt++) {
+        try {
+          console.log(`🎨 Generating image ${imageIndex + 1}/${imagePrompts.length} (attempt ${attempt}/${maxRetries})`)
+
+          const output = await replicate.run(
+            "black-forest-labs/flux-schnell",
+            {
+              input: {
+                prompt: prompt,
+                num_outputs: 1,
+                aspect_ratio: "1:1",
+                output_format: "png",
+                output_quality: 90,
+              }
+            }
+          ) as string[]
+
+          if (output && output.length > 0 && output[0]) {
+            console.log(`✅ Image ${imageIndex + 1} generated successfully`)
+            return output[0]
+          } else {
+            console.error(`❌ No output for image ${imageIndex + 1}`)
+            return ''
+          }
+        } catch (error: any) {
+          const is429 = error.message?.includes('429') || error.message?.includes('Too Many Requests')
+          const isRateLimit = error.message?.includes('rate limit') || is429
+
+          console.error(`❌ Error generating image ${imageIndex + 1} (attempt ${attempt}):`, error.message)
+
+          if (isRateLimit && attempt < maxRetries) {
+            // Wait longer for rate limits - use exponential backoff
+            const waitTime = attempt === 1 ? 5000 : attempt === 2 ? 10000 : 15000
+            console.log(`⏳ Rate limited. Waiting ${waitTime/1000} seconds before retry...`)
+            await sleep(waitTime)
+            continue
+          } else if (attempt < maxRetries) {
+            // For other errors, wait a bit before retry
+            console.log(`⏳ Waiting 3 seconds before retry...`)
+            await sleep(3000)
+            continue
+          } else {
+            // Max retries reached
+            console.error(`❌ Failed to generate image ${imageIndex + 1} after ${maxRetries} attempts`)
+            return ''
+          }
+        }
+      }
+      return ''
+    }
+
+    // Generate images for each prompt using Replicate FLUX with delays between requests
     const imageUrls: string[] = []
 
     for (let i = 0; i < imagePrompts.length; i++) {
       const prompt = imagePrompts[i]
-      console.log(`🎨 Generating image ${i + 1}/${imagePrompts.length} with FLUX`)
       console.log('Prompt:', prompt.substring(0, 100) + '...')
 
-      try {
-        // Use FLUX Schnell - fast and great for children's book illustrations
-        const output = await replicate.run(
-          "black-forest-labs/flux-schnell",
-          {
-            input: {
-              prompt: prompt,
-              num_outputs: 1,
-              aspect_ratio: "1:1",
-              output_format: "png",
-              output_quality: 90,
-            }
-          }
-        ) as string[]
+      // Generate image with retry logic
+      const imageUrl = await generateImageWithRetry(prompt, i)
+      imageUrls.push(imageUrl)
 
-        if (output && output.length > 0 && output[0]) {
-          console.log(`✅ Image ${i + 1} generated successfully with FLUX`)
-          imageUrls.push(output[0])
-        } else {
-          console.error(`❌ No output from FLUX for image ${i + 1}`)
-          imageUrls.push('') // Empty string if generation fails
-        }
-      } catch (error: any) {
-        console.error(`❌ Error generating image ${i + 1} with FLUX:`, error.message)
-        if (error.response) {
-          console.error('Error details:', JSON.stringify(error.response.data, null, 2))
-        }
-        console.error('Full error:', error)
-        imageUrls.push('') // Continue with other images
+      // Add delay between image generations to avoid rate limits (except after last image)
+      if (i < imagePrompts.length - 1) {
+        console.log('⏳ Waiting 3 seconds before next image to avoid rate limits...')
+        await sleep(3000)
       }
     }
 
