@@ -19,9 +19,19 @@ export async function POST(request: NextRequest) {
     // Use default voice if not provided
     const speakerPreset = voice || 'v2/en_speaker_6'
 
+    // Check API token
+    if (!process.env.REPLICATE_API_TOKEN) {
+      console.error('❌ REPLICATE_API_TOKEN not set')
+      return NextResponse.json(
+        { error: 'Replicate API token not configured. Please set REPLICATE_API_TOKEN environment variable.' },
+        { status: 500 }
+      )
+    }
+
     console.log('🔊 Generating speech with Replicate TTS')
     console.log('Voice preset:', speakerPreset)
     console.log('Text length:', text.length, 'characters')
+    console.log('Text preview:', text.substring(0, 100) + '...')
 
     // Limit text length to avoid timeouts
     const maxLength = 500
@@ -30,6 +40,8 @@ export async function POST(request: NextRequest) {
     if (text.length > maxLength) {
       console.log(`⚠️  Text truncated from ${text.length} to ${maxLength} characters for better TTS performance`)
     }
+
+    console.log('🚀 Calling Replicate API...')
 
     // Use Parler-TTS - a high-quality open-source TTS model
     // Updated to working version hash from cjwbw
@@ -42,6 +54,8 @@ export async function POST(request: NextRequest) {
         }
       }
     )
+
+    console.log('✅ Replicate API call completed')
 
     console.log('🔍 TTS output type:', typeof output)
     console.log('🔍 TTS output is array?:', Array.isArray(output))

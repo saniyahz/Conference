@@ -59,15 +59,26 @@ export default function StoryBook({ story, onReset }: StoryBookProps) {
         body: JSON.stringify({ text }),
       })
 
+      console.log('🔍 TTS Response status:', response.status, response.statusText)
+
       if (!response.ok) {
-        const error = await response.json()
-        throw new Error(error.error || 'Failed to generate voice')
+        const errorText = await response.text()
+        console.error('❌ TTS API error response:', errorText)
+        let errorData
+        try {
+          errorData = JSON.parse(errorText)
+        } catch {
+          errorData = { error: errorText }
+        }
+        throw new Error(errorData.error || `TTS API returned ${response.status}: ${response.statusText}`)
       }
 
       const data = await response.json()
+      console.log('🔍 TTS API response data:', data)
       const audioUrl = data.audioUrl
 
       if (!audioUrl) {
+        console.error('❌ No audio URL in response. Full data:', data)
         throw new Error('No audio URL received from API')
       }
 
@@ -107,11 +118,19 @@ export default function StoryBook({ story, onReset }: StoryBookProps) {
       // Start playing
       await audio.play()
 
-    } catch (error) {
+    } catch (error: any) {
       console.error('❌ TTS error:', error)
+      console.error('❌ Error details:', {
+        message: error.message,
+        stack: error.stack,
+        name: error.name
+      })
       setIsLoadingAudio(false)
       setIsSpeaking(false)
-      alert('Failed to generate voice. Please try again.')
+
+      // Show detailed error to user
+      const errorMessage = error.message || 'Unknown error'
+      alert(`Failed to generate voice: ${errorMessage}\n\nPlease check the browser console (F12) for more details, then try again.`)
     }
   }
 

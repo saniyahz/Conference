@@ -20,27 +20,28 @@ async function generateImageWithRetry(
     try {
       console.log(`🎨 Generating image ${imageIndex + 1}/${imagePromptsLength} (attempt ${attempt}/${maxRetries})`)
 
-          // Using SDXL with negative prompts - much more effective at preventing text than FLUX
-          const cleanPrompt = `Beautiful children's book watercolor illustration: ${prompt}. Soft pastel colors, gentle, whimsical, storybook art style.`
+          // EXTREMELY simplified prompt - just essential visual elements
+          // Remove all complex descriptions that could be interpreted as text
+          const simplePrompt = `watercolor painting ${prompt}`
 
-          // SDXL's negative prompt feature is KEY to preventing text
-          const negativePrompt = `text, letters, words, typography, writing, captions, labels, signs, numbers, alphabet, characters, font, calligraphy, handwriting, speech bubbles, any form of written language, watermark, signature`
+          // Comprehensive negative prompt to block ALL forms of text
+          const negativePrompt = `text, words, letters, numbers, writing, typography, alphabet, characters, symbols, signs, labels, captions, subtitles, titles, watermarks, signatures, handwriting, calligraphy, fonts, glyphs, script, language, speech bubbles, dialogue, quotes, books with visible pages, newspapers, posters with text, readable content, legible text, any written language`
 
-          console.log('📝 Prompt:', cleanPrompt.substring(0, 100) + '...')
-          console.log('🚫 Negative prompt:', negativePrompt)
+          console.log('📝 Simple prompt:', simplePrompt)
+          console.log('🚫 Comprehensive negative prompt:', negativePrompt.substring(0, 100) + '...')
 
           const output = await replicate.run(
             "stability-ai/sdxl:39ed52f2a78e934b3ba6e2a89f5b1c712de7dfea535525255b1aa35c5565e08b",
             {
               input: {
-                prompt: cleanPrompt,
+                prompt: simplePrompt,
                 negative_prompt: negativePrompt,
                 width: 1024,
                 height: 1024,
                 num_outputs: 1,
                 scheduler: "K_EULER",
-                num_inference_steps: 25,
-                guidance_scale: 7.5,
+                num_inference_steps: 30,
+                guidance_scale: 8.5,
                 refine: "expert_ensemble_refiner",
                 high_noise_frac: 0.8
               }
