@@ -65,7 +65,7 @@ PAGE 9:
 PAGE 10:
 [5-8 sentences - celebration, what they learned, happy ending with friends and family]`
 
-    const userPrompt = `A child wants a story about: "${prompt}". Create a unique, magical 4-page story based on their idea!`
+    const userPrompt = `A child wants a story about: "${prompt}". Create a unique, magical 10-page story based on their idea!`
 
     const output = await replicate.run(
       "meta/meta-llama-3.1-405b-instruct",
