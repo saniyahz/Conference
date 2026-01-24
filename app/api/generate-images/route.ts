@@ -36,11 +36,14 @@ export async function POST(request: NextRequest) {
         try {
           console.log(`🎨 Generating image ${imageIndex + 1}/${imagePrompts.length} (attempt ${attempt}/${maxRetries})`)
 
+          // Add explicit "no text" instruction to the prompt to prevent FLUX from adding letters
+          const enhancedPrompt = `${prompt} | IMPORTANT: NO TEXT, NO LETTERS, NO WORDS, NO TYPOGRAPHY, NO WRITING in the image - pure illustration only`
+
           const output = await replicate.run(
             "black-forest-labs/flux-schnell",
             {
               input: {
-                prompt: prompt,
+                prompt: enhancedPrompt,
                 num_outputs: 1,
                 aspect_ratio: "1:1",
                 output_format: "png",

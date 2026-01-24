@@ -34,47 +34,53 @@ export async function POST(request: NextRequest) {
 
     console.log('🔍 TTS output type:', typeof output, output)
 
-    // Handle stream output - TTS might return a stream
+    // Handle different output formats from Replicate
     let audioUrl = ''
 
-    if (output && typeof output === 'object') {
-      // Check if it has an audio property
-      if ('audio' in output && typeof (output as any).audio === 'string') {
-        audioUrl = (output as any).audio
-      } else if ('audio' in output && (output as any).audio) {
-        // Try to read the stream
-        try {
-          const chunks: string[] = []
-          for await (const chunk of (output as any).audio as any) {
-            if (typeof chunk === 'string') {
-              chunks.push(chunk)
-            }
+    try {
+      // Case 1: Output is a direct string URL
+      if (typeof output === 'string') {
+        audioUrl = output
+      }
+      // Case 2: Output is an async iterable (stream)
+      else if (output && typeof output === 'object' && Symbol.asyncIterator in output) {
+        console.log('📡 Reading TTS stream...')
+        const chunks: string[] = []
+        for await (const chunk of output as any) {
+          if (typeof chunk === 'string' && chunk.startsWith('http')) {
+            // Found the URL directly in the stream
+            audioUrl = chunk
+            break
+          } else if (typeof chunk === 'string') {
+            chunks.push(chunk)
           }
-          audioUrl = chunks.join('')
-        } catch (e) {
-          console.error('Error reading audio stream:', e)
         }
-      } else {
-        // The output itself might be a stream or the URL
-        try {
-          const chunks: string[] = []
-          for await (const chunk of output as any) {
-            if (typeof chunk === 'string') {
-              chunks.push(chunk)
-            } else if (chunk && typeof chunk === 'object' && 'audio' in chunk) {
-              audioUrl = String(chunk.audio)
+        // If we collected chunks, join them
+        if (!audioUrl && chunks.length > 0) {
+          audioUrl = chunks.join('')
+        }
+      }
+      // Case 3: Output is an array with URL
+      else if (Array.isArray(output) && output.length > 0) {
+        audioUrl = typeof output[0] === 'string' ? output[0] : String(output[0])
+      }
+      // Case 4: Output is an object with audio property
+      else if (output && typeof output === 'object' && 'audio' in output) {
+        const audio = (output as any).audio
+        if (typeof audio === 'string') {
+          audioUrl = audio
+        } else if (audio && Symbol.asyncIterator in audio) {
+          // Audio property is a stream
+          for await (const chunk of audio as any) {
+            if (typeof chunk === 'string' && chunk.startsWith('http')) {
+              audioUrl = chunk
               break
             }
           }
-          if (!audioUrl && chunks.length > 0) {
-            audioUrl = chunks.join('')
-          }
-        } catch (e) {
-          console.error('Error reading TTS stream:', e)
         }
       }
-    } else if (typeof output === 'string') {
-      audioUrl = output
+    } catch (e) {
+      console.error('Error processing TTS output:', e)
     }
 
     console.log('🔍 Processed audio URL:', audioUrl?.substring(0, 80))
