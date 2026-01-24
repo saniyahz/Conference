@@ -16,18 +16,27 @@ export async function POST(request: NextRequest) {
       )
     }
 
-    console.log('🔊 Generating speech with Replicate TTS')
+    console.log('🔊 Generating speech with Replicate TTS (Suno Bark)')
     console.log('Voice:', voice || 'default')
     console.log('Text length:', text.length, 'characters')
 
-    // Use Replicate's high-quality text-to-speech model
-    // Using Parler TTS - excellent quality, multiple voices
+    // Limit text length to avoid timeouts (Bark works best with shorter text)
+    const maxLength = 200
+    const truncatedText = text.length > maxLength ? text.substring(0, maxLength) + '...' : text
+
+    if (text.length > maxLength) {
+      console.log(`⚠️  Text truncated from ${text.length} to ${maxLength} characters for better TTS performance`)
+    }
+
+    // Use Suno Bark - simpler and more reliable than Parler TTS
+    // It uses speaker presets instead of voice descriptions
     const output = await replicate.run(
-      "parler-tts/parler-tts-expresso:b05af55cffd8bb7c92a35cf3f71e86d4a25f97bcb8c98f3d2e3adb9b5a2e6f8e",
+      "suno-ai/bark:b76242b40d67c76ab6742e987628a2a9ac019e11d56ab96c4e91ce03b79b2787",
       {
         input: {
-          text: text,
-          description: voice || "A warm, friendly, gentle female voice perfect for children's stories, speaking slowly and clearly with expression and enthusiasm",
+          prompt: truncatedText,
+          text_temp: 0.7,
+          waveform_temp: 0.7,
         }
       }
     )
