@@ -36,9 +36,10 @@ export async function POST(request: NextRequest) {
         try {
           console.log(`🎨 Generating image ${imageIndex + 1}/${imagePrompts.length} (attempt ${attempt}/${maxRetries})`)
 
-          // Add VERY STRONG "no text" instruction at BOTH beginning and end
-          // FLUX models sometimes add text - we need to be extremely explicit
-          const enhancedPrompt = `NO TEXT NO LETTERS NO WORDS NO TYPOGRAPHY, ${prompt}, ABSOLUTELY NO TEXT OR LETTERS OR WORDS OR WRITING ANYWHERE IN THE IMAGE, pure visual illustration only without any text elements`
+          // FLUX often ignores "NO TEXT" instructions and adds text anyway
+          // Strategy: Use positive framing emphasizing what we WANT, not what we don't want
+          // Also add parameters to improve prompt adherence
+          const enhancedPrompt = `${prompt}, wordless illustration, textless artwork, silent picture book style, visual storytelling without any written words`
 
           const output = await replicate.run(
             "black-forest-labs/flux-schnell",
@@ -49,6 +50,9 @@ export async function POST(request: NextRequest) {
                 aspect_ratio: "1:1",
                 output_format: "png",
                 output_quality: 90,
+                // Add parameters to improve prompt following
+                guidance_scale: 3.5,
+                num_inference_steps: 4,
               }
             }
           )
