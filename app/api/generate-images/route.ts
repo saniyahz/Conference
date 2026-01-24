@@ -20,10 +20,19 @@ async function generateImageWithRetry(
     try {
       console.log(`🎨 Generating image ${imageIndex + 1}/${imagePromptsLength} (attempt ${attempt}/${maxRetries})`)
 
-          // FLUX often ignores "NO TEXT" instructions and adds text anyway
-          // Strategy: Use positive framing emphasizing what we WANT, not what we don't want
-          // Also add parameters to improve prompt adherence
-          const enhancedPrompt = `${prompt}, wordless illustration, textless artwork, silent picture book style, visual storytelling without any written words`
+          // CRITICAL: FLUX models often add text/letters/words to images despite instructions
+          // MULTI-LAYER STRATEGY to prevent text:
+          // 1. Emphasize visual-only nature at START and END of prompt
+          // 2. Use multiple variations of "no text" instruction
+          // 3. Emphasize illustration style that typically doesn't include text
+          // 4. Keep prompt focused on visuals, not narrative text
+
+          const textPreventionPrefix = `PURE VISUAL IMAGE WITH ZERO TEXT, NO LETTERS, NO WORDS, NO TYPOGRAPHY.`
+          const textPreventionSuffix = `CRITICAL: This is a wordless illustration - absolutely NO text, NO letters, NO words, NO signs, NO typography anywhere in the image. Pure visual storytelling only.`
+
+          const enhancedPrompt = `${textPreventionPrefix} ${prompt}. ${textPreventionSuffix}`
+
+          console.log('📝 Enhanced prompt preview:', enhancedPrompt.substring(0, 150) + '...')
 
           const output = await replicate.run(
             "black-forest-labs/flux-schnell",
@@ -34,8 +43,8 @@ async function generateImageWithRetry(
                 aspect_ratio: "1:1",
                 output_format: "png",
                 output_quality: 90,
-                // Add parameters to improve prompt following
-                guidance_scale: 3.5,
+                // Increase guidance_scale to make model follow prompt more strictly
+                guidance_scale: 7.5,  // Higher value = stricter adherence to prompt
                 num_inference_steps: 4,
               }
             }

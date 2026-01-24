@@ -121,131 +121,174 @@ export default function StoryBook({ story, onReset }: StoryBookProps) {
     setIsSpeaking(false)
 
     try {
-      console.log('🔊 Starting text-to-speech v2.0...')
+      console.log('🔊 Starting text-to-speech v3.0 - SUPER ROBUST...')
       console.log('📝 Text to speak (first 100 chars):', text.substring(0, 100))
 
-      // CRITICAL FIX: Cancel any ongoing speech first and wait longer
+      // CRITICAL FIX 1: Cancel any ongoing speech and wait for it to fully stop
       window.speechSynthesis.cancel()
-      await new Promise(resolve => setTimeout(resolve, 250))
+      await new Promise(resolve => setTimeout(resolve, 300))
 
-      // CRITICAL FIX: Force reload voices every time to ensure they're available
-      console.log('🔄 Force reloading voices...')
-      const voices = window.speechSynthesis.getVoices()
-      console.log('🎤 Voices found:', voices.length)
+      // CRITICAL FIX 2: Multiple attempts to get voices with retries
+      let voices: SpeechSynthesisVoice[] = []
+      let attempts = 0
+      const maxAttempts = 5
+
+      while (voices.length === 0 && attempts < maxAttempts) {
+        attempts++
+        console.log(`🔄 Attempt ${attempts}/${maxAttempts} to load voices...`)
+        voices = window.speechSynthesis.getVoices()
+
+        if (voices.length === 0) {
+          console.warn(`⚠️ No voices on attempt ${attempts}, waiting 200ms...`)
+          await new Promise(resolve => setTimeout(resolve, 200))
+        }
+      }
+
+      console.log('🎤 Total voices found:', voices.length)
 
       if (voices.length === 0) {
-        console.error('❌ NO VOICES LOADED! This is the problem.')
-        alert('⚠️ Voice system not ready. Please wait a moment and try again. If this persists, please refresh the page.')
+        console.error('❌ NO VOICES LOADED after multiple attempts!')
+        alert('⚠️ Voice system not ready. Please:\n1. Wait a few seconds and try again\n2. Refresh the page\n3. Make sure you are using Chrome, Safari, or Edge')
         setIsLoadingAudio(false)
         return
       }
 
-      // Find voice to use
+      // CRITICAL FIX 3: Better voice selection with fallbacks
+      const englishVoices = voices.filter(v => v.lang && v.lang.startsWith('en'))
+      console.log('🎤 English voices found:', englishVoices.length)
+
       let voiceToUse = selectedVoice
 
-      // If no voice selected or the selected voice is no longer in the list, pick a new one
+      // Always verify the selected voice is still available
       if (!voiceToUse || !voices.find(v => v.name === voiceToUse?.name)) {
-        console.log('⚠️ Re-selecting voice...')
-        const englishVoices = voices.filter(v => v.lang.startsWith('en'))
+        console.log('⚠️ Selecting best voice...')
+
+        // Priority order: female voices, then popular voices, then any English voice
         voiceToUse =
           englishVoices.find(v => v.name.toLowerCase().includes('female')) ||
           englishVoices.find(v => v.name.toLowerCase().includes('samantha')) ||
-          englishVoices.find(v => v.name.toLowerCase().includes('zira')) ||
           englishVoices.find(v => v.name.toLowerCase().includes('karen')) ||
+          englishVoices.find(v => v.name.toLowerCase().includes('zira')) ||
+          englishVoices.find(v => v.name.toLowerCase().includes('victoria')) ||
+          englishVoices.find(v => !v.localService) || // Prefer cloud voices
           englishVoices[0] ||
           voices[0]
 
-        console.log('🎤 Using voice:', voiceToUse?.name)
+        console.log('✅ Selected voice:', voiceToUse?.name, 'Lang:', voiceToUse?.lang)
         setSelectedVoice(voiceToUse)
         setAvailableVoices(englishVoices.length > 0 ? englishVoices : voices)
       }
 
-      // Create utterance
+      // CRITICAL FIX 4: Create utterance with extra care
       const utterance = new SpeechSynthesisUtterance(text)
 
-      // Set voice BEFORE other properties (important for some browsers)
+      // Set voice and language
       if (voiceToUse) {
         utterance.voice = voiceToUse
-        utterance.lang = voiceToUse.lang
-        console.log('✅ Voice set:', voiceToUse.name, 'Lang:', voiceToUse.lang)
+        utterance.lang = voiceToUse.lang || 'en-US'
+        console.log('✅ Voice configured:', voiceToUse.name, 'Lang:', utterance.lang)
       } else {
         utterance.lang = 'en-US'
-        console.warn('⚠️ No specific voice, using browser default with lang en-US')
+        console.warn('⚠️ Using browser default voice with en-US')
       }
 
-      // Configure speech parameters for kids
-      utterance.rate = 0.9   // Slightly slower for better comprehension
-      utterance.pitch = 1.1  // Slightly higher pitch for warmth
-      utterance.volume = 1.0 // Full volume
+      // Configure speech parameters optimized for kids
+      utterance.rate = 0.85   // Slower for better comprehension
+      utterance.pitch = 1.15  // Higher pitch for warmth and friendliness
+      utterance.volume = 1.0  // Full volume
 
-      console.log('🔧 Utterance configured:', {
+      console.log('🔧 Utterance settings:', {
         voice: utterance.voice?.name || 'default',
         rate: utterance.rate,
         pitch: utterance.pitch,
         volume: utterance.volume,
-        lang: utterance.lang
+        lang: utterance.lang,
+        textLength: text.length
       })
+
+      // CRITICAL FIX 5: Track if speech actually started
+      let speechStarted = false
+      let speechEnded = false
 
       // Event handlers
       utterance.onstart = () => {
         console.log('✅✅✅ Speech STARTED successfully!')
+        speechStarted = true
         setIsSpeaking(true)
         setIsLoadingAudio(false)
       }
 
       utterance.onend = () => {
         console.log('✅ Speech ENDED normally')
+        speechEnded = true
         setIsSpeaking(false)
         setIsLoadingAudio(false)
       }
 
       utterance.onerror = (event) => {
-        console.error('❌❌❌ Speech synthesis ERROR:', event.error)
+        console.error('❌❌❌ Speech synthesis ERROR:', event.error, event)
+        speechEnded = true
         setIsSpeaking(false)
         setIsLoadingAudio(false)
 
         if (event.error === 'not-allowed') {
-          alert('🔇 Speech was blocked by your browser. Please make sure:\n1. Audio/sound is enabled\n2. Page has permission to play audio\n3. Try clicking the button again')
+          alert('🔇 Speech was blocked. Please:\n1. Make sure audio/sound is enabled\n2. Try clicking the button again\n3. Check browser permissions')
         } else if (event.error === 'network') {
-          alert('🌐 Network error. This voice needs internet. Try selecting a different voice from the dropdown above.')
+          alert('🌐 Network error. Try:\n1. Selecting a different voice (one marked as local/offline)\n2. Check your internet connection')
         } else if (event.error === 'canceled') {
           console.log('ℹ️ Speech was canceled (normal if you clicked stop)')
         } else {
-          alert(`❌ Speech error: ${event.error}\n\nTry:\n1. Selecting a different voice\n2. Refreshing the page\n3. Using Chrome/Safari/Edge browser`)
+          alert(`❌ Speech error: ${event.error}\n\nTroubleshooting:\n1. Try a different voice from the dropdown\n2. Refresh the page\n3. Use Chrome, Safari, or Edge browser`)
         }
       }
 
-      // Speak the text
+      // CRITICAL FIX 6: Speak the text (ensure synthesis is ready)
       console.log('🗣️ Calling speechSynthesis.speak()...')
       window.speechSynthesis.speak(utterance)
-      console.log('✅ speak() called, waiting for onstart event...')
+      console.log('✅ speak() called, waiting for speech to start...')
 
-      // Safety timeout - if speech doesn't start within 3 seconds
-      setTimeout(() => {
-        if (isLoadingAudio) {
-          console.error('❌ Timeout: Speech did not start within 3 seconds')
-          setIsLoadingAudio(false)
-          setIsSpeaking(false)
+      // CRITICAL FIX 7: Better timeout with recovery
+      const timeoutId = setTimeout(() => {
+        if (!speechStarted && !speechEnded) {
+          console.error('❌ TIMEOUT: Speech did not start within 5 seconds')
 
-          // Check if speech synthesis is still speaking
           const stillSpeaking = window.speechSynthesis.speaking
-          console.log('Is speechSynthesis.speaking?', stillSpeaking)
+          const isPending = window.speechSynthesis.pending
 
-          if (!stillSpeaking) {
-            alert('⏱️ Speech timed out. Please try:\n1. Refreshing the page\n2. Selecting a different voice\n3. Using Chrome, Safari, or Edge browser')
-          } else {
-            // It's speaking but onstart didn't fire - update UI anyway
-            console.log('⚠️ Speaking but onstart never fired - updating UI manually')
+          console.log('📊 Speech status:', {
+            speaking: stillSpeaking,
+            pending: isPending,
+            started: speechStarted,
+            ended: speechEnded
+          })
+
+          if (stillSpeaking || isPending) {
+            // It's actually working but onstart didn't fire
+            console.log('⚠️ Speech is running but onstart never fired - updating UI')
             setIsSpeaking(true)
+            setIsLoadingAudio(false)
+          } else {
+            // It really failed
+            console.error('❌ Speech truly failed to start')
+            setIsLoadingAudio(false)
+            setIsSpeaking(false)
+            alert('⏱️ Speech timed out. Please:\n1. Try again (sometimes it works on second try)\n2. Select a different voice\n3. Refresh the page')
           }
         }
-      }, 3000)
+      }, 5000) // 5 second timeout instead of 3
+
+      // Clean up timeout if speech starts successfully
+      const originalOnStart = utterance.onstart
+      utterance.onstart = (event) => {
+        clearTimeout(timeoutId)
+        if (originalOnStart) originalOnStart.call(utterance, event)
+      }
 
     } catch (error) {
-      console.error('❌ Error in speakText:', error)
+      console.error('❌ Fatal error in speakText:', error)
       setIsLoadingAudio(false)
       setIsSpeaking(false)
-      alert('Failed to read aloud. Error: ' + (error as Error).message)
+      alert('Failed to read aloud: ' + (error as Error).message + '\n\nPlease refresh the page and try again.')
     }
   }
 

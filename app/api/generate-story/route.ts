@@ -105,19 +105,21 @@ PAGE 10:
 }
 
 function generateImagePrompts(story: any, originalPrompt: string): string[] {
-  console.log('🎨 Generating CONSISTENT character image prompts...')
+  console.log('🎨 Generating SUPER CONSISTENT character image prompts...')
 
   // Extract character details from the first page for CONSISTENCY across all images
   const firstPageText = story.pages[0]?.text || ''
   const characterDescription = extractCharacterDescription(firstPageText, originalPrompt)
-  console.log('👤 FIXED Character description for ALL pages:', characterDescription)
+  console.log('👤 ULTRA-DETAILED Character description for ALL pages:', characterDescription)
 
-  // CRITICAL: Character consistency is THE MOST IMPORTANT thing
-  // Put character at the VERY BEGINNING and REPEAT it to reinforce
-  const characterConsistencyPrefix = `SAME CHARACTER IN EVERY IMAGE: ${characterDescription}. CRITICAL: Character must look identical to previous images. Same face, same features, same appearance.`
+  // CRITICAL: Character consistency is ABSOLUTELY THE MOST IMPORTANT thing
+  // TRIPLE EMPHASIS: Beginning, middle, and end of prompt
+  const characterHeader = `[MAIN CHARACTER - KEEP IDENTICAL IN ALL IMAGES]`
+  const characterDetails = `The main character is: ${characterDescription}`
+  const consistencyRule = `ABSOLUTE RULE: This exact same character must appear in every single image with IDENTICAL appearance - same face, same eyes, same ears, same body, same colors, same clothing, same features. DO NOT change the character's appearance between images.`
 
-  // Simplified style - less words to confuse the AI
-  const baseStyle = "Soft pastel watercolor illustration, wordless children's book art, gentle colors (pink, lavender, mint, peach, cream), dreamy atmosphere, textless"
+  // Enhanced style with more visual cues
+  const baseStyle = "Soft pastel watercolor children's book illustration style, gentle dreamy atmosphere with colors like soft pink, lavender, mint green, peach, and cream"
 
   // Generate a specific image prompt for each page based on its content
   const prompts = story.pages.map((page: any, index: number) => {
@@ -127,40 +129,43 @@ function generateImagePrompts(story: any, originalPrompt: string): string[] {
     const sentences = pageText.split(/[.!?]+/).filter((s: string) => s.trim().length > 10)
     const keyContent = sentences.slice(0, 2).join('. ')
 
-    // Build prompt: CHARACTER FIRST (most important), then style, then scene
-    let prompt = `${characterConsistencyPrefix} ${baseStyle}. `
+    // BUILD PROMPT WITH MAXIMUM CHARACTER EMPHASIS
+    // Structure: Header → Character → Consistency Rule → Style → Scene → Repeat Character
+    let prompt = `${characterHeader} ${characterDetails}. ${consistencyRule} ${baseStyle}. `
 
-    // Simplified scene descriptions - less text = better AI following
+    // Add scene-specific context (simplified to avoid confusion)
     if (index === 0) {
-      prompt += `Scene: ${keyContent}. Character introduction, peaceful setting`
+      prompt += `Scene: ${keyContent}. Show character in peaceful introduction scene`
     } else if (index === 1) {
-      prompt += `Scene: ${keyContent}. Character with friends, cozy atmosphere`
+      prompt += `Scene: ${keyContent}. Show character in daily life with friends`
     } else if (index === 2) {
-      prompt += `Scene: ${keyContent}. Adventure begins, gentle wonder`
+      prompt += `Scene: ${keyContent}. Show character beginning adventure`
     } else if (index === 3) {
-      prompt += `Scene: ${keyContent}. Character discovers challenge`
+      prompt += `Scene: ${keyContent}. Show character facing new challenge`
     } else if (index === 4) {
-      prompt += `Scene: ${keyContent}. Character shows determination`
+      prompt += `Scene: ${keyContent}. Show character feeling determined`
     } else if (index === 5) {
-      prompt += `Scene: ${keyContent}. Character takes action`
+      prompt += `Scene: ${keyContent}. Show character taking action`
     } else if (index === 6) {
-      prompt += `Scene: ${keyContent}. Character learns lesson`
+      prompt += `Scene: ${keyContent}. Show character learning lesson`
     } else if (index === 7) {
-      prompt += `Scene: ${keyContent}. Teamwork with friends`
+      prompt += `Scene: ${keyContent}. Show character working with friends`
     } else if (index === 8) {
-      prompt += `Scene: ${keyContent}. Success and celebration`
+      prompt += `Scene: ${keyContent}. Show character celebrating success`
     } else {
-      prompt += `Scene: ${keyContent}. Happy ending with friends`
+      prompt += `Scene: ${keyContent}. Show character in happy ending`
     }
 
-    // Reinforce character consistency at the END too
-    prompt += `. REMEMBER: Keep the SAME character appearance as described: ${characterDescription}`
+    // TRIPLE REINFORCEMENT: Repeat character description at the end
+    prompt += `. CRITICAL REMINDER: Use the EXACT SAME character throughout - ${characterDescription}. This character's appearance must be IDENTICAL to all previous images.`
 
     return prompt
   })
 
-  console.log(`✅ Generated ${prompts.length} CONSISTENT character prompts`)
-  console.log('📋 Sample prompt structure:', prompts[0].substring(0, 200) + '...')
+  console.log(`✅ Generated ${prompts.length} ULTRA-CONSISTENT character prompts`)
+  console.log('📋 Full sample prompt for page 1:')
+  console.log(prompts[0])
+  console.log('📋 Character description length:', characterDescription.length, 'characters')
 
   return prompts
 }
@@ -234,50 +239,56 @@ function extractCharacterDescription(firstPageText: string, originalPrompt: stri
   const lowerText = firstPageText.toLowerCase()
   const lowerPrompt = originalPrompt.toLowerCase()
 
-  // Character types and their visual descriptors for consistency
+  // ULTRA-DETAILED character descriptions with MAXIMUM specificity for consistency
+  // Include: size, colors, specific features, distinctive markings, clothing details
   const characterMappings: { [key: string]: string } = {
-    'mouse': 'a cute small mouse character with soft pink ears, tiny whiskers, round black eyes, delicate paws, wearing simple clothing',
-    'mice': 'cute small mouse characters with soft pink ears, tiny whiskers, round black eyes, delicate paws, wearing simple clothing',
-    'rabbit': 'a gentle rabbit character with long floppy ears, soft white fur, pink nose, warm brown eyes, fluffy tail',
-    'bunny': 'a gentle bunny character with long floppy ears, soft white fur, pink nose, warm brown eyes, fluffy tail',
-    'cat': 'a friendly cat character with pointed ears, whiskers, expressive eyes, soft striped fur, curled tail',
-    'dog': 'a happy dog character with floppy ears, wagging tail, big loving eyes, soft furry coat',
-    'bear': 'a cuddly bear character with round ears, soft brown fur, gentle eyes, big warm paws',
-    'fox': 'a clever fox character with pointed ears, bushy tail, bright eyes, soft orange and white fur',
-    'dragon': 'a friendly dragon character with small wings, gentle scales, big eyes, tiny horns, long tail',
-    'unicorn': 'a magical unicorn character with flowing mane, spiral horn, kind eyes, graceful body',
-    'elephant': 'a gentle elephant character with big floppy ears, long trunk, wise eyes, wrinkled skin',
-    'lion': 'a brave lion character with fluffy mane, kind eyes, strong but gentle presence',
-    'pig': 'a cheerful pig character with pink skin, curly tail, round snout, happy eyes',
-    'duck': 'a friendly duck character with yellow feathers, orange beak, webbed feet, kind eyes',
-    'bird': 'a small bird character with colorful feathers, tiny beak, bright eyes, delicate wings',
-    'dinosaur': 'a friendly dinosaur character with gentle features, small spikes, big eyes, long tail',
-    'princess': 'a kind young princess character with flowing dress, gentle smile, warm eyes, simple crown',
-    'prince': 'a brave young prince character with royal outfit, kind face, determined eyes',
-    'fairy': 'a magical fairy character with delicate wings, flowing dress, sparkling presence, warm smile',
-    'wizard': 'a wise wizard character with pointed hat, flowing robes, kind eyes, long beard',
-    'knight': 'a brave knight character in shining armor, gentle face, kind eyes, noble presence',
-    'pirate': 'a friendly pirate character with eye patch, bandana, adventurous smile, kind heart',
+    'mouse': 'a small mouse character (about 6 inches tall) with large round pink ears with darker pink inner ear detail, three thin black whiskers on each side, perfectly round shiny black eyes, tiny delicate pink paws with visible toes, wearing a simple blue vest over white shirt',
+    'mice': 'small mouse characters (about 6 inches tall) with large round pink ears with darker pink inner ear detail, three thin black whiskers on each side, perfectly round shiny black eyes, tiny delicate pink paws, wearing simple blue vests over white shirts',
+    'rabbit': 'a medium-sized rabbit character with very long floppy ears (reaching past shoulders), pure white fluffy fur with slight gray tints on ear tips, bright pink button nose, large warm brown eyes with long lashes, cotton ball fluffy white tail, wearing a red hoodie',
+    'bunny': 'a medium-sized bunny character with very long floppy ears (reaching past shoulders), pure white fluffy fur with slight gray tints on ear tips, bright pink button nose, large warm brown eyes with long lashes, cotton ball fluffy white tail, wearing a red hoodie',
+    'cat': 'a sleek cat character with tall pointed triangular ears, six thin whiskers (three each side), large expressive green eyes, soft gray and white striped fur pattern running vertically down body, long curved tail with white tip, wearing a yellow collar with small bell',
+    'dog': 'a medium-sized dog character with long floppy brown ears, constantly wagging bushy brown tail, big expressive dark brown eyes, golden-brown furry coat with white chest patch, pink tongue often visible, wearing a blue bandana around neck',
+    'bear': 'a cuddly bear character with small round ears on top of round head, soft chocolate brown fur all over, gentle dark eyes with slight sparkle, large warm paws with visible toe pads, wearing red overalls with single front pocket',
+    'fox': 'a clever fox character with tall pointed ears with black tips, large bushy tail (half body length) with white tip, bright amber eyes, vibrant orange-red fur on back and head, pure white fur on chest and belly, black legs, wearing green scarf',
+    'dragon': 'a small friendly dragon character (toddler-sized) with small rounded wings (lavender colored), smooth emerald green scales covering body, very large expressive blue eyes with long lashes, two small rounded horns on head, long tail with heart-shaped tip, wearing tiny crown',
+    'unicorn': 'a graceful unicorn character with flowing pastel rainbow mane (pink, blue, purple streaks), long spiral pearlescent horn on forehead, large gentle purple eyes, pure white coat with slight shimmer, four delicate hooves, long flowing tail matching mane colors, wearing flower crown',
+    'elephant': 'a gentle elephant character with very large gray floppy ears (wider than body), long flexible trunk with visible wrinkles, small wise dark eyes with long lashes, wrinkled gray skin texture, four sturdy legs, small tail with tuft, wearing colorful patterned vest',
+    'lion': 'a brave lion character with magnificent fluffy golden-orange mane (full circle around face), golden-tan body fur, kind amber eyes, small round ears barely visible in mane, long tail with dark brown tuft at end, wearing red cape',
+    'pig': 'a cheerful pig character with bright pink skin, prominent round snout with two large nostrils, small curly tail, floppy ears, small happy eyes, four little hooves, slightly chubby round body, wearing blue farmer overalls',
+    'duck': 'a friendly duck character with bright yellow fluffy feathers, flat orange beak, orange webbed feet, small black dot eyes, small wings on sides, rounded body shape, wearing small blue sailor hat',
+    'bird': 'a small bird character (robin-sized) with vibrant red breast feathers, brown wing feathers, small yellow pointed beak, bright black eyes, delicate thin legs, small tail feathers, wearing tiny bow tie',
+    'dinosaur': 'a friendly young dinosaur character (T-Rex style but cute) with bright green scales, row of small rounded purple spikes down back, very large expressive eyes, small arms, strong legs, long thick tail, small sharp but friendly teeth visible in smile, wearing bowtie',
+    'princess': 'a kind young princess character (8 years old appearance) with long flowing brown hair with crown braid, sparkling blue eyes, rosy cheeks, wearing elegant pink ball gown with white lace trim, small golden crown with three points and pink jewel, white gloves',
+    'prince': 'a brave young prince character (8 years old appearance) with short neat brown hair, determined green eyes, kind smile, wearing royal blue jacket with gold buttons and trim, white pants, black boots, small golden crown, red cape',
+    'fairy': 'a magical fairy character (human child-sized) with large translucent wings (butterfly-style with pink and blue gradient), long blonde hair with flowers woven in, bright green eyes, pointed ears, wearing flowing dress made of flower petals (lavender and pink), carrying star-topped wand',
+    'wizard': 'a wise wizard character with tall pointed purple hat with silver stars, long white flowing beard reaching chest, twinkling blue eyes behind small round glasses, wrinkled kind face, wearing deep purple robes with silver moon and star pattern, holding wooden staff with crystal top',
+    'knight': 'a brave knight character with shining silver armor covering body, red plume on helmet, kind face visible through raised visor (showing brown eyes and friendly smile), red cape with golden clasp, silver sword at side, wearing royal crest on chest',
+    'pirate': 'a friendly pirate character with black eye patch over left eye, red and white striped bandana on head, wild curly black hair, big adventurous smile, small beard, wearing brown leather vest over white puffy shirt, black pants, brown boots, small parrot friend on shoulder',
   }
 
   // Search for character type in both story text and original prompt
   let characterDesc = ''
+  let characterType = ''
 
   for (const [animal, description] of Object.entries(characterMappings)) {
     if (lowerText.includes(animal) || lowerPrompt.includes(animal)) {
       characterDesc = description
+      characterType = animal
       console.log(`✅ Found character type: ${animal}`)
+      console.log(`📝 Using ultra-detailed description (${description.length} chars)`)
       break
     }
   }
 
-  // Fallback: generic character
+  // Fallback: generic but still detailed character
   if (!characterDesc) {
-    characterDesc = 'a gentle character with kind eyes, warm smile, expressive features, wearing simple comfortable clothing'
+    characterDesc = 'a gentle character (child-sized, about 4 feet tall) with large kind brown eyes, warm friendly smile showing slight dimples, rosy cheeks, wearing simple comfortable blue clothing (shirt and pants), brown shoes, with expressive friendly features'
+    characterType = 'generic character'
+    console.log(`⚠️ No specific character type found, using generic description`)
   }
 
-  // Add consistency instructions
-  return `IMPORTANT: Use the EXACT same character throughout - ${characterDesc}. Keep this character's appearance identical in every scene`
+  // Return MAXIMUM detail with emphasis on consistency
+  return `${characterDesc}. CONSISTENCY CRITICAL: Every single visual detail must match exactly - same colors, same sizes, same features, same clothing, same proportions. This is a ${characterType} and must look identical in every image.`
 }
 
 function extractCharacterName(prompt: string): string {
