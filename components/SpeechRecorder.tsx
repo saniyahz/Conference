@@ -104,6 +104,20 @@ export default function SpeechRecorder({ onComplete }: SpeechRecorderProps) {
       }
 
       recognitionRef.current = recognition
+
+      // CLEANUP: Stop recognition when component unmounts
+      return () => {
+        console.log('🧹 Cleaning up SpeechRecorder - stopping recognition')
+        shouldBeRecordingRef.current = false
+        if (recognition) {
+          try {
+            recognition.stop()
+            recognition.abort()
+          } catch (e) {
+            console.log('Recognition already stopped')
+          }
+        }
+      }
     }
   }, [])
 

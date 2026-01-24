@@ -111,6 +111,11 @@ function generateImagePrompts(story: any, originalPrompt: string): string[] {
 
   console.log('🎨 Generating image prompts from actual story pages...')
 
+  // Extract character details from the first page for CONSISTENCY across all images
+  const firstPageText = story.pages[0]?.text || ''
+  const characterDescription = extractCharacterDescription(firstPageText, originalPrompt)
+  console.log('👤 Character description for consistency:', characterDescription)
+
   // Generate a specific image prompt for each page based on its content
   const prompts = story.pages.map((page: any, index: number) => {
     const pageText = page.text
@@ -120,7 +125,8 @@ function generateImagePrompts(story: any, originalPrompt: string): string[] {
     const keyContent = sentences.slice(0, 2).join('. ')
 
     // Create scene-specific prompt based on story arc
-    let prompt = `${baseStyle}. `
+    // IMPORTANT: Include character description FIRST for consistency
+    let prompt = `${baseStyle}. ${characterDescription}. `
 
     // Different scenes for 10-page book
     if (index === 0) {
@@ -231,6 +237,56 @@ function parseStory(text: string, originalPrompt: string) {
     title,
     pages: pages.slice(0, 10),
   }
+}
+
+function extractCharacterDescription(firstPageText: string, originalPrompt: string): string {
+  const lowerText = firstPageText.toLowerCase()
+  const lowerPrompt = originalPrompt.toLowerCase()
+
+  // Character types and their visual descriptors for consistency
+  const characterMappings: { [key: string]: string } = {
+    'mouse': 'a cute small mouse character with soft pink ears, tiny whiskers, round black eyes, delicate paws, wearing simple clothing',
+    'mice': 'cute small mouse characters with soft pink ears, tiny whiskers, round black eyes, delicate paws, wearing simple clothing',
+    'rabbit': 'a gentle rabbit character with long floppy ears, soft white fur, pink nose, warm brown eyes, fluffy tail',
+    'bunny': 'a gentle bunny character with long floppy ears, soft white fur, pink nose, warm brown eyes, fluffy tail',
+    'cat': 'a friendly cat character with pointed ears, whiskers, expressive eyes, soft striped fur, curled tail',
+    'dog': 'a happy dog character with floppy ears, wagging tail, big loving eyes, soft furry coat',
+    'bear': 'a cuddly bear character with round ears, soft brown fur, gentle eyes, big warm paws',
+    'fox': 'a clever fox character with pointed ears, bushy tail, bright eyes, soft orange and white fur',
+    'dragon': 'a friendly dragon character with small wings, gentle scales, big eyes, tiny horns, long tail',
+    'unicorn': 'a magical unicorn character with flowing mane, spiral horn, kind eyes, graceful body',
+    'elephant': 'a gentle elephant character with big floppy ears, long trunk, wise eyes, wrinkled skin',
+    'lion': 'a brave lion character with fluffy mane, kind eyes, strong but gentle presence',
+    'pig': 'a cheerful pig character with pink skin, curly tail, round snout, happy eyes',
+    'duck': 'a friendly duck character with yellow feathers, orange beak, webbed feet, kind eyes',
+    'bird': 'a small bird character with colorful feathers, tiny beak, bright eyes, delicate wings',
+    'dinosaur': 'a friendly dinosaur character with gentle features, small spikes, big eyes, long tail',
+    'princess': 'a kind young princess character with flowing dress, gentle smile, warm eyes, simple crown',
+    'prince': 'a brave young prince character with royal outfit, kind face, determined eyes',
+    'fairy': 'a magical fairy character with delicate wings, flowing dress, sparkling presence, warm smile',
+    'wizard': 'a wise wizard character with pointed hat, flowing robes, kind eyes, long beard',
+    'knight': 'a brave knight character in shining armor, gentle face, kind eyes, noble presence',
+    'pirate': 'a friendly pirate character with eye patch, bandana, adventurous smile, kind heart',
+  }
+
+  // Search for character type in both story text and original prompt
+  let characterDesc = ''
+
+  for (const [animal, description] of Object.entries(characterMappings)) {
+    if (lowerText.includes(animal) || lowerPrompt.includes(animal)) {
+      characterDesc = description
+      console.log(`✅ Found character type: ${animal}`)
+      break
+    }
+  }
+
+  // Fallback: generic character
+  if (!characterDesc) {
+    characterDesc = 'a gentle character with kind eyes, warm smile, expressive features, wearing simple comfortable clothing'
+  }
+
+  // Add consistency instructions
+  return `IMPORTANT: Use the EXACT same character throughout - ${characterDesc}. Keep this character's appearance identical in every scene`
 }
 
 function extractCharacterName(prompt: string): string {
