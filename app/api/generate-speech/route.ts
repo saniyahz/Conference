@@ -44,8 +44,12 @@ export async function POST(request: NextRequest) {
     }
   } catch (error: any) {
     console.error('Error generating speech:', error)
+    console.error('Error details:', error.message)
+    if (error.response) {
+      console.error('API response:', error.response)
+    }
     return NextResponse.json(
-      { error: 'Failed to generate speech. Please try again.' },
+      { error: `Failed to generate speech: ${error.message}` },
       { status: 500 }
     )
   }
