@@ -19,34 +19,21 @@ export default function StoryBook({ story, onReset }: StoryBookProps) {
   const router = useRouter()
   const [currentPage, setCurrentPage] = useState(0)
   const [isSpeaking, setIsSpeaking] = useState(false)
-  const [speechSupported, setSpeechSupported] = useState(true)
+  const [isLoadingAudio, setIsLoadingAudio] = useState(false)
   const [isSaving, setIsSaving] = useState(false)
-  const [availableVoices, setAvailableVoices] = useState<SpeechSynthesisVoice[]>([])
-  const [selectedVoice, setSelectedVoice] = useState<string>('default')
+  const [currentAudio, setCurrentAudio] = useState<HTMLAudioElement | null>(null)
+  const [selectedVoice, setSelectedVoice] = useState<string>('warm-mother')
+
+  // High-quality AI voices from Replicate
+  const aiVoices = [
+    { id: 'warm-mother', name: 'Warm Mother', description: "A warm, friendly, gentle female voice perfect for children's stories, speaking slowly and clearly with expression and enthusiasm" },
+    { id: 'gentle-father', name: 'Gentle Father', description: "A deep, calm, reassuring male voice ideal for bedtime stories, speaking with gentle warmth and steady pacing" },
+    { id: 'playful-storyteller', name: 'Playful Storyteller', description: "An energetic, expressive voice with dramatic flair, perfect for exciting adventures and bringing characters to life" },
+    { id: 'soft-grandma', name: 'Soft Grandma', description: "A sweet, elderly female voice with a tender, loving quality, ideal for soothing bedtime reading" },
+  ]
 
   useEffect(() => {
-    console.log('✅ StoryBook v2.0 ENHANCED - Voice selector loaded at ' + new Date().toISOString())
-    if (typeof window !== 'undefined') {
-      setSpeechSupported('speechSynthesis' in window)
-
-      // Load available voices
-      const loadVoices = () => {
-        const voices = window.speechSynthesis.getVoices()
-        setAvailableVoices(voices)
-
-        // Auto-select a good default voice (prefer female for mother-like, English)
-        const preferredVoice = voices.find(v =>
-          v.lang.startsWith('en') && (v.name.includes('Female') || v.name.includes('Samantha') || v.name.includes('Karen'))
-        ) || voices.find(v => v.lang.startsWith('en'))
-
-        if (preferredVoice) {
-          setSelectedVoice(preferredVoice.name)
-        }
-      }
-
-      loadVoices()
-      window.speechSynthesis.onvoiceschanged = loadVoices
-    }
+    console.log('✅ StoryBook v3.0 - High-Quality AI Voices - ' + new Date().toISOString())
   }, [])
 
   const nextPage = () => {
@@ -63,39 +50,65 @@ export default function StoryBook({ story, onReset }: StoryBookProps) {
     }
   }
 
-  const speakText = (text: string) => {
-    if (!speechSupported) return
+  const speakText = async (text: string) => {
+    setIsLoadingAudio(true)
+    setIsSpeaking(false)
 
-    const utterance = new SpeechSynthesisUtterance(text)
+    try {
+      // Get voice description
+      const voice = aiVoices.find(v => v.id === selectedVoice)
 
-    // Find selected voice
-    const voice = availableVoices.find(v => v.name === selectedVoice)
-    if (voice) {
-      utterance.voice = voice
+      // Call API to generate speech
+      const response = await fetch('/api/generate-speech', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          text,
+          voice: voice?.description
+        }),
+      })
+
+      if (!response.ok) {
+        throw new Error('Failed to generate speech')
+      }
+
+      const { audioUrl } = await response.json()
+
+      // Create and play audio
+      const audio = new Audio(audioUrl)
+      audio.onended = () => {
+        setIsSpeaking(false)
+        setCurrentAudio(null)
+      }
+      audio.onerror = () => {
+        setIsSpeaking(false)
+        setCurrentAudio(null)
+        alert('Failed to play audio. Please try again.')
+      }
+
+      setCurrentAudio(audio)
+      await audio.play()
+      setIsSpeaking(true)
+      setIsLoadingAudio(false)
+    } catch (error) {
+      console.error('Error generating speech:', error)
+      setIsLoadingAudio(false)
+      alert('Failed to generate voice. Please try again.')
     }
-
-    // More natural settings
-    utterance.rate = 0.85  // Slower, more story-telling pace
-    utterance.pitch = 1.0  // Natural pitch
-    utterance.volume = 1
-
-    utterance.onend = () => {
-      setIsSpeaking(false)
-    }
-
-    window.speechSynthesis.speak(utterance)
-    setIsSpeaking(true)
   }
 
   const stopSpeaking = () => {
-    if (speechSupported && window.speechSynthesis.speaking) {
-      window.speechSynthesis.cancel()
-      setIsSpeaking(false)
+    if (currentAudio) {
+      currentAudio.pause()
+      currentAudio.currentTime = 0
+      setCurrentAudio(null)
     }
+    setIsSpeaking(false)
+    setIsLoadingAudio(false)
   }
 
   const toggleSpeak = () => {
-    if (isSpeaking) {
+    if (isSpeaking || isLoadingAudio) {
       stopSpeaking()
     } else {
       speakText(story.pages[currentPage].text)
@@ -182,28 +195,29 @@ export default function StoryBook({ story, onReset }: StoryBookProps) {
         </div>
       </div>
 
-      {/* Voice Selector */}
-      {speechSupported && availableVoices.length > 0 && (
-        <div className="flex items-center justify-center gap-3 bg-blue-50 p-4 rounded-lg">
-          <label htmlFor="voice-select" className="font-semibold text-gray-700">
-            📢 Narrator Voice:
+      {/* AI Voice Selector */}
+      <div className="bg-gradient-to-r from-blue-50 to-purple-50 p-6 rounded-xl border-2 border-purple-200">
+        <div className="flex flex-col md:flex-row items-center justify-center gap-4">
+          <label htmlFor="voice-select" className="font-bold text-gray-800 text-lg">
+            🎭 Choose AI Narrator Voice:
           </label>
           <select
             id="voice-select"
             value={selectedVoice}
             onChange={(e) => setSelectedVoice(e.target.value)}
-            className="px-4 py-2 border-2 border-blue-300 rounded-lg bg-white focus:border-blue-500 focus:outline-none"
+            className="px-6 py-3 border-2 border-purple-300 rounded-lg bg-white focus:border-purple-500 focus:outline-none font-semibold text-gray-700 cursor-pointer hover:border-purple-400 transition-all"
           >
-            {availableVoices
-              .filter(voice => voice.lang.startsWith('en'))
-              .map((voice, index) => (
-                <option key={index} value={voice.name}>
-                  {voice.name} {voice.name.toLowerCase().includes('female') ? '(Mother-like)' : voice.name.toLowerCase().includes('male') ? '(Father-like)' : ''}
-                </option>
-              ))}
+            {aiVoices.map((voice) => (
+              <option key={voice.id} value={voice.id}>
+                {voice.name}
+              </option>
+            ))}
           </select>
         </div>
-      )}
+        <p className="text-center text-sm text-gray-600 mt-2 italic">
+          High-quality AI voices powered by Replicate
+        </p>
+      </div>
 
       {/* Book Pages - Side by side layout like Gemini */}
       <div className="relative bg-white rounded-2xl shadow-2xl overflow-hidden border-2 border-gray-200" style={{ minHeight: '600px' }}>
@@ -279,29 +293,35 @@ export default function StoryBook({ story, onReset }: StoryBookProps) {
 
       {/* Controls */}
       <div className="flex flex-wrap justify-center gap-4">
-        {/* Text-to-Speech */}
-        {speechSupported && (
-          <button
-            onClick={toggleSpeak}
-            className={`px-6 py-3 rounded-full font-semibold flex items-center gap-2 transition-all transform hover:scale-105 ${
-              isSpeaking
-                ? 'bg-red-500 hover:bg-red-600 text-white'
-                : 'bg-blue-500 hover:bg-blue-600 text-white'
-            }`}
-          >
-            {isSpeaking ? (
-              <>
-                <VolumeX className="w-5 h-5" />
-                Stop Reading
-              </>
-            ) : (
-              <>
-                <Volume2 className="w-5 h-5" />
-                Read Aloud
-              </>
-            )}
-          </button>
-        )}
+        {/* AI Text-to-Speech */}
+        <button
+          onClick={toggleSpeak}
+          disabled={isLoadingAudio}
+          className={`px-6 py-3 rounded-full font-semibold flex items-center gap-2 transition-all transform hover:scale-105 ${
+            isSpeaking
+              ? 'bg-red-500 hover:bg-red-600 text-white'
+              : isLoadingAudio
+              ? 'bg-gray-400 text-white cursor-wait'
+              : 'bg-blue-500 hover:bg-blue-600 text-white'
+          }`}
+        >
+          {isLoadingAudio ? (
+            <>
+              <Loader2 className="w-5 h-5 animate-spin" />
+              Generating Voice...
+            </>
+          ) : isSpeaking ? (
+            <>
+              <VolumeX className="w-5 h-5" />
+              Stop Reading
+            </>
+          ) : (
+            <>
+              <Volume2 className="w-5 h-5" />
+              Read Aloud (AI)
+            </>
+          )}
+        </button>
 
         {/* Save Story */}
         <button
