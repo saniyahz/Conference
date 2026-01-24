@@ -104,6 +104,42 @@ PAGE 10:
   }
 }
 
+// Extract VISUAL elements only from story text to prevent text rendering in images
+function extractVisualElements(pageText: string, pageIndex: number): string {
+  // Remove any quoted dialogue or text that might be rendered
+  const cleanText = pageText.replace(/"[^"]*"/g, '').replace(/'[^']*'/g, '')
+
+  // Extract key visual keywords (action verbs, settings, emotions)
+  // Focus on visual description rather than narrative storytelling
+  const visualKeywords: { [key: string]: string[] } = {
+    forest: ['lush green forest', 'tall trees', 'dappled sunlight', 'woodland path'],
+    journey: ['walking together', 'exploring', 'traveling', 'adventuring'],
+    friends: ['group of friends', 'companions', 'walking together', 'happy group'],
+    home: ['cozy home', 'peaceful village', 'comfortable setting', 'warm home'],
+    challenge: ['facing obstacle', 'problem-solving', 'thinking carefully', 'looking concerned'],
+    solution: ['working together', 'helping each other', 'cooperating', 'teamwork'],
+    celebration: ['happy celebration', 'joyful scene', 'dancing', 'smiling friends'],
+    discovery: ['finding something', 'looking at discovery', 'examining closely', 'surprised expressions']
+  }
+
+  // Page-specific visual scenes (VISUAL ONLY - no story text)
+  const sceneDescriptions = [
+    'Character introduction scene with peaceful, happy atmosphere. Character standing in a calm, welcoming environment with soft lighting',
+    'Character in daily life surrounded by friends and familiar objects. Cheerful, comfortable setting with warm colors',
+    'Character beginning an adventure, looking excited and curious. Setting suggests journey ahead with anticipation',
+    'Character encountering a challenge or obstacle. Thoughtful expression, problem-solving posture, concerned but determined',
+    'Character showing determination and courage. Strong posture, focused expression, ready for action',
+    'Character taking decisive action to solve problem. Dynamic pose showing movement and purpose',
+    'Character learning an important lesson. Reflective moment with gentle, understanding expression',
+    'Character working collaboratively with friends. Teamwork scene with cooperative body language',
+    'Character celebrating success with friends. Joyful, triumphant scene with happy expressions',
+    'Character in happy conclusion scene. Peaceful, satisfied atmosphere with warm, positive lighting'
+  ]
+
+  // Return pure visual description for this page
+  return sceneDescriptions[pageIndex] || sceneDescriptions[0]
+}
+
 function generateImagePrompts(story: any, originalPrompt: string): string[] {
   console.log('🎨 Generating SUPER CONSISTENT character image prompts...')
 
@@ -125,36 +161,16 @@ function generateImagePrompts(story: any, originalPrompt: string): string[] {
   const prompts = story.pages.map((page: any, index: number) => {
     const pageText = page.text
 
-    // Extract first two sentences for scene context
-    const sentences = pageText.split(/[.!?]+/).filter((s: string) => s.trim().length > 10)
-    const keyContent = sentences.slice(0, 2).join('. ')
+    // Extract VISUAL elements only (no narrative text to prevent text rendering)
+    // Parse for key visual elements: actions, emotions, settings
+    const visualScene = extractVisualElements(pageText, index)
 
     // BUILD PROMPT WITH MAXIMUM CHARACTER EMPHASIS
-    // Structure: Header → Character → Consistency Rule → Style → Scene → Repeat Character
+    // Structure: Header → Character → Consistency Rule → Style → Visual Scene → Repeat Character
     let prompt = `${characterHeader} ${characterDetails}. ${consistencyRule} ${baseStyle}. `
 
-    // Add scene-specific context (simplified to avoid confusion)
-    if (index === 0) {
-      prompt += `Scene: ${keyContent}. Show character in peaceful introduction scene`
-    } else if (index === 1) {
-      prompt += `Scene: ${keyContent}. Show character in daily life with friends`
-    } else if (index === 2) {
-      prompt += `Scene: ${keyContent}. Show character beginning adventure`
-    } else if (index === 3) {
-      prompt += `Scene: ${keyContent}. Show character facing new challenge`
-    } else if (index === 4) {
-      prompt += `Scene: ${keyContent}. Show character feeling determined`
-    } else if (index === 5) {
-      prompt += `Scene: ${keyContent}. Show character taking action`
-    } else if (index === 6) {
-      prompt += `Scene: ${keyContent}. Show character learning lesson`
-    } else if (index === 7) {
-      prompt += `Scene: ${keyContent}. Show character working with friends`
-    } else if (index === 8) {
-      prompt += `Scene: ${keyContent}. Show character celebrating success`
-    } else {
-      prompt += `Scene: ${keyContent}. Show character in happy ending`
-    }
+    // Add VISUAL-ONLY scene description (no narrative text that could be rendered as text in image)
+    prompt += visualScene
 
     // TRIPLE REINFORCEMENT: Repeat character description at the end
     prompt += `. CRITICAL REMINDER: Use the EXACT SAME character throughout - ${characterDescription}. This character's appearance must be IDENTICAL to all previous images.`

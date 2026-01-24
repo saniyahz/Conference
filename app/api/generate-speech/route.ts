@@ -32,8 +32,9 @@ export async function POST(request: NextRequest) {
     }
 
     // Use Parler-TTS - a high-quality open-source TTS model
+    // Updated to working version hash from cjwbw
     const output = await replicate.run(
-      "parler-tts/parler-tts-mini-v1:44f45efa8e0e70e8c69aef3c4b028c7c6bb63c6e8b88da5e98e6b5b3e32f5d62",
+      "cjwbw/parler-tts:bf38249a8cc143b97b5108570d1c81b8321881dd91fe7837877e7dfa3a0fad27",
       {
         input: {
           text: truncatedText,
