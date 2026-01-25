@@ -20,14 +20,14 @@ async function generateImageWithRetry(
     try {
       console.log(`🎨 Generating image ${imageIndex + 1}/${imagePromptsLength} (attempt ${attempt}/${maxRetries})`)
 
-          // Use FLUX for better quality and no text artifacts
-          // Simplify prompt to just describe the scene visually
-          const cleanPrompt = `children's book watercolor illustration: ${prompt}. No text, no words, no letters.`
+          // Use FLUX-dev for better control and quality - prevents text artifacts
+          // Ultra-simple prompt with just the visual scene description
+          const cleanPrompt = `watercolor illustration for children: ${prompt}`
 
           console.log('📝 Clean prompt:', cleanPrompt)
 
           const output = await replicate.run(
-            "black-forest-labs/flux-schnell",
+            "black-forest-labs/flux-dev",
             {
               input: {
                 prompt: cleanPrompt,
@@ -35,6 +35,8 @@ async function generateImageWithRetry(
                 output_format: "png",
                 output_quality: 90,
                 num_outputs: 1,
+                guidance_scale: 3.5,
+                num_inference_steps: 28,
                 disable_safety_checker: false
               }
             }
@@ -133,7 +135,7 @@ export async function POST(request: NextRequest) {
       )
     }
 
-    console.log('✅ Replicate API Token found, generating', imagePrompts.length, 'images with SDXL')
+    console.log('✅ Replicate API Token found, generating', imagePrompts.length, 'images with FLUX-dev')
 
     // Generate images for each prompt using Replicate FLUX with delays between requests
     const imageUrls: string[] = []

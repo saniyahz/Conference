@@ -1,11 +1,11 @@
 'use client'
 
-console.log('🚀🚀🚀 StoryBook.tsx LOADED - Version 7.0 - Using Replicate TTS - ' + new Date().toISOString())
+console.log('🚀🚀🚀 StoryBook.tsx LOADED - Version 8.0 - TTS Removed - ' + new Date().toISOString())
 
 import { useState, useEffect } from 'react'
 import { useSession } from 'next-auth/react'
 import { useRouter } from 'next/navigation'
-import { ChevronLeft, ChevronRight, Download, Volume2, VolumeX, RotateCcw, Save, Loader2 } from 'lucide-react'
+import { ChevronLeft, ChevronRight, Download, RotateCcw, Save, Loader2 } from 'lucide-react'
 import { Story } from '@/app/page'
 import Image from 'next/image'
 
@@ -18,138 +18,17 @@ export default function StoryBook({ story, onReset }: StoryBookProps) {
   const { data: session } = useSession()
   const router = useRouter()
   const [currentPage, setCurrentPage] = useState(0)
-  const [isSpeaking, setIsSpeaking] = useState(false)
-  const [isLoadingAudio, setIsLoadingAudio] = useState(false)
   const [isSaving, setIsSaving] = useState(false)
-  const [currentAudio, setCurrentAudio] = useState<HTMLAudioElement | null>(null)
-
-  useEffect(() => {
-    console.log('✅ StoryBook v7.0 - Using Replicate TTS API')
-  }, [])
 
   const nextPage = () => {
     if (currentPage < story.pages.length - 1) {
-      stopSpeaking()
       setCurrentPage(currentPage + 1)
     }
   }
 
   const previousPage = () => {
     if (currentPage > 0) {
-      stopSpeaking()
       setCurrentPage(currentPage - 1)
-    }
-  }
-
-  const speakText = async (text: string) => {
-    console.log('🔊 Starting Replicate TTS...')
-
-    // Stop any current audio
-    stopSpeaking()
-
-    setIsLoadingAudio(true)
-    setIsSpeaking(false)
-
-    try {
-      // Call Replicate TTS API
-      console.log('🎤 Calling /api/generate-speech...')
-      const response = await fetch('/api/generate-speech', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ text }),
-      })
-
-      console.log('🔍 TTS Response status:', response.status, response.statusText)
-
-      if (!response.ok) {
-        const errorText = await response.text()
-        console.error('❌ TTS API error response:', errorText)
-        let errorData
-        try {
-          errorData = JSON.parse(errorText)
-        } catch {
-          errorData = { error: errorText }
-        }
-        throw new Error(errorData.error || `TTS API returned ${response.status}: ${response.statusText}`)
-      }
-
-      const data = await response.json()
-      console.log('🔍 TTS API response data:', data)
-      const audioUrl = data.audioUrl
-
-      if (!audioUrl) {
-        console.error('❌ No audio URL in response. Full data:', data)
-        throw new Error('No audio URL received from API')
-      }
-
-      console.log('✅ Got audio URL:', audioUrl)
-
-      // Create and play audio element
-      const audio = new Audio(audioUrl)
-
-      audio.onloadeddata = () => {
-        console.log('✅ Audio loaded, starting playback')
-        setIsLoadingAudio(false)
-        setIsSpeaking(true)
-      }
-
-      audio.onplay = () => {
-        console.log('✅ Audio playing')
-        setIsSpeaking(true)
-        setIsLoadingAudio(false)
-      }
-
-      audio.onended = () => {
-        console.log('✅ Audio ended')
-        setIsSpeaking(false)
-        setCurrentAudio(null)
-      }
-
-      audio.onerror = (e) => {
-        console.error('❌ Audio playback error:', e)
-        setIsSpeaking(false)
-        setIsLoadingAudio(false)
-        setCurrentAudio(null)
-        alert('Failed to play audio. Please try again.')
-      }
-
-      setCurrentAudio(audio)
-
-      // Start playing
-      await audio.play()
-
-    } catch (error: any) {
-      console.error('❌ TTS error:', error)
-      console.error('❌ Error details:', {
-        message: error.message,
-        stack: error.stack,
-        name: error.name
-      })
-      setIsLoadingAudio(false)
-      setIsSpeaking(false)
-
-      // Show detailed error to user
-      const errorMessage = error.message || 'Unknown error'
-      alert(`Failed to generate voice: ${errorMessage}\n\nPlease check the browser console (F12) for more details, then try again.`)
-    }
-  }
-
-  const stopSpeaking = () => {
-    // Stop audio playback
-    if (currentAudio) {
-      currentAudio.pause()
-      currentAudio.currentTime = 0
-      setCurrentAudio(null)
-    }
-    setIsSpeaking(false)
-    setIsLoadingAudio(false)
-  }
-
-  const toggleSpeak = () => {
-    if (isSpeaking || isLoadingAudio) {
-      stopSpeaking()
-    } else {
-      speakText(story.pages[currentPage].text)
     }
   }
 
@@ -233,12 +112,6 @@ export default function StoryBook({ story, onReset }: StoryBookProps) {
         </div>
       </div>
 
-      {/* Voice Info */}
-      <div className="bg-gradient-to-r from-blue-50 to-purple-50 p-4 rounded-xl border-2 border-purple-200">
-        <p className="text-center text-gray-700 font-semibold">
-          🎤 Professional AI narrator voice powered by Replicate TTS
-        </p>
-      </div>
 
       {/* Book Pages - Side by side layout like Gemini */}
       <div className="relative bg-white rounded-2xl shadow-2xl overflow-hidden border-2 border-gray-200" style={{ minHeight: '600px' }}>
@@ -314,36 +187,6 @@ export default function StoryBook({ story, onReset }: StoryBookProps) {
 
       {/* Controls */}
       <div className="flex flex-wrap justify-center gap-4">
-        {/* Text-to-Speech */}
-        <button
-          onClick={toggleSpeak}
-          disabled={isLoadingAudio}
-          className={`px-6 py-3 rounded-full font-semibold flex items-center gap-2 transition-all transform hover:scale-105 ${
-            isSpeaking
-              ? 'bg-red-500 hover:bg-red-600 text-white'
-              : isLoadingAudio
-              ? 'bg-gray-400 text-white cursor-wait'
-              : 'bg-blue-500 hover:bg-blue-600 text-white'
-          }`}
-        >
-          {isLoadingAudio ? (
-            <>
-              <Loader2 className="w-5 h-5 animate-spin" />
-              Loading...
-            </>
-          ) : isSpeaking ? (
-            <>
-              <VolumeX className="w-5 h-5" />
-              Stop Reading
-            </>
-          ) : (
-            <>
-              <Volume2 className="w-5 h-5" />
-              Read Aloud
-            </>
-          )}
-        </button>
-
         {/* Save Story */}
         <button
           onClick={handleSave}
