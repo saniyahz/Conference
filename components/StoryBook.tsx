@@ -1,6 +1,6 @@
 'use client'
 
-console.log('🚀🚀🚀 StoryBook.tsx LOADED - Version 9.0 - TTS Added Back - ' + new Date().toISOString())
+console.log('🚀🚀🚀 StoryBook.tsx LOADED - Version 10.0 - Fixed TTS with Better Voice - ' + new Date().toISOString())
 
 import { useState, useEffect } from 'react'
 import { useSession } from 'next-auth/react'
@@ -21,11 +21,27 @@ export default function StoryBook({ story, onReset }: StoryBookProps) {
   const [isSaving, setIsSaving] = useState(false)
   const [isReading, setIsReading] = useState(false)
   const [speechSynthesis, setSpeechSynthesis] = useState<SpeechSynthesis | null>(null)
+  const [voicesLoaded, setVoicesLoaded] = useState(false)
 
   // Initialize speech synthesis on mount
   useEffect(() => {
     if (typeof window !== 'undefined' && window.speechSynthesis) {
       setSpeechSynthesis(window.speechSynthesis)
+
+      // Wait for voices to load
+      const loadVoices = () => {
+        const voices = window.speechSynthesis.getVoices()
+        if (voices.length > 0) {
+          setVoicesLoaded(true)
+          console.log('✅ Speech voices loaded:', voices.length, 'voices available')
+        }
+      }
+
+      // Voices might be loaded already
+      loadVoices()
+
+      // Or they might load later
+      window.speechSynthesis.onvoiceschanged = loadVoices
     }
   }, [])
 
@@ -43,7 +59,7 @@ export default function StoryBook({ story, onReset }: StoryBookProps) {
 
   const readAloud = () => {
     if (!speechSynthesis) {
-      alert('Text-to-speech is not supported in your browser')
+      alert('Text-to-speech is not supported in your browser. Please try using Chrome, Edge, or Safari.')
       return
     }
 
@@ -53,37 +69,70 @@ export default function StoryBook({ story, onReset }: StoryBookProps) {
       return
     }
 
-    // Cancel any ongoing speech
-    speechSynthesis.cancel()
+    try {
+      // Cancel any ongoing speech
+      speechSynthesis.cancel()
 
-    const text = story.pages[currentPage].text
-    const utterance = new SpeechSynthesisUtterance(text)
+      const text = story.pages[currentPage].text
+      const utterance = new SpeechSynthesisUtterance(text)
 
-    // Configure voice settings
-    utterance.rate = 0.9 // Slightly slower for kids
-    utterance.pitch = 1.1 // Slightly higher pitch for storytelling
-    utterance.volume = 1
+      // Try to find a good voice for storytelling
+      const voices = speechSynthesis.getVoices()
+      console.log('🔊 Available voices:', voices.length)
 
-    // Set up event handlers
-    utterance.onstart = () => {
-      setIsReading(true)
-    }
+      // Prefer female English voices for children's stories
+      const preferredVoice = voices.find(voice =>
+        voice.lang.startsWith('en') &&
+        (voice.name.includes('Female') ||
+         voice.name.includes('Samantha') ||
+         voice.name.includes('Karen') ||
+         voice.name.includes('Victoria') ||
+         voice.name.includes('Google UK English Female'))
+      ) || voices.find(voice => voice.lang.startsWith('en'))
 
-    utterance.onend = () => {
+      if (preferredVoice) {
+        utterance.voice = preferredVoice
+        console.log('🎙️ Using voice:', preferredVoice.name)
+      }
+
+      // Configure voice settings
+      utterance.rate = 0.85 // Slower for kids to follow along
+      utterance.pitch = 1.1 // Slightly higher pitch for storytelling
+      utterance.volume = 1
+      utterance.lang = 'en-US'
+
+      // Set up event handlers
+      utterance.onstart = () => {
+        console.log('🔊 Started reading page', currentPage + 1)
+        setIsReading(true)
+      }
+
+      utterance.onend = () => {
+        console.log('✅ Finished reading page', currentPage + 1)
+        setIsReading(false)
+      }
+
+      utterance.onerror = (event) => {
+        console.error('❌ Speech synthesis error:', event.error, event)
+        setIsReading(false)
+        if (event.error !== 'canceled') {
+          alert('Could not read the text. Please try again or use a different browser.')
+        }
+      }
+
+      // Start speaking
+      console.log('🎙️ Speaking text:', text.substring(0, 50) + '...')
+      speechSynthesis.speak(utterance)
+    } catch (error) {
+      console.error('❌ Error in readAloud:', error)
       setIsReading(false)
+      alert('Text-to-speech failed. Please try again.')
     }
-
-    utterance.onerror = (event) => {
-      console.error('Speech synthesis error:', event)
-      setIsReading(false)
-    }
-
-    // Start speaking
-    speechSynthesis.speak(utterance)
   }
 
   const stopReading = () => {
     if (speechSynthesis) {
+      console.log('🛑 Stopping speech')
       speechSynthesis.cancel()
       setIsReading(false)
     }

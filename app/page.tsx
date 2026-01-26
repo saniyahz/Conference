@@ -1,6 +1,6 @@
 'use client'
 
-console.log('🔥🔥🔥 MAIN PAGE LOADED - Version 6.0 - FIXED - ' + new Date().toISOString())
+console.log('🔥🔥🔥 MAIN PAGE LOADED - Version 7.0 - Fixed Images & Consistency - ' + new Date().toISOString())
 
 import { useState } from 'react'
 import { useSession } from 'next-auth/react'

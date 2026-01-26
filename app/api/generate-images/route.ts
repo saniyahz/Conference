@@ -20,24 +20,28 @@ async function generateImageWithRetry(
     try {
       console.log(`🎨 Generating image ${imageIndex + 1}/${imagePromptsLength} (attempt ${attempt}/${maxRetries})`)
 
-          // Use FLUX-dev for better control and quality - prevents text artifacts
-          // Ultra-simple prompt emphasizing NO TEXT/WORDS
-          const cleanPrompt = `${prompt}, children's book art, no text, no words, no letters, no captions`
+          // Use FLUX-schnell for faster generation with text prevention
+          // Add explicit instructions and negative prompt
+          const cleanPrompt = prompt
 
-          console.log('📝 Clean prompt:', cleanPrompt)
+          // Strong negative prompt to prevent text
+          const negativePrompt = 'text, words, letters, numbers, captions, labels, speech bubbles, writing, typography, signs, watermark, signature'
+
+          console.log('📝 Prompt:', cleanPrompt)
+          console.log('🚫 Negative:', negativePrompt)
 
           const output = await replicate.run(
-            "black-forest-labs/flux-dev",
+            "black-forest-labs/flux-schnell",
             {
               input: {
                 prompt: cleanPrompt,
                 aspect_ratio: "1:1",
                 output_format: "png",
-                output_quality: 90,
+                output_quality: 85,
                 num_outputs: 1,
-                guidance_scale: 3.5,
-                num_inference_steps: 28,
-                disable_safety_checker: false
+                num_inference_steps: 4,
+                disable_safety_checker: false,
+                go_fast: true
               }
             }
           )

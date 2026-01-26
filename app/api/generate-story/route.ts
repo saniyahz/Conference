@@ -125,51 +125,74 @@ PAGE 10:
   }
 }
 
-// Create ULTRA-SIMPLE visual-only scene descriptions (NO text can render from these)
-function createMinimalVisualScene(pageIndex: number): string {
-  // CRITICAL: Use ONLY basic visual keywords - NO sentences that could be interpreted as text
-  // Format: "character + action + setting" using minimal words
-  const simpleScenes = [
-    'character standing, peaceful home, happy',
-    'character with friends, cozy setting, smiling',
-    'character walking outdoors, beginning journey, excited',
-    'character looking thoughtful, facing challenge, determined',
-    'character brave pose, ready for action, confident',
-    'character solving problem, focused, working',
-    'character reflecting, learning moment, gentle',
-    'character with friends, teamwork, cooperating',
-    'character celebrating, success, joyful',
-    'character happy, peaceful ending, content'
+// Generate a consistent character description to use across all pages
+function generateConsistentCharacter(firstPageText: string, originalPrompt: string): string {
+  const characterType = extractSimpleCharacterType(firstPageText, originalPrompt)
+
+  // Create detailed, consistent character descriptions for common types
+  const characterDescriptions: { [key: string]: string } = {
+    'dog': 'golden retriever puppy with fluffy fur, big brown eyes, wearing a red collar',
+    'cat': 'orange tabby cat with green eyes and white paws',
+    'dragon': 'small purple dragon with sparkly scales, tiny wings, and kind eyes',
+    'unicorn': 'white unicorn with flowing rainbow mane, golden horn, and gentle smile',
+    'bear': 'brown teddy bear with soft fur, black button nose, and friendly face',
+    'rabbit': 'white bunny with long floppy ears, pink nose, and fluffy tail',
+    'bunny': 'white bunny with long floppy ears, pink nose, and fluffy tail',
+    'fox': 'red fox with bushy tail, pointy ears, and bright eyes',
+    'elephant': 'baby elephant with big ears, small tusks, and playful trunk',
+    'lion': 'young lion cub with golden mane, round face, and brave eyes',
+    'mouse': 'small gray mouse with big round ears, tiny whiskers, and bright eyes',
+    'princess': 'young princess with long flowing hair, sparkly dress, and kind smile',
+    'prince': 'young prince with neat hair, royal outfit, and brave expression',
+    'fairy': 'tiny fairy with colorful wings, flowing dress, and sparkly wand',
+    'wizard': 'young wizard with star-covered robe, pointy hat, and magic wand',
+    'knight': 'young knight in shiny armor, blue cape, and friendly smile',
+    'pirate': 'young pirate with bandana, vest, and adventurous spirit'
+  }
+
+  // Return the consistent description, or create a generic one
+  const description = characterDescriptions[characterType] || `young ${characterType} with kind eyes and friendly appearance`
+  console.log('👤 Consistent character:', description)
+  return description
+}
+
+// Create scene descriptions for each page
+function createVisualScene(pageIndex: number): string {
+  const scenes = [
+    'standing in a cozy home interior, warm lighting, peaceful',
+    'playing with friends in a sunny garden, flowers around',
+    'walking on a forest path, trees and nature, beginning adventure',
+    'discovering something, looking surprised and curious',
+    'standing tall with determined expression, ready to help',
+    'working on a task, focused and trying hard',
+    'sitting and thinking, gentle atmosphere, learning',
+    'with friends helping together, teamwork and cooperation',
+    'celebrating with joy, happy dancing, success',
+    'peaceful happy ending scene, surrounded by friends and love'
   ]
 
-  return simpleScenes[pageIndex] || simpleScenes[0]
+  return scenes[pageIndex] || scenes[0]
 }
 
 function generateImagePrompts(story: any, originalPrompt: string): string[] {
-  console.log('🎨 Generating MINIMAL visual-only prompts (NO TEXT POSSIBLE)...')
+  console.log('🎨 Generating consistent character prompts with NO TEXT...')
 
-  // Extract character for consistency
+  // Generate ONE consistent character description to use for all pages
   const firstPageText = story.pages[0]?.text || ''
-  const characterType = extractSimpleCharacterType(firstPageText, originalPrompt)
-  console.log('👤 Simple character type:', characterType)
+  const consistentCharacter = generateConsistentCharacter(firstPageText, originalPrompt)
 
-  // ULTRA-MINIMAL style - emphasize NO TEXT/WORDS/LETTERS
-  const baseStyle = "watercolor painting, soft colors, illustration only, no text, no words, no letters, wordless art"
-
-  // Generate MINIMAL prompts for each page
+  // Generate prompts for each page with the SAME character
   const prompts = story.pages.map((page: any, index: number) => {
-    // Get simple visual scene (just keywords, no sentences)
-    const visualScene = createMinimalVisualScene(index)
+    const scene = createVisualScene(index)
 
-    // CRITICAL: Keep prompt EXTREMELY SHORT - only essential visual keywords
-    // Format: style + character + simple action (NO complex descriptions that could be rendered as text)
-    const prompt = `${baseStyle}, cute ${characterType}, ${visualScene}, pure illustration`
+    // Build prompt with consistent character + scene + strong no-text instructions
+    const prompt = `children's book illustration, watercolor style, ${consistentCharacter}, ${scene}, soft pastel colors, pure visual art without any text or words or letters or captions, illustration only`
 
-    console.log(`Page ${index + 1} prompt:`, prompt)
+    console.log(`Page ${index + 1} prompt:`, prompt.substring(0, 100) + '...')
     return prompt
   })
 
-  console.log(`✅ Generated ${prompts.length} MINIMAL visual prompts`)
+  console.log(`✅ Generated ${prompts.length} prompts with consistent character: ${consistentCharacter}`)
   return prompts
 }
 
