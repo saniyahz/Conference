@@ -153,8 +153,8 @@ function generateImagePrompts(story: any, originalPrompt: string): string[] {
   const characterType = extractSimpleCharacterType(firstPageText, originalPrompt)
   console.log('👤 Simple character type:', characterType)
 
-  // ULTRA-MINIMAL style - just visual keywords, NO sentences
-  const baseStyle = "children's book watercolor illustration, soft pastel colors, wordless picture"
+  // ULTRA-MINIMAL style - emphasize NO TEXT/WORDS/LETTERS
+  const baseStyle = "watercolor painting, soft colors, illustration only, no text, no words, no letters, wordless art"
 
   // Generate MINIMAL prompts for each page
   const prompts = story.pages.map((page: any, index: number) => {
@@ -163,7 +163,7 @@ function generateImagePrompts(story: any, originalPrompt: string): string[] {
 
     // CRITICAL: Keep prompt EXTREMELY SHORT - only essential visual keywords
     // Format: style + character + simple action (NO complex descriptions that could be rendered as text)
-    const prompt = `${baseStyle}, ${characterType}, ${visualScene}`
+    const prompt = `${baseStyle}, cute ${characterType}, ${visualScene}, pure illustration`
 
     console.log(`Page ${index + 1} prompt:`, prompt)
     return prompt

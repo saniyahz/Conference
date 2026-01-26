@@ -1,11 +1,11 @@
 'use client'
 
-console.log('🚀🚀🚀 StoryBook.tsx LOADED - Version 8.0 - TTS Removed - ' + new Date().toISOString())
+console.log('🚀🚀🚀 StoryBook.tsx LOADED - Version 9.0 - TTS Added Back - ' + new Date().toISOString())
 
 import { useState, useEffect } from 'react'
 import { useSession } from 'next-auth/react'
 import { useRouter } from 'next/navigation'
-import { ChevronLeft, ChevronRight, Download, RotateCcw, Save, Loader2 } from 'lucide-react'
+import { ChevronLeft, ChevronRight, Download, RotateCcw, Save, Loader2, Volume2, VolumeX } from 'lucide-react'
 import { Story } from '@/app/page'
 import Image from 'next/image'
 
@@ -19,6 +19,75 @@ export default function StoryBook({ story, onReset }: StoryBookProps) {
   const router = useRouter()
   const [currentPage, setCurrentPage] = useState(0)
   const [isSaving, setIsSaving] = useState(false)
+  const [isReading, setIsReading] = useState(false)
+  const [speechSynthesis, setSpeechSynthesis] = useState<SpeechSynthesis | null>(null)
+
+  // Initialize speech synthesis on mount
+  useEffect(() => {
+    if (typeof window !== 'undefined' && window.speechSynthesis) {
+      setSpeechSynthesis(window.speechSynthesis)
+    }
+  }, [])
+
+  // Stop reading when page changes
+  useEffect(() => {
+    stopReading()
+  }, [currentPage])
+
+  // Cleanup on unmount
+  useEffect(() => {
+    return () => {
+      stopReading()
+    }
+  }, [])
+
+  const readAloud = () => {
+    if (!speechSynthesis) {
+      alert('Text-to-speech is not supported in your browser')
+      return
+    }
+
+    // If already reading, stop
+    if (isReading) {
+      stopReading()
+      return
+    }
+
+    // Cancel any ongoing speech
+    speechSynthesis.cancel()
+
+    const text = story.pages[currentPage].text
+    const utterance = new SpeechSynthesisUtterance(text)
+
+    // Configure voice settings
+    utterance.rate = 0.9 // Slightly slower for kids
+    utterance.pitch = 1.1 // Slightly higher pitch for storytelling
+    utterance.volume = 1
+
+    // Set up event handlers
+    utterance.onstart = () => {
+      setIsReading(true)
+    }
+
+    utterance.onend = () => {
+      setIsReading(false)
+    }
+
+    utterance.onerror = (event) => {
+      console.error('Speech synthesis error:', event)
+      setIsReading(false)
+    }
+
+    // Start speaking
+    speechSynthesis.speak(utterance)
+  }
+
+  const stopReading = () => {
+    if (speechSynthesis) {
+      speechSynthesis.cancel()
+      setIsReading(false)
+    }
+  }
 
   const nextPage = () => {
     if (currentPage < story.pages.length - 1) {
@@ -173,6 +242,28 @@ export default function StoryBook({ story, onReset }: StoryBookProps) {
             className="p-3 bg-purple-600 text-white rounded-full hover:bg-purple-700 disabled:bg-gray-300 disabled:cursor-not-allowed transition-all transform hover:scale-110"
           >
             <ChevronLeft className="w-6 h-6" />
+          </button>
+
+          {/* Read Aloud Button */}
+          <button
+            onClick={readAloud}
+            className={`px-6 py-3 rounded-full font-semibold flex items-center gap-2 transition-all transform hover:scale-105 ${
+              isReading
+                ? 'bg-red-500 hover:bg-red-600 text-white'
+                : 'bg-blue-500 hover:bg-blue-600 text-white'
+            }`}
+          >
+            {isReading ? (
+              <>
+                <VolumeX className="w-5 h-5" />
+                Stop Reading
+              </>
+            ) : (
+              <>
+                <Volume2 className="w-5 h-5" />
+                Read Aloud
+              </>
+            )}
           </button>
 
           <button

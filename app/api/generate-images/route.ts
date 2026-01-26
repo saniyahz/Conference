@@ -21,8 +21,8 @@ async function generateImageWithRetry(
       console.log(`🎨 Generating image ${imageIndex + 1}/${imagePromptsLength} (attempt ${attempt}/${maxRetries})`)
 
           // Use FLUX-dev for better control and quality - prevents text artifacts
-          // Ultra-simple prompt with just the visual scene description
-          const cleanPrompt = `watercolor illustration for children: ${prompt}`
+          // Ultra-simple prompt emphasizing NO TEXT/WORDS
+          const cleanPrompt = `${prompt}, children's book art, no text, no words, no letters, no captions`
 
           console.log('📝 Clean prompt:', cleanPrompt)
 
