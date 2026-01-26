@@ -20,28 +20,22 @@ async function generateImageWithRetry(
     try {
       console.log(`🎨 Generating image ${imageIndex + 1}/${imagePromptsLength} (attempt ${attempt}/${maxRetries})`)
 
-          // Use FLUX-schnell for faster generation with text prevention
-          // Add explicit instructions and negative prompt
-          const cleanPrompt = prompt
+          // Use FLUX 1.1 Pro for best quality and control
+          // Add explicit NO TEXT instruction directly in prompt
+          const cleanPrompt = `${prompt} --no text, no words, no letters, no writing, no captions, pure illustration only`
 
-          // Strong negative prompt to prevent text
-          const negativePrompt = 'text, words, letters, numbers, captions, labels, speech bubbles, writing, typography, signs, watermark, signature'
-
-          console.log('📝 Prompt:', cleanPrompt)
-          console.log('🚫 Negative:', negativePrompt)
+          console.log('📝 Enhanced prompt:', cleanPrompt)
 
           const output = await replicate.run(
-            "black-forest-labs/flux-schnell",
+            "black-forest-labs/flux-1.1-pro",
             {
               input: {
                 prompt: cleanPrompt,
                 aspect_ratio: "1:1",
                 output_format: "png",
-                output_quality: 85,
-                num_outputs: 1,
-                num_inference_steps: 4,
-                disable_safety_checker: false,
-                go_fast: true
+                output_quality: 90,
+                safety_tolerance: 2,
+                prompt_upsampling: true
               }
             }
           )
@@ -139,7 +133,7 @@ export async function POST(request: NextRequest) {
       )
     }
 
-    console.log('✅ Replicate API Token found, generating', imagePrompts.length, 'images with FLUX-dev')
+    console.log('✅ Replicate API Token found, generating', imagePrompts.length, 'images with FLUX 1.1 Pro')
 
     // Generate images for each prompt using Replicate FLUX with delays between requests
     const imageUrls: string[] = []

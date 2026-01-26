@@ -129,29 +129,30 @@ PAGE 10:
 function generateConsistentCharacter(firstPageText: string, originalPrompt: string): string {
   const characterType = extractSimpleCharacterType(firstPageText, originalPrompt)
 
-  // Create detailed, consistent character descriptions for common types
+  // Create VERY detailed, consistent character descriptions for common types
+  // Include specific colors, features, clothing, and accessories that won't change
   const characterDescriptions: { [key: string]: string } = {
-    'dog': 'golden retriever puppy with fluffy fur, big brown eyes, wearing a red collar',
-    'cat': 'orange tabby cat with green eyes and white paws',
-    'dragon': 'small purple dragon with sparkly scales, tiny wings, and kind eyes',
-    'unicorn': 'white unicorn with flowing rainbow mane, golden horn, and gentle smile',
-    'bear': 'brown teddy bear with soft fur, black button nose, and friendly face',
-    'rabbit': 'white bunny with long floppy ears, pink nose, and fluffy tail',
-    'bunny': 'white bunny with long floppy ears, pink nose, and fluffy tail',
-    'fox': 'red fox with bushy tail, pointy ears, and bright eyes',
-    'elephant': 'baby elephant with big ears, small tusks, and playful trunk',
-    'lion': 'young lion cub with golden mane, round face, and brave eyes',
-    'mouse': 'small gray mouse with big round ears, tiny whiskers, and bright eyes',
-    'princess': 'young princess with long flowing hair, sparkly dress, and kind smile',
-    'prince': 'young prince with neat hair, royal outfit, and brave expression',
-    'fairy': 'tiny fairy with colorful wings, flowing dress, and sparkly wand',
-    'wizard': 'young wizard with star-covered robe, pointy hat, and magic wand',
-    'knight': 'young knight in shiny armor, blue cape, and friendly smile',
-    'pirate': 'young pirate with bandana, vest, and adventurous spirit'
+    'dog': 'a specific golden retriever puppy with fluffy cream-colored fur, large warm brown eyes, a small black nose, wearing a bright red collar with a silver tag, floppy ears, and a constantly wagging tail',
+    'cat': 'a specific orange tabby cat with distinctive tiger-like stripes, bright emerald green eyes, white paws and chest, a pink nose, and a long striped tail',
+    'dragon': 'a specific small dragon with soft pink scales covering its entire body, cream-colored belly, tiny translucent wings with golden veins, gentle amber eyes, small curved horns, and a friendly smile',
+    'unicorn': 'a specific white unicorn with a flowing rainbow-colored mane (red, orange, yellow, green, blue, purple bands), a long golden spiral horn on its forehead, soft purple eyes, white coat, and a rainbow-colored tail',
+    'bear': 'a specific brown teddy bear with caramel-colored soft fur, small black button eyes, a large black button nose, a friendly smile, round ears, and a small red bow tie',
+    'rabbit': 'a specific white bunny with pure white fluffy fur, very long floppy ears with pink insides, a tiny pink nose, bright blue eyes, a small round fluffy tail, and white whiskers',
+    'bunny': 'a specific white bunny with pure white fluffy fur, very long floppy ears with pink insides, a tiny pink nose, bright blue eyes, a small round fluffy tail, and white whiskers',
+    'fox': 'a specific red fox with bright orange-red fur on its body, white fur on its chest and belly, black paws and ear tips, a large bushy orange tail with a white tip, amber eyes, and pointy ears',
+    'elephant': 'a specific baby elephant with light gray wrinkled skin, large floppy ears with pink insides, small white tusks just starting to grow, a playful curled trunk, small brown eyes, and chunky legs',
+    'lion': 'a specific young lion cub with golden-tan fur, a small fluffy orange mane starting to grow, round face, big amber eyes, small pink nose, white whiskers, and a tuft at the end of its tail',
+    'mouse': 'a specific small gray mouse with soft gray fur, very large round pink ears, tiny black whiskers, bright black eyes like beads, a long pink tail, and small white paws',
+    'princess': 'a specific young princess with long flowing brown hair with small sparkles, wearing a lavender dress with golden embroidery, a small silver tiara with purple gems, kind green eyes, and a gentle smile',
+    'prince': 'a specific young prince with neat dark hair, wearing a royal blue jacket with gold buttons, white pants, a small gold crown, brown eyes, and a brave friendly expression',
+    'fairy': 'a specific tiny fairy with translucent rainbow wings, wearing a flowing pink dress made of flower petals, long blonde hair with small flowers, holding a silver wand with a star on top, and sparkling blue eyes',
+    'wizard': 'a specific young wizard with a long purple robe covered in silver stars and moons, a tall pointed purple hat, a long wooden wand with a crystal on top, kind gray eyes, and a long white beard',
+    'knight': 'a specific young knight wearing shining silver armor with gold trim, a flowing blue cape, a small silver helmet with a red feather plume, holding a silver sword, and a friendly smile',
+    'pirate': 'a specific young pirate wearing a red bandana with white dots, a brown leather vest, white shirt with rolled-up sleeves, black pants, brown boots, an eye patch over the left eye, and an adventurous grin'
   }
 
-  // Return the consistent description, or create a generic one
-  const description = characterDescriptions[characterType] || `young ${characterType} with kind eyes and friendly appearance`
+  // Return the consistent description, or create a detailed generic one
+  const description = characterDescriptions[characterType] || `a specific young ${characterType} with distinctive features: kind warm eyes, friendly smile, consistent appearance throughout`
   console.log('👤 Consistent character:', description)
   return description
 }
@@ -181,14 +182,15 @@ function generateImagePrompts(story: any, originalPrompt: string): string[] {
   const firstPageText = story.pages[0]?.text || ''
   const consistentCharacter = generateConsistentCharacter(firstPageText, originalPrompt)
 
-  // Generate prompts for each page with the SAME character
+  // Generate prompts for each page with the SAME EXACT character
   const prompts = story.pages.map((page: any, index: number) => {
     const scene = createVisualScene(index)
 
-    // Build prompt with consistent character + scene + strong no-text instructions
-    const prompt = `children's book illustration, watercolor style, ${consistentCharacter}, ${scene}, soft pastel colors, pure visual art without any text or words or letters or captions, illustration only`
+    // Build prompt with VERY DETAILED consistent character + scene + strong no-text instructions
+    // Emphasize "same character" and "consistent appearance"
+    const prompt = `Professional children's book illustration in soft watercolor style. IMPORTANT: Show the EXACT SAME character throughout - ${consistentCharacter}. The character must have IDENTICAL appearance, colors, and features in every image. Scene: ${scene}. Style: soft pastel colors, gentle lighting, whimsical, kid-friendly. CRITICAL: Pure illustration with absolutely NO text, NO words, NO letters, NO captions, NO labels of any kind.`
 
-    console.log(`Page ${index + 1} prompt:`, prompt.substring(0, 100) + '...')
+    console.log(`Page ${index + 1} prompt:`, prompt.substring(0, 120) + '...')
     return prompt
   })
 
