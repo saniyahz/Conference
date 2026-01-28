@@ -11,7 +11,6 @@ async function getImageAsBase64(url: string): Promise<string> {
     const base64 = buffer.toString('base64')
     return `data:image/png;base64,${base64}`
   } catch (error) {
-    console.error('Error fetching image:', error)
     throw error
   }
 }
@@ -133,7 +132,6 @@ export async function POST(request: NextRequest) {
       if (imageUrl && typeof imageUrl === 'string' && imageUrl.trim() !== '') {
         try {
           // Convert image URL to base64 so jsPDF can use it
-          console.log(`📄 Adding image ${i + 1} to PDF...`)
           const imageBase64 = await getImageAsBase64(imageUrl)
 
           // DALL-E images are 1024x1024 (square), so maintain aspect ratio
@@ -167,9 +165,7 @@ export async function POST(request: NextRequest) {
           pdf.setDrawColor(180, 180, 180)
           pdf.setLineWidth(0.5)
           pdf.roundedRect(imageX, imageY, imageWidth, imageHeight, 2, 2, 'S')
-          console.log(`✅ Image ${i + 1} added to PDF successfully`)
         } catch (error) {
-          console.error('Error adding image:', error)
           // Light placeholder box - use max dimensions since image failed to load
           pdf.setFillColor(245, 245, 250)
           pdf.roundedRect(margin, imageY, maxImageWidth, maxImageHeight, 2, 2, 'F')

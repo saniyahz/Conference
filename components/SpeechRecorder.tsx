@@ -1,7 +1,5 @@
 'use client'
 
-console.log('🚀🚀🚀 SpeechRecorder.tsx LOADED - KIDS VOICE OPTIMIZED -' + new Date().toISOString())
-
 import { useState, useRef, useEffect } from 'react'
 import { Mic, MicOff, Play, Trash2, Volume2 } from 'lucide-react'
 
@@ -20,7 +18,6 @@ export default function SpeechRecorder({ onComplete }: SpeechRecorderProps) {
   const shouldBeRecordingRef = useRef(false) // Track if we want to keep recording
 
   useEffect(() => {
-    console.log('✅ Speech Recorder SIMPLIFIED - Fast & Responsive')
     if (typeof window !== 'undefined') {
       const SpeechRecognition = (window as any).SpeechRecognition || (window as any).webkitSpeechRecognition
 
@@ -36,7 +33,6 @@ export default function SpeechRecorder({ onComplete }: SpeechRecorderProps) {
       // maxAlternatives = 1 (default) for SPEED
 
       recognition.onstart = () => {
-        console.log('🎤 MICROPHONE READY - Start speaking now!')
         setIsStarting(false)
         setIsRecording(true)
       }
@@ -49,7 +45,6 @@ export default function SpeechRecorder({ onComplete }: SpeechRecorderProps) {
           const transcript = event.results[i][0].transcript
           if (event.results[i].isFinal) {
             finalTranscript += transcript + ' '
-            console.log('✅ HEARD:', transcript)
           } else {
             interimTranscript += transcript
           }
@@ -71,27 +66,18 @@ export default function SpeechRecorder({ onComplete }: SpeechRecorderProps) {
           setIsRecording(false)
           setIsStarting(false)
         }
-        // Ignore no-speech errors - we'll auto-restart anyway
-        if (event.error === 'no-speech') {
-          console.log('⚠️ No speech detected, but will keep listening...')
-        }
       }
 
       recognition.onend = () => {
-        console.log('🔄 Recognition ended')
-
         // Auto-restart if we should still be recording
         if (shouldBeRecordingRef.current) {
-          console.log('🔁 Auto-restarting to continue listening...')
           setIsRecording(false) // Turn red off
           setIsStarting(true) // Show yellow "starting" state
           setTimeout(() => {
             if (shouldBeRecordingRef.current) {
               try {
                 recognition.start()
-                console.log('✅ Restarting...')
               } catch (e) {
-                console.log('Already starting...')
                 setIsStarting(false)
               }
             }
@@ -107,14 +93,13 @@ export default function SpeechRecorder({ onComplete }: SpeechRecorderProps) {
 
       // CLEANUP: Stop recognition when component unmounts
       return () => {
-        console.log('🧹 Cleaning up SpeechRecorder - stopping recognition')
         shouldBeRecordingRef.current = false
         if (recognition) {
           try {
             recognition.stop()
             recognition.abort()
           } catch (e) {
-            console.log('Recognition already stopped')
+            // Recognition already stopped
           }
         }
       }
@@ -128,9 +113,7 @@ export default function SpeechRecorder({ onComplete }: SpeechRecorderProps) {
       shouldBeRecordingRef.current = true // Enable auto-restart
       try {
         recognitionRef.current.start()
-        console.log('🎤 Starting microphone...')
       } catch (e) {
-        console.log('Already started')
         setIsStarting(false)
       }
     }
@@ -143,9 +126,8 @@ export default function SpeechRecorder({ onComplete }: SpeechRecorderProps) {
       setIsStarting(false)
       try {
         recognitionRef.current.stop()
-        console.log('🛑 STOPPED')
       } catch (e) {
-        console.log('Already stopped')
+        // Already stopped
       }
     }
   }

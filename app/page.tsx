@@ -1,7 +1,5 @@
 'use client'
 
-console.log('🔥🔥🔥 MAIN PAGE LOADED - Version 7.0 - Fixed Images & Consistency - ' + new Date().toISOString())
-
 import { useState } from 'react'
 import { useSession } from 'next-auth/react'
 import Link from 'next/link'
@@ -71,7 +69,6 @@ export default function Home() {
 
       if (!imagesResponse.ok) {
         // If images fail, continue with story but no images
-        console.warn('Image generation failed, continuing without images')
         setStory({
           ...storyData.story,
           author: authorName
@@ -81,9 +78,6 @@ export default function Home() {
       }
 
       const imagesData = await imagesResponse.json()
-
-      console.log('🖼️ Received image URLs:', imagesData.imageUrls)
-      console.log('🖼️ Number of images:', imagesData.imageUrls?.length)
 
       // Step 3: Combine story with images
       const storyWithImages = {

@@ -18,13 +18,9 @@ async function generateImageWithRetry(
 ): Promise<string> {
   for (let attempt = 1; attempt <= maxRetries; attempt++) {
     try {
-      console.log(`🎨 Generating image ${imageIndex + 1}/${imagePromptsLength} (attempt ${attempt}/${maxRetries})`)
-
           // Use FLUX 1.1 Pro for best quality and control
           // Add explicit NO TEXT instruction directly in prompt
           const cleanPrompt = `${prompt} --no text, no words, no letters, no writing, no captions, pure illustration only`
-
-          console.log('📝 Enhanced prompt:', cleanPrompt)
 
           const output = await replicate.run(
             "black-forest-labs/flux-1.1-pro",
@@ -39,8 +35,6 @@ async function generateImageWithRetry(
               }
             }
           )
-
-          console.log(`🔍 Raw output from Replicate:`, typeof output, Array.isArray(output), output)
 
           // Handle output - SDXL returns array of URLs
           let imageUrl = ''
@@ -70,42 +64,33 @@ async function generateImageWithRetry(
                   imageUrl = chunks.join('')
                 }
               } catch (e) {
-                console.error('Error reading stream:', e)
+                // Error reading stream
               }
             }
           } else if (typeof output === 'string') {
             imageUrl = output
           }
 
-          console.log(`🔍 Processed image URL:`, imageUrl)
-
           if (imageUrl && imageUrl.startsWith('http')) {
-            console.log(`✅ Image ${imageIndex + 1} generated successfully:`, imageUrl.substring(0, 80) + '...')
           return imageUrl
         } else {
-          console.error(`❌ No valid URL for image ${imageIndex + 1}`)
           return ''
         }
       } catch (error: any) {
         const is429 = error.message?.includes('429') || error.message?.includes('Too Many Requests')
         const isRateLimit = error.message?.includes('rate limit') || is429
 
-        console.error(`❌ Error generating image ${imageIndex + 1} (attempt ${attempt}):`, error.message)
-
         if (isRateLimit && attempt < maxRetries) {
           // Wait longer for rate limits - use exponential backoff
           const waitTime = attempt === 1 ? 5000 : attempt === 2 ? 10000 : 15000
-          console.log(`⏳ Rate limited. Waiting ${waitTime/1000} seconds before retry...`)
           await sleep(waitTime)
           continue
         } else if (attempt < maxRetries) {
           // For other errors, wait a bit before retry
-          console.log(`⏳ Waiting 3 seconds before retry...`)
           await sleep(3000)
           continue
         } else {
           // Max retries reached
-          console.error(`❌ Failed to generate image ${imageIndex + 1} after ${maxRetries} attempts`)
           return ''
         }
       }
@@ -126,21 +111,17 @@ export async function POST(request: NextRequest) {
 
     // Check if API key is configured
     if (!process.env.REPLICATE_API_TOKEN) {
-      console.error('❌ REPLICATE_API_TOKEN is not set in environment variables')
       return NextResponse.json(
         { error: 'Replicate API token not configured' },
         { status: 500 }
       )
     }
 
-    console.log('✅ Replicate API Token found, generating', imagePrompts.length, 'images with FLUX 1.1 Pro')
-
     // Generate images for each prompt using Replicate FLUX with delays between requests
     const imageUrls: string[] = []
 
     for (let i = 0; i < imagePrompts.length; i++) {
       const prompt = imagePrompts[i]
-      console.log('Prompt:', prompt.substring(0, 100) + '...')
 
       // Generate image with retry logic
       const imageUrl = await generateImageWithRetry(replicate, prompt, i, imagePrompts.length)
@@ -148,7 +129,6 @@ export async function POST(request: NextRequest) {
 
       // Add delay between image generations to avoid rate limits (except after last image)
       if (i < imagePrompts.length - 1) {
-        console.log('⏳ Waiting 3 seconds before next image to avoid rate limits...')
         await sleep(3000)
       }
     }

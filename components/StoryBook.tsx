@@ -1,7 +1,5 @@
 'use client'
 
-console.log('🚀🚀🚀 StoryBook.tsx LOADED - Version 10.0 - Fixed TTS with Better Voice - ' + new Date().toISOString())
-
 import { useState, useEffect } from 'react'
 import { useSession } from 'next-auth/react'
 import { useRouter } from 'next/navigation'
@@ -33,7 +31,6 @@ export default function StoryBook({ story, onReset }: StoryBookProps) {
         const voices = window.speechSynthesis.getVoices()
         if (voices.length > 0) {
           setVoicesLoaded(true)
-          console.log('✅ Speech voices loaded:', voices.length, 'voices available')
         }
       }
 
@@ -80,7 +77,6 @@ export default function StoryBook({ story, onReset }: StoryBookProps) {
 
         // Get available voices
         const voices = speechSynthesis.getVoices()
-        console.log('🔊 Available voices:', voices.length)
 
         // Prefer female English voices for children's stories
         const preferredVoice = voices.find(voice =>
@@ -95,7 +91,6 @@ export default function StoryBook({ story, onReset }: StoryBookProps) {
 
         if (preferredVoice) {
           utterance.voice = preferredVoice
-          console.log('🎙️ Using voice:', preferredVoice.name)
         }
 
         // Configure voice settings for storytelling
@@ -106,23 +101,19 @@ export default function StoryBook({ story, onReset }: StoryBookProps) {
 
         // Set up event handlers
         utterance.onstart = () => {
-          console.log('🔊 Started reading page', currentPage + 1)
           setIsReading(true)
         }
 
         utterance.onend = () => {
-          console.log('✅ Finished reading page', currentPage + 1)
           setIsReading(false)
         }
 
         utterance.onerror = (event) => {
-          console.error('❌ Speech synthesis error:', event.error, event)
           setIsReading(false)
 
           // Only show alert for real errors, not cancellations
           if (event.error !== 'canceled' && event.error !== 'interrupted') {
             // Try again once automatically
-            console.log('🔄 Retrying speech synthesis...')
             speechSynthesis.cancel()
             setTimeout(() => {
               speechSynthesis.speak(utterance)
@@ -130,16 +121,7 @@ export default function StoryBook({ story, onReset }: StoryBookProps) {
           }
         }
 
-        utterance.onpause = () => {
-          console.log('⏸️ Speech paused')
-        }
-
-        utterance.onresume = () => {
-          console.log('▶️ Speech resumed')
-        }
-
         // Start speaking
-        console.log('🎙️ Speaking text:', text.substring(0, 50) + '...')
         speechSynthesis.speak(utterance)
 
         // Workaround for Chrome bug where speech stops after 15 seconds
@@ -156,7 +138,6 @@ export default function StoryBook({ story, onReset }: StoryBookProps) {
         // Store interval to clean up later
         utterance.onend = () => {
           clearInterval(resumeInterval)
-          console.log('✅ Finished reading page', currentPage + 1)
           setIsReading(false)
         }
       }, 100)
@@ -169,7 +150,6 @@ export default function StoryBook({ story, onReset }: StoryBookProps) {
 
   const stopReading = () => {
     if (speechSynthesis) {
-      console.log('🛑 Stopping speech')
       speechSynthesis.cancel()
       setIsReading(false)
     }
