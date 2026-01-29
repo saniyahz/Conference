@@ -153,22 +153,33 @@ function generateConsistentCharacter(firstPageText: string, originalPrompt: stri
   return description
 }
 
-// Create scene descriptions for each page
-function createVisualScene(pageIndex: number): string {
-  const scenes = [
-    'standing in a cozy home interior, warm lighting, peaceful',
-    'playing with friends in a sunny garden, flowers around',
-    'walking on a forest path, trees and nature, beginning adventure',
-    'discovering something, looking surprised and curious',
-    'standing tall with determined expression, ready to help',
-    'working on a task, focused and trying hard',
-    'sitting and thinking, gentle atmosphere, learning',
-    'with friends helping together, teamwork and cooperation',
-    'celebrating with joy, happy dancing, success',
-    'peaceful happy ending scene, surrounded by friends and love'
-  ]
+// Extract key scene details from page text
+function extractSceneFromText(pageText: string): string {
+  // Get the first 2-3 sentences which usually describe the main action
+  const sentences = pageText.split(/[.!?]+/).filter(s => s.trim().length > 10)
+  const keyContent = sentences.slice(0, 2).join('. ')
 
-  return scenes[pageIndex] || scenes[0]
+  // Extract action words and settings
+  const actionWords = keyContent.match(/\b(walking|running|flying|swimming|climbing|playing|dancing|singing|crying|laughing|hugging|helping|finding|discovering|exploring|hiding|chasing|jumping|sitting|standing|looking|watching|eating|sleeping|dreaming|building|creating|painting|reading|talking|whispering|shouting|celebrating|fighting|saving|rescuing|meeting|greeting)\b/gi) || []
+
+  const settingWords = keyContent.match(/\b(forest|garden|castle|house|home|mountain|river|lake|ocean|beach|sky|clouds|rainbow|cave|village|town|city|school|park|meadow|field|kitchen|bedroom|library|tower|bridge|path|road|tree|flowers|stars|moon|sun)\b/gi) || []
+
+  const emotionWords = keyContent.match(/\b(happy|sad|excited|worried|scared|brave|curious|surprised|amazed|proud|nervous|hopeful|determined|joyful|peaceful|magical)\b/gi) || []
+
+  // Build a condensed scene description
+  let scene = keyContent.slice(0, 150) // Take first 150 chars of content
+
+  if (actionWords.length > 0) {
+    scene += `, ${actionWords[0]} action`
+  }
+  if (settingWords.length > 0) {
+    scene += `, ${settingWords.join(' and ')} setting`
+  }
+  if (emotionWords.length > 0) {
+    scene += `, ${emotionWords[0]} mood`
+  }
+
+  return scene
 }
 
 function generateImagePrompts(story: any, originalPrompt: string): string[] {
@@ -176,13 +187,13 @@ function generateImagePrompts(story: any, originalPrompt: string): string[] {
   const firstPageText = story.pages[0]?.text || ''
   const consistentCharacter = generateConsistentCharacter(firstPageText, originalPrompt)
 
-  // Generate prompts for each page with the SAME EXACT character
+  // Generate prompts for each page based on ACTUAL story content
   const prompts = story.pages.map((page: any, index: number) => {
-    const scene = createVisualScene(index)
+    // Extract the real scene from the page text
+    const sceneFromStory = extractSceneFromText(page.text || '')
 
-    // Build prompt with VERY DETAILED consistent character + scene + strong no-text instructions
-    // Emphasize "same character" and "consistent appearance"
-    return `Professional children's book illustration in soft watercolor style. IMPORTANT: Show the EXACT SAME character throughout - ${consistentCharacter}. The character must have IDENTICAL appearance, colors, and features in every image. Scene: ${scene}. Style: soft pastel colors, gentle lighting, whimsical, kid-friendly. CRITICAL: Pure illustration with absolutely NO text, NO words, NO letters, NO captions, NO labels of any kind.`
+    // Build prompt with character + actual scene content
+    return `Children's book illustration: ${sceneFromStory}. Main character: ${consistentCharacter}. Show the ACTION and ENVIRONMENT described. Style: soft watercolor, pastel colors, whimsical, kid-friendly, detailed background and scenery.`
   })
 
   return prompts
