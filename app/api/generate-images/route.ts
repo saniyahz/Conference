@@ -19,8 +19,8 @@ async function generateImageWithRetry(
   for (let attempt = 1; attempt <= maxRetries; attempt++) {
     try {
           // Use FLUX 1.1 Pro for best quality and control
-          // Add explicit NO TEXT instruction directly in prompt
-          const cleanPrompt = `${prompt} --no text, no words, no letters, no writing, no captions, pure illustration only`
+          // Prepend strong no-text instruction - FLUX doesn't support --no syntax
+          const cleanPrompt = `Children's book illustration without any text, letters, words, or writing. Pure visual artwork only. ${prompt}. Digital painting style, vibrant colors, no typography, no captions, no watermarks.`
 
           const output = await replicate.run(
             "black-forest-labs/flux-1.1-pro",

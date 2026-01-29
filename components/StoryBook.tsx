@@ -55,14 +55,15 @@ export default function StoryBook({ story, onReset }: StoryBookProps) {
   }, [])
 
   const readAloud = () => {
-    if (!speechSynthesis) {
-      alert('Text-to-speech is not supported in your browser. Please try using Chrome, Edge, or Safari.')
-      return
-    }
-
     // If already reading, stop
     if (isReading) {
       stopReading()
+      return
+    }
+
+    // Check for browser speech synthesis support
+    if (!speechSynthesis) {
+      alert('Text-to-speech is not supported in your browser. Please try using Chrome, Edge, or Safari.')
       return
     }
 
@@ -70,82 +71,88 @@ export default function StoryBook({ story, onReset }: StoryBookProps) {
       // Cancel any ongoing speech first
       speechSynthesis.cancel()
 
-      // Small delay to ensure previous utterance is fully cancelled
-      setTimeout(() => {
-        const text = story.pages[currentPage].text
-        const utterance = new SpeechSynthesisUtterance(text)
+      const text = story.pages[currentPage].text
+      if (!text || text.trim().length === 0) {
+        return
+      }
 
-        // Get available voices
-        const voices = speechSynthesis.getVoices()
+      const utterance = new SpeechSynthesisUtterance(text)
 
-        // Prefer female English voices for children's stories
-        const preferredVoice = voices.find(voice =>
-          voice.lang.startsWith('en') &&
-          (voice.name.toLowerCase().includes('female') ||
-           voice.name.includes('Samantha') ||
-           voice.name.includes('Karen') ||
-           voice.name.includes('Victoria') ||
-           voice.name.includes('Google UK English Female') ||
-           voice.name.includes('Microsoft Zira'))
-        ) || voices.find(voice => voice.lang.startsWith('en')) || voices[0]
+      // Get available voices - may need to wait for them to load
+      let voices = speechSynthesis.getVoices()
 
-        if (preferredVoice) {
-          utterance.voice = preferredVoice
-        }
-
-        // Configure voice settings for storytelling
-        utterance.rate = 0.85 // Slower for kids to follow along
-        utterance.pitch = 1.1 // Slightly higher pitch for storytelling
-        utterance.volume = 1
-        utterance.lang = 'en-US'
-
-        // Set up event handlers
-        utterance.onstart = () => {
-          setIsReading(true)
-        }
-
-        utterance.onend = () => {
-          setIsReading(false)
-        }
-
-        utterance.onerror = (event) => {
-          setIsReading(false)
-
-          // Only show alert for real errors, not cancellations
-          if (event.error !== 'canceled' && event.error !== 'interrupted') {
-            // Try again once automatically
-            speechSynthesis.cancel()
-            setTimeout(() => {
-              speechSynthesis.speak(utterance)
-            }, 500)
-          }
-        }
-
-        // Start speaking
-        speechSynthesis.speak(utterance)
-
-        // Workaround for Chrome bug where speech stops after 15 seconds
-        // Resume every 14 seconds to keep it going
-        const resumeInterval = setInterval(() => {
-          if (speechSynthesis.speaking && !speechSynthesis.paused) {
-            speechSynthesis.pause()
-            speechSynthesis.resume()
-          } else {
-            clearInterval(resumeInterval)
-          }
-        }, 14000)
-
-        // Store interval to clean up later
-        utterance.onend = () => {
-          clearInterval(resumeInterval)
-          setIsReading(false)
-        }
-      }, 100)
+      // If voices not loaded yet, try again after a short delay
+      if (voices.length === 0) {
+        setTimeout(() => {
+          voices = speechSynthesis.getVoices()
+          startSpeaking(utterance, voices)
+        }, 100)
+      } else {
+        startSpeaking(utterance, voices)
+      }
     } catch (error) {
-      console.error('❌ Error in readAloud:', error)
+      console.error('Error in readAloud:', error)
       setIsReading(false)
-      alert('Text-to-speech is not working. Please try using Chrome or Edge browser for best results.')
     }
+  }
+
+  const startSpeaking = (utterance: SpeechSynthesisUtterance, voices: SpeechSynthesisVoice[]) => {
+    if (!speechSynthesis) return
+
+    // Prefer English voices for children's stories
+    const preferredVoice = voices.find(voice =>
+      voice.lang.startsWith('en') &&
+      (voice.name.toLowerCase().includes('female') ||
+       voice.name.includes('Samantha') ||
+       voice.name.includes('Karen') ||
+       voice.name.includes('Victoria') ||
+       voice.name.includes('Google UK English Female') ||
+       voice.name.includes('Microsoft Zira'))
+    ) || voices.find(voice => voice.lang.startsWith('en')) || voices[0]
+
+    if (preferredVoice) {
+      utterance.voice = preferredVoice
+    }
+
+    // Configure voice settings for storytelling
+    utterance.rate = 0.85 // Slower for kids to follow along
+    utterance.pitch = 1.1 // Slightly higher pitch for storytelling
+    utterance.volume = 1
+    utterance.lang = 'en-US'
+
+    // Set up event handlers
+    utterance.onstart = () => {
+      setIsReading(true)
+    }
+
+    utterance.onend = () => {
+      setIsReading(false)
+    }
+
+    utterance.onerror = (event) => {
+      // Only log non-cancellation errors
+      if (event.error !== 'canceled' && event.error !== 'interrupted') {
+        console.error('Speech error:', event.error)
+      }
+      setIsReading(false)
+    }
+
+    // Start speaking
+    speechSynthesis.speak(utterance)
+
+    // Mark as reading immediately
+    setIsReading(true)
+
+    // Workaround for Chrome bug where speech stops after 15 seconds
+    const resumeInterval = setInterval(() => {
+      if (speechSynthesis && speechSynthesis.speaking && !speechSynthesis.paused) {
+        speechSynthesis.pause()
+        speechSynthesis.resume()
+      } else if (!speechSynthesis?.speaking) {
+        clearInterval(resumeInterval)
+        setIsReading(false)
+      }
+    }, 14000)
   }
 
   const stopReading = () => {
