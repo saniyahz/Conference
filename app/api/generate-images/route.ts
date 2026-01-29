@@ -18,20 +18,27 @@ async function generateImageWithRetry(
 ): Promise<string> {
   for (let attempt = 1; attempt <= maxRetries; attempt++) {
     try {
-          // Use FLUX 1.1 Pro for best quality and control
-          // Prepend strong no-text instruction - FLUX doesn't support --no syntax
-          const cleanPrompt = `Children's book illustration without any text, letters, words, or writing. Pure visual artwork only. ${prompt}. Digital painting style, vibrant colors, no typography, no captions, no watermarks.`
+          // Use Stable Diffusion XL which has proper negative_prompt support
+          // This is the key to preventing text in images
+          const cleanPrompt = `${prompt}, children's book illustration, soft watercolor style, vibrant colors, whimsical, kid-friendly, pure visual artwork`
+
+          // Strong negative prompt to prevent ANY text
+          const negativePrompt = `text, words, letters, alphabet, writing, caption, label, title, watermark, signature, logo, typography, font, numbers, digits, symbols, characters, inscriptions, subtitles, credits, banner, sign, placard, written content, handwriting, calligraphy, printed text, any text whatsoever`
 
           const output = await replicate.run(
-            "black-forest-labs/flux-1.1-pro",
+            "stability-ai/sdxl:7762fd07cf82c948538e41f63f77d685e02b063e37e496e96eefd46c929f9bdc",
             {
               input: {
                 prompt: cleanPrompt,
-                aspect_ratio: "1:1",
-                output_format: "png",
-                output_quality: 90,
-                safety_tolerance: 2,
-                prompt_upsampling: true
+                negative_prompt: negativePrompt,
+                width: 1024,
+                height: 1024,
+                num_outputs: 1,
+                scheduler: "K_EULER",
+                num_inference_steps: 30,
+                guidance_scale: 7.5,
+                refine: "expert_ensemble_refiner",
+                high_noise_frac: 0.8
               }
             }
           )

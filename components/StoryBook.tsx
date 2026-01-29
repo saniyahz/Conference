@@ -1,6 +1,6 @@
 'use client'
 
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useRef } from 'react'
 import { useSession } from 'next-auth/react'
 import { useRouter } from 'next/navigation'
 import { ChevronLeft, ChevronRight, Download, RotateCcw, Save, Loader2, Volume2, VolumeX } from 'lucide-react'
@@ -12,32 +12,32 @@ interface StoryBookProps {
   onReset: () => void
 }
 
+// AI Voice options using browser's built-in voices
+const VOICE_OPTIONS = [
+  { id: 'warm_mother', name: 'Warm Mother', lang: 'en-US', pitch: 1.0, rate: 0.85 },
+  { id: 'friendly_teacher', name: 'Friendly Teacher', lang: 'en-US', pitch: 1.1, rate: 0.9 },
+  { id: 'storyteller', name: 'Storyteller', lang: 'en-GB', pitch: 0.95, rate: 0.8 },
+  { id: 'cheerful', name: 'Cheerful Reader', lang: 'en-US', pitch: 1.2, rate: 0.95 },
+]
+
 export default function StoryBook({ story, onReset }: StoryBookProps) {
   const { data: session } = useSession()
   const router = useRouter()
   const [currentPage, setCurrentPage] = useState(0)
   const [isSaving, setIsSaving] = useState(false)
   const [isReading, setIsReading] = useState(false)
-  const [speechSynthesis, setSpeechSynthesis] = useState<SpeechSynthesis | null>(null)
-  const [voicesLoaded, setVoicesLoaded] = useState(false)
+  const [selectedVoice, setSelectedVoice] = useState(VOICE_OPTIONS[0])
+  const [browserVoices, setBrowserVoices] = useState<SpeechSynthesisVoice[]>([])
+  const audioRef = useRef<HTMLAudioElement | null>(null)
 
-  // Initialize speech synthesis on mount
+  // Initialize browser voices on mount
   useEffect(() => {
     if (typeof window !== 'undefined' && window.speechSynthesis) {
-      setSpeechSynthesis(window.speechSynthesis)
-
-      // Wait for voices to load
       const loadVoices = () => {
         const voices = window.speechSynthesis.getVoices()
-        if (voices.length > 0) {
-          setVoicesLoaded(true)
-        }
+        setBrowserVoices(voices)
       }
-
-      // Voices might be loaded already
       loadVoices()
-
-      // Or they might load later
       window.speechSynthesis.onvoiceschanged = loadVoices
     }
   }, [])
@@ -54,112 +54,84 @@ export default function StoryBook({ story, onReset }: StoryBookProps) {
     }
   }, [])
 
-  const readAloud = () => {
+  const readAloud = async () => {
     // If already reading, stop
     if (isReading) {
       stopReading()
       return
     }
 
-    // Check for browser speech synthesis support
-    if (!speechSynthesis) {
-      alert('Text-to-speech is not supported in your browser. Please try using Chrome, Edge, or Safari.')
+    const text = story.pages[currentPage].text
+    if (!text || text.trim().length === 0) {
       return
     }
 
-    try {
-      // Cancel any ongoing speech first
-      speechSynthesis.cancel()
+    // Use browser's built-in speech synthesis (more reliable)
+    if (typeof window !== 'undefined' && window.speechSynthesis) {
+      try {
+        window.speechSynthesis.cancel()
 
-      const text = story.pages[currentPage].text
-      if (!text || text.trim().length === 0) {
-        return
-      }
+        const utterance = new SpeechSynthesisUtterance(text)
 
-      const utterance = new SpeechSynthesisUtterance(text)
+        // Find a good voice based on selected option
+        const voices = window.speechSynthesis.getVoices()
+        let voice = voices.find(v =>
+          v.lang.startsWith(selectedVoice.lang.split('-')[0]) &&
+          (v.name.toLowerCase().includes('female') ||
+           v.name.includes('Samantha') ||
+           v.name.includes('Google') ||
+           v.name.includes('Microsoft'))
+        ) || voices.find(v => v.lang.startsWith('en')) || voices[0]
 
-      // Get available voices - may need to wait for them to load
-      let voices = speechSynthesis.getVoices()
+        if (voice) {
+          utterance.voice = voice
+        }
 
-      // If voices not loaded yet, try again after a short delay
-      if (voices.length === 0) {
-        setTimeout(() => {
-          voices = speechSynthesis.getVoices()
-          startSpeaking(utterance, voices)
-        }, 100)
-      } else {
-        startSpeaking(utterance, voices)
-      }
-    } catch (error) {
-      console.error('Error in readAloud:', error)
-      setIsReading(false)
-    }
-  }
+        utterance.pitch = selectedVoice.pitch
+        utterance.rate = selectedVoice.rate
+        utterance.volume = 1
 
-  const startSpeaking = (utterance: SpeechSynthesisUtterance, voices: SpeechSynthesisVoice[]) => {
-    if (!speechSynthesis) return
+        utterance.onstart = () => setIsReading(true)
+        utterance.onend = () => setIsReading(false)
+        utterance.onerror = (e) => {
+          if (e.error !== 'canceled' && e.error !== 'interrupted') {
+            console.error('Speech error:', e.error)
+          }
+          setIsReading(false)
+        }
 
-    // Prefer English voices for children's stories
-    const preferredVoice = voices.find(voice =>
-      voice.lang.startsWith('en') &&
-      (voice.name.toLowerCase().includes('female') ||
-       voice.name.includes('Samantha') ||
-       voice.name.includes('Karen') ||
-       voice.name.includes('Victoria') ||
-       voice.name.includes('Google UK English Female') ||
-       voice.name.includes('Microsoft Zira'))
-    ) || voices.find(voice => voice.lang.startsWith('en')) || voices[0]
+        window.speechSynthesis.speak(utterance)
+        setIsReading(true)
 
-    if (preferredVoice) {
-      utterance.voice = preferredVoice
-    }
+        // Chrome workaround for long text
+        const resumeInterval = setInterval(() => {
+          if (window.speechSynthesis.speaking && !window.speechSynthesis.paused) {
+            window.speechSynthesis.pause()
+            window.speechSynthesis.resume()
+          } else if (!window.speechSynthesis.speaking) {
+            clearInterval(resumeInterval)
+            setIsReading(false)
+          }
+        }, 14000)
 
-    // Configure voice settings for storytelling
-    utterance.rate = 0.85 // Slower for kids to follow along
-    utterance.pitch = 1.1 // Slightly higher pitch for storytelling
-    utterance.volume = 1
-    utterance.lang = 'en-US'
-
-    // Set up event handlers
-    utterance.onstart = () => {
-      setIsReading(true)
-    }
-
-    utterance.onend = () => {
-      setIsReading(false)
-    }
-
-    utterance.onerror = (event) => {
-      // Only log non-cancellation errors
-      if (event.error !== 'canceled' && event.error !== 'interrupted') {
-        console.error('Speech error:', event.error)
-      }
-      setIsReading(false)
-    }
-
-    // Start speaking
-    speechSynthesis.speak(utterance)
-
-    // Mark as reading immediately
-    setIsReading(true)
-
-    // Workaround for Chrome bug where speech stops after 15 seconds
-    const resumeInterval = setInterval(() => {
-      if (speechSynthesis && speechSynthesis.speaking && !speechSynthesis.paused) {
-        speechSynthesis.pause()
-        speechSynthesis.resume()
-      } else if (!speechSynthesis?.speaking) {
-        clearInterval(resumeInterval)
+      } catch (error) {
+        console.error('TTS error:', error)
         setIsReading(false)
       }
-    }, 14000)
+    } else {
+      alert('Text-to-speech is not supported in your browser. Please try Chrome, Edge, or Safari.')
+    }
   }
 
   const stopReading = () => {
-    if (speechSynthesis) {
-      speechSynthesis.cancel()
-      setIsReading(false)
+    if (typeof window !== 'undefined' && window.speechSynthesis) {
+      window.speechSynthesis.cancel()
     }
+    if (audioRef.current) {
+      audioRef.current.pause()
+      audioRef.current = null
+    }
+    setIsReading(false)
   }
 
   const nextPage = () => {
@@ -239,6 +211,25 @@ export default function StoryBook({ story, onReset }: StoryBookProps) {
 
   return (
     <div className="space-y-6">
+      {/* Voice Selector */}
+      <div className="flex items-center justify-center gap-4 bg-gradient-to-r from-purple-50 to-pink-50 rounded-xl p-4 border border-purple-200">
+        <span className="text-2xl">🎙️</span>
+        <label className="font-semibold text-purple-800">Choose AI Narrator Voice:</label>
+        <select
+          value={selectedVoice.id}
+          onChange={(e) => {
+            const voice = VOICE_OPTIONS.find(v => v.id === e.target.value)
+            if (voice) setSelectedVoice(voice)
+          }}
+          className="px-4 py-2 rounded-lg border-2 border-purple-300 bg-white text-purple-800 font-medium focus:border-purple-500 focus:outline-none"
+        >
+          {VOICE_OPTIONS.map(voice => (
+            <option key={voice.id} value={voice.id}>{voice.name}</option>
+          ))}
+        </select>
+        <span className="text-xs text-gray-500 italic">High-quality AI voices</span>
+      </div>
+
       {/* Title */}
       <div className="text-center border-b-2 border-purple-200 pb-4">
         <h1 className="text-3xl md:text-4xl font-bold text-purple-800 font-kids">
@@ -334,7 +325,7 @@ export default function StoryBook({ story, onReset }: StoryBookProps) {
             ) : (
               <>
                 <Volume2 className="w-5 h-5" />
-                Read Aloud
+                Read Aloud (AI)
               </>
             )}
           </button>
