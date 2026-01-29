@@ -162,7 +162,10 @@ export default function Home() {
           )}
 
           {(step === 'generating' || step === 'generating-images') && (
-            <LoadingSpinner message={loadingMessage} />
+            <LoadingSpinner
+              message={loadingMessage}
+              stage={step === 'generating' ? 'story' : 'images'}
+            />
           )}
 
           {step === 'book' && story && (
