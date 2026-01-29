@@ -14,16 +14,15 @@ async function generateImageWithRetry(
   prompt: string,
   imageIndex: number,
   imagePromptsLength: number,
-  maxRetries = 3
+  maxRetries = 2
 ): Promise<string> {
   for (let attempt = 1; attempt <= maxRetries; attempt++) {
     try {
-          // Use Stable Diffusion XL which has proper negative_prompt support
-          // This is the key to preventing text in images
+          // Use Stable Diffusion XL - optimized for speed
           const cleanPrompt = `${prompt}, children's book illustration, soft watercolor style, vibrant colors, whimsical, kid-friendly, pure visual artwork`
 
           // Strong negative prompt to prevent ANY text
-          const negativePrompt = `text, words, letters, alphabet, writing, caption, label, title, watermark, signature, logo, typography, font, numbers, digits, symbols, characters, inscriptions, subtitles, credits, banner, sign, placard, written content, handwriting, calligraphy, printed text, any text whatsoever`
+          const negativePrompt = `text, words, letters, writing, caption, label, watermark, signature, logo, typography, font, numbers`
 
           const output = await replicate.run(
             "stability-ai/sdxl:7762fd07cf82c948538e41f63f77d685e02b063e37e496e96eefd46c929f9bdc",
@@ -31,14 +30,12 @@ async function generateImageWithRetry(
               input: {
                 prompt: cleanPrompt,
                 negative_prompt: negativePrompt,
-                width: 1024,
-                height: 1024,
+                width: 768,
+                height: 768,
                 num_outputs: 1,
                 scheduler: "K_EULER",
-                num_inference_steps: 30,
-                guidance_scale: 7.5,
-                refine: "expert_ensemble_refiner",
-                high_noise_frac: 0.8
+                num_inference_steps: 20,
+                guidance_scale: 7.5
               }
             }
           )
@@ -124,19 +121,24 @@ export async function POST(request: NextRequest) {
       )
     }
 
-    // Generate images for each prompt using Replicate FLUX with delays between requests
-    const imageUrls: string[] = []
+    // Generate images in parallel batches of 3 for speed
+    const imageUrls: string[] = new Array(imagePrompts.length).fill('')
+    const batchSize = 3
 
-    for (let i = 0; i < imagePrompts.length; i++) {
-      const prompt = imagePrompts[i]
+    for (let i = 0; i < imagePrompts.length; i += batchSize) {
+      const batch = imagePrompts.slice(i, i + batchSize)
+      const batchPromises = batch.map((prompt, idx) =>
+        generateImageWithRetry(replicate, prompt, i + idx, imagePrompts.length)
+      )
 
-      // Generate image with retry logic
-      const imageUrl = await generateImageWithRetry(replicate, prompt, i, imagePrompts.length)
-      imageUrls.push(imageUrl)
+      const batchResults = await Promise.all(batchPromises)
+      batchResults.forEach((url, idx) => {
+        imageUrls[i + idx] = url
+      })
 
-      // Add delay between image generations to avoid rate limits (except after last image)
-      if (i < imagePrompts.length - 1) {
-        await sleep(3000)
+      // Small delay between batches to avoid rate limits
+      if (i + batchSize < imagePrompts.length) {
+        await sleep(2000)
       }
     }
 
