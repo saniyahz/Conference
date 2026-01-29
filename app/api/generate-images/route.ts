@@ -14,7 +14,7 @@ async function generateImageWithRetry(
   prompt: string,
   imageIndex: number,
   imagePromptsLength: number,
-  maxRetries = 2
+  maxRetries = 3
 ): Promise<string> {
   for (let attempt = 1; attempt <= maxRetries; attempt++) {
     try {
@@ -23,6 +23,8 @@ async function generateImageWithRetry(
 
           // Strong negative prompt to prevent ANY text
           const negativePrompt = `text, words, letters, writing, caption, label, watermark, signature, logo, typography, font, numbers`
+
+          console.log(`Image ${imageIndex + 1}: Attempt ${attempt}/${maxRetries}`)
 
           const output = await replicate.run(
             "stability-ai/sdxl:7762fd07cf82c948538e41f63f77d685e02b063e37e496e96eefd46c929f9bdc",
@@ -34,7 +36,7 @@ async function generateImageWithRetry(
                 height: 768,
                 num_outputs: 1,
                 scheduler: "K_EULER",
-                num_inference_steps: 20,
+                num_inference_steps: 25,
                 guidance_scale: 7.5
               }
             }
@@ -86,15 +88,18 @@ async function generateImageWithRetry(
 
         if (isRateLimit && attempt < maxRetries) {
           // Wait longer for rate limits - use exponential backoff
-          const waitTime = attempt === 1 ? 5000 : attempt === 2 ? 10000 : 15000
+          const waitTime = attempt === 1 ? 8000 : attempt === 2 ? 15000 : 25000
+          console.log(`Rate limited, waiting ${waitTime}ms before retry...`)
           await sleep(waitTime)
           continue
         } else if (attempt < maxRetries) {
           // For other errors, wait a bit before retry
-          await sleep(3000)
+          console.log(`Error on attempt ${attempt}, retrying in 5s...`)
+          await sleep(5000)
           continue
         } else {
           // Max retries reached
+          console.log(`Max retries reached for image ${imageIndex + 1}`)
           return ''
         }
       }
@@ -121,24 +126,25 @@ export async function POST(request: NextRequest) {
       )
     }
 
-    // Generate images in parallel batches of 3 for speed
-    const imageUrls: string[] = new Array(imagePrompts.length).fill('')
-    const batchSize = 3
+    // Generate images ONE AT A TIME to avoid rate limits
+    const imageUrls: string[] = []
 
-    for (let i = 0; i < imagePrompts.length; i += batchSize) {
-      const batch = imagePrompts.slice(i, i + batchSize)
-      const batchPromises = batch.map((prompt, idx) =>
-        generateImageWithRetry(replicate, prompt, i + idx, imagePrompts.length)
-      )
+    for (let i = 0; i < imagePrompts.length; i++) {
+      const prompt = imagePrompts[i]
+      console.log(`Generating image ${i + 1}/${imagePrompts.length}...`)
 
-      const batchResults = await Promise.all(batchPromises)
-      batchResults.forEach((url, idx) => {
-        imageUrls[i + idx] = url
-      })
+      try {
+        const imageUrl = await generateImageWithRetry(replicate, prompt, i, imagePrompts.length)
+        imageUrls.push(imageUrl)
+        console.log(`Image ${i + 1} done: ${imageUrl ? 'success' : 'failed'}`)
+      } catch (error) {
+        console.error(`Image ${i + 1} error:`, error)
+        imageUrls.push('') // Push empty string for failed images
+      }
 
-      // Small delay between batches to avoid rate limits
-      if (i + batchSize < imagePrompts.length) {
-        await sleep(2000)
+      // Delay between each image to avoid rate limits (3 seconds)
+      if (i < imagePrompts.length - 1) {
+        await sleep(3000)
       }
     }
 
