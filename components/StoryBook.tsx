@@ -99,6 +99,22 @@ export default function StoryBook({ story, onReset }: StoryBookProps) {
     }
   }, [])
 
+  // Pre-load ALL audio pages when story loads (if user is logged in)
+  useEffect(() => {
+    if (session && story.pages.length > 0) {
+      // Start pre-loading all pages in sequence with slight delays to not overwhelm the server
+      const preloadAllPages = async () => {
+        for (let i = 0; i < story.pages.length; i++) {
+          // Don't await - let them load in parallel but staggered
+          setTimeout(() => {
+            preloadAudio(i, selectedVoice.id)
+          }, i * 500) // Stagger by 500ms each
+        }
+      }
+      preloadAllPages()
+    }
+  }, [session, story.pages.length, selectedVoice.id])
+
   const getPlanType = (): PlanType => {
     return (session?.user?.subscription?.plan as PlanType) || 'free'
   }

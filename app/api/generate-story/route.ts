@@ -159,6 +159,8 @@ function generateConsistentCharacter(firstPageText: string, originalPrompt: stri
     'otter': 'a playful otter with sleek brown fur, whiskers, and a happy expression',
     'beaver': 'a friendly beaver with brown fur, a flat tail, big front teeth, and kind eyes',
     'raccoon': 'a raccoon with gray fur, a black mask around the eyes, and a striped tail',
+    'sheep': 'a fluffy white sheep with soft wool, gentle eyes, tiny ears, and a sweet smile',
+    'lamb': 'a baby lamb with fluffy white wool, big innocent eyes, and a playful bounce',
     'princess': 'a young princess with flowing hair, a sparkly dress, a small tiara, and kind eyes',
     'prince': 'a young prince with neat hair, a royal blue jacket, a small crown, and a brave smile',
     'fairy': 'a tiny fairy with rainbow wings, a flower petal dress, and sparkling eyes',
@@ -167,7 +169,30 @@ function generateConsistentCharacter(firstPageText: string, originalPrompt: stri
     'pirate': 'a young pirate with a red bandana, an eye patch, and an adventurous grin',
     'mermaid': 'a young mermaid with a colorful tail, flowing hair, and a seashell top',
     'robot': 'a friendly robot with a boxy body, blinking lights, and a happy screen face',
-    'dinosaur': 'a cute baby dinosaur with green scales, big eyes, and a long tail'
+    'dinosaur': 'a cute baby dinosaur with green scales, big eyes, and a long tail',
+    // Inanimate objects that can be characters (Beauty and the Beast style)
+    'cup': 'a delicate porcelain teacup with golden trim, rosy cheeks painted on, big sparkling eyes, and a warm smile',
+    'teacup': 'a delicate porcelain teacup with golden trim, rosy cheeks painted on, big sparkling eyes, and a warm smile',
+    'teapot': 'a round friendly teapot with a curved spout, painted floral designs, kind eyes, and a motherly smile',
+    'clock': 'an ornate grandfather clock with a friendly clock face, brass pendulum, and wise expression',
+    'candle': 'a tall golden candlestick with a flickering flame, elegant arms, and a charming French mustache',
+    'candlestick': 'a tall golden candlestick with a flickering flame, elegant arms, and a charming expression',
+    'book': 'a magical leather-bound book with golden pages, sparkling letters, and a wise face on the cover',
+    'lamp': 'a friendly brass lamp with a warm glowing light, curved handle, and a gentle smile',
+    'spoon': 'a shiny silver spoon with a smiling face, curved handle like arms, and a cheerful expression',
+    'fork': 'a polished silver fork with a friendly face and prongs that wave like fingers',
+    'plate': 'a decorated dinner plate with a painted face, floral border, and a welcoming smile',
+    'toy': 'a beloved stuffed toy with button eyes, soft fabric body, and a heartwarming smile',
+    'doll': 'a beautiful porcelain doll with painted rosy cheeks, curly hair, and a pretty dress',
+    'train': 'a cheerful toy train with a smiling face on the front, puffing steam, and bright red wheels',
+    'car': 'a cute little car with headlight eyes, a bumper smile, and shiny paint',
+    'boat': 'a friendly little boat with a painted face on the bow and colorful sails',
+    'balloon': 'a bright red balloon with a happy face, floating gently with a curly string',
+    'star': 'a twinkling golden star with a glowing face, sparkling points, and a magical glow',
+    'sun': 'a warm smiling sun with golden rays, rosy cheeks, and a cheerful expression',
+    'moon': 'a gentle crescent moon with a peaceful sleeping face and a soft silver glow',
+    'flower': 'a beautiful flower with colorful petals forming a face, green stem arms, and a sweet smile',
+    'tree': 'a wise old tree with a kind face in the bark, leafy branches like arms, and deep roots'
   }
 
   // Return the consistent description, or create a detailed generic one
@@ -399,13 +424,19 @@ function extractCharacterName(prompt: string): string {
 function extractCharacterType(pageText: string, originalPrompt: string): string {
   const combinedText = `${pageText} ${originalPrompt}`.toLowerCase()
 
-  // Comprehensive list of characters to search for
+  // Comprehensive list of characters to search for (including objects that can be characters)
   const characterTypes = [
+    // Animals
     'squirrel', 'chipmunk', 'dog', 'puppy', 'cat', 'kitten', 'dragon', 'unicorn',
     'bear', 'rabbit', 'bunny', 'fox', 'owl', 'bird', 'deer', 'fawn', 'elephant',
     'lion', 'tiger', 'monkey', 'mouse', 'penguin', 'turtle', 'frog', 'butterfly',
-    'bee', 'hedgehog', 'otter', 'beaver', 'raccoon', 'princess', 'prince', 'fairy',
-    'wizard', 'knight', 'pirate', 'mermaid', 'robot', 'dinosaur'
+    'bee', 'hedgehog', 'otter', 'beaver', 'raccoon', 'sheep', 'lamb',
+    // People/Fantasy
+    'princess', 'prince', 'fairy', 'wizard', 'knight', 'pirate', 'mermaid', 'robot', 'dinosaur',
+    // Inanimate objects (Beauty and the Beast style characters)
+    'teacup', 'cup', 'teapot', 'clock', 'candle', 'candlestick', 'book', 'lamp',
+    'spoon', 'fork', 'plate', 'toy', 'doll', 'train', 'car', 'boat', 'balloon',
+    'star', 'sun', 'moon', 'flower', 'tree'
   ]
 
   for (const charType of characterTypes) {
