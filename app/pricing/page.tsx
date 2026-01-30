@@ -4,7 +4,7 @@ import { useState } from 'react'
 import { useSession } from 'next-auth/react'
 import { useRouter } from 'next/navigation'
 import Link from 'next/link'
-import { Check, BookOpen, Loader2, Sparkles, Crown, Star } from 'lucide-react'
+import { Check, X, BookOpen, Loader2, Sparkles, Crown, Star } from 'lucide-react'
 import { PLANS, PlanType } from '@/lib/subscription'
 
 export default function PricingPage() {
@@ -125,7 +125,7 @@ export default function PricingPage() {
               <span className="text-4xl font-bold text-purple-800">$0</span>
               <span className="text-gray-600">/forever</span>
             </div>
-            <ul className="space-y-3 mb-8 flex-grow">
+            <ul className="space-y-3 mb-4 flex-grow">
               {PLANS.free.features.map((feature, i) => (
                 <li key={i} className="flex items-start gap-2">
                   <Check className="w-5 h-5 text-green-500 flex-shrink-0 mt-0.5" />
@@ -133,6 +133,24 @@ export default function PricingPage() {
                 </li>
               ))}
             </ul>
+            {/* What's NOT included */}
+            <div className="border-t border-gray-200 pt-4 mb-6">
+              <p className="text-xs text-gray-500 uppercase font-semibold mb-2">Not included:</p>
+              <ul className="space-y-2">
+                <li className="flex items-start gap-2">
+                  <X className="w-5 h-5 text-red-400 flex-shrink-0 mt-0.5" />
+                  <span className="text-gray-500 text-sm">No audio read-aloud</span>
+                </li>
+                <li className="flex items-start gap-2">
+                  <X className="w-5 h-5 text-red-400 flex-shrink-0 mt-0.5" />
+                  <span className="text-gray-500 text-sm">No PDF downloads</span>
+                </li>
+                <li className="flex items-start gap-2">
+                  <X className="w-5 h-5 text-red-400 flex-shrink-0 mt-0.5" />
+                  <span className="text-gray-500 text-sm">No print discount</span>
+                </li>
+              </ul>
+            </div>
             <button
               onClick={() => handleSubscribe('free')}
               className="w-full py-3 border-2 border-purple-600 text-purple-600 rounded-lg hover:bg-purple-50 font-semibold transition-all"
@@ -160,7 +178,7 @@ export default function PricingPage() {
               </p>
             )}
             {billingCycle === 'monthly' && <div className="mb-4"></div>}
-            <ul className="space-y-3 mb-8 flex-grow">
+            <ul className="space-y-3 mb-4 flex-grow">
               {PLANS.basic.features.map((feature, i) => (
                 <li key={i} className="flex items-start gap-2">
                   <Check className="w-5 h-5 text-green-500 flex-shrink-0 mt-0.5" />
@@ -174,6 +192,24 @@ export default function PricingPage() {
                 </li>
               )}
             </ul>
+            {/* What's NOT included */}
+            <div className="border-t border-gray-200 pt-4 mb-6">
+              <p className="text-xs text-gray-500 uppercase font-semibold mb-2">Upgrade for:</p>
+              <ul className="space-y-2">
+                <li className="flex items-start gap-2">
+                  <X className="w-5 h-5 text-orange-400 flex-shrink-0 mt-0.5" />
+                  <span className="text-gray-500 text-sm">Unlimited stories (10/mo limit)</span>
+                </li>
+                <li className="flex items-start gap-2">
+                  <X className="w-5 h-5 text-orange-400 flex-shrink-0 mt-0.5" />
+                  <span className="text-gray-500 text-sm">Unlimited library (25 limit)</span>
+                </li>
+                <li className="flex items-start gap-2">
+                  <X className="w-5 h-5 text-orange-400 flex-shrink-0 mt-0.5" />
+                  <span className="text-gray-500 text-sm">30% print discount (only 15%)</span>
+                </li>
+              </ul>
+            </div>
             <button
               onClick={() => handleSubscribe('basic')}
               disabled={isLoading === 'basic'}
@@ -212,7 +248,7 @@ export default function PricingPage() {
               </p>
             )}
             {billingCycle === 'monthly' && <div className="mb-4"></div>}
-            <ul className="space-y-3 mb-8 flex-grow">
+            <ul className="space-y-3 mb-4 flex-grow">
               {PLANS.premium.features.map((feature, i) => (
                 <li key={i} className="flex items-start gap-2">
                   <Check className="w-5 h-5 text-green-300 flex-shrink-0 mt-0.5" />
@@ -226,6 +262,14 @@ export default function PricingPage() {
                 </li>
               )}
             </ul>
+            {/* Everything included message */}
+            <div className="border-t border-white/20 pt-4 mb-6">
+              <div className="bg-white/10 rounded-lg p-3 text-center">
+                <p className="text-white font-semibold text-sm">
+                  ✨ Everything included - no limits!
+                </p>
+              </div>
+            </div>
             <button
               onClick={() => handleSubscribe('premium')}
               disabled={isLoading === 'premium'}
