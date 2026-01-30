@@ -9,7 +9,18 @@ interface LoadingSpinnerProps {
 }
 
 const FUN_FACTS = [
+  // Beaver facts 🦫
   "Did you know? Beavers can hold their breath for 15 minutes! 🦫",
+  "Beaver teeth never stop growing - they chew wood to keep them short! 🦫",
+  "Beavers slap their tails on water to warn their family of danger! 🦫",
+  "A beaver's home is called a 'lodge' and has underwater entrances! 🦫",
+  "Beavers are the second largest rodents in the world! 🦫",
+  "Baby beavers are called 'kits' and can swim when just 1 day old! 🦫",
+  "Beavers mate for life and live with their families! 🦫",
+  "A beaver can cut down a tree in just 15 minutes! 🦫",
+  "Beaver dams can be seen from space - some are over 800m long! 🦫",
+  "Beavers have see-through eyelids to see underwater! 🦫",
+  // Other animal facts
   "Fun fact: A group of flamingos is called a 'flamboyance'! 🦩",
   "Amazing: Octopuses have three hearts! 🐙",
   "Cool: Butterflies taste with their feet! 🦋",
@@ -17,6 +28,9 @@ const FUN_FACTS = [
   "Neat: A snail can sleep for three years! 🐌",
   "Awesome: Dolphins sleep with one eye open! 🐬",
   "Wild: Koalas sleep up to 22 hours a day! 🐨",
+  "Cool: Otters hold hands while sleeping so they don't drift apart! 🦦",
+  "Amazing: A group of owls is called a 'parliament'! 🦉",
+  "Fun: Penguins propose with pebbles! 🐧",
 ]
 
 export default function LoadingSpinner({ message = 'Loading...', stage = 'story' }: LoadingSpinnerProps) {
