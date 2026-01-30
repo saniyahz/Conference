@@ -15,6 +15,7 @@ export default function SpeechRecorder({ onComplete }: SpeechRecorderProps) {
   const [showTypeOption, setShowTypeOption] = useState(false)
   const [recordingTime, setRecordingTime] = useState(0)
   const [audioLevel, setAudioLevel] = useState(0)
+  const [isMicWarmingUp, setIsMicWarmingUp] = useState(false)
   const mediaRecorderRef = useRef<MediaRecorder | null>(null)
   const audioChunksRef = useRef<Blob[]>([])
   const streamRef = useRef<MediaStream | null>(null)
@@ -33,6 +34,9 @@ export default function SpeechRecorder({ onComplete }: SpeechRecorderProps) {
 
   const startRecording = async () => {
     try {
+      // Show warmup indicator first
+      setIsMicWarmingUp(true)
+
       // Request microphone access
       const stream = await navigator.mediaDevices.getUserMedia({
         audio: {
@@ -102,6 +106,7 @@ export default function SpeechRecorder({ onComplete }: SpeechRecorderProps) {
 
       // Start recording
       mediaRecorder.start(1000) // Collect data every second
+      setIsMicWarmingUp(false)
       setIsRecording(true)
       setRecordingTime(0)
 
@@ -115,6 +120,7 @@ export default function SpeechRecorder({ onComplete }: SpeechRecorderProps) {
 
     } catch (error: any) {
       console.error('Error starting recording:', error)
+      setIsMicWarmingUp(false)
       if (error.name === 'NotAllowedError' || error.name === 'PermissionDeniedError') {
         alert('❌ Microphone access denied! Please allow microphone access and try again.')
       } else {
@@ -275,6 +281,19 @@ export default function SpeechRecorder({ onComplete }: SpeechRecorderProps) {
 
       {/* Recording Controls */}
       <div className="flex flex-col items-center gap-4">
+        {/* Mic warmup indicator */}
+        {isMicWarmingUp && (
+          <div className="bg-amber-100 border-2 border-amber-400 rounded-xl p-4 animate-pulse text-center max-w-md">
+            <div className="flex items-center justify-center gap-3 mb-2">
+              <Loader2 className="w-6 h-6 text-amber-600 animate-spin" />
+              <span className="text-amber-800 font-bold text-lg">Preparing microphone...</span>
+            </div>
+            <p className="text-amber-700">
+              Hold on! The mic takes a moment to warm up. You'll be able to record in just a few seconds!
+            </p>
+          </div>
+        )}
+
         {/* Audio level indicator when recording */}
         {isRecording && (
           <div className="w-full max-w-xs">
@@ -300,16 +319,16 @@ export default function SpeechRecorder({ onComplete }: SpeechRecorderProps) {
         {/* Main record button */}
         <button
           onClick={isRecording ? stopRecording : startRecording}
-          disabled={isTranscribing}
+          disabled={isTranscribing || isMicWarmingUp}
           className={`p-8 rounded-full transition-all transform hover:scale-105 shadow-lg ${
             isRecording
               ? 'bg-red-500 hover:bg-red-600 animate-pulse'
-              : isTranscribing
+              : isTranscribing || isMicWarmingUp
               ? 'bg-yellow-500 cursor-wait'
               : 'bg-purple-600 hover:bg-purple-700'
           }`}
         >
-          {isTranscribing ? (
+          {isTranscribing || isMicWarmingUp ? (
             <Loader2 className="w-16 h-16 text-white animate-spin" />
           ) : isRecording ? (
             <Square className="w-16 h-16 text-white" />
@@ -320,7 +339,11 @@ export default function SpeechRecorder({ onComplete }: SpeechRecorderProps) {
 
         {/* Status text */}
         <div className="text-center">
-          {isTranscribing ? (
+          {isMicWarmingUp ? (
+            <p className="text-xl font-bold text-amber-600 animate-pulse">
+              🎤 Warming up microphone... Please wait!
+            </p>
+          ) : isTranscribing ? (
             <p className="text-xl font-bold text-yellow-600 animate-pulse">
               ✨ Understanding your voice... Please wait!
             </p>
