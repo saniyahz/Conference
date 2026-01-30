@@ -32,11 +32,16 @@ export default function StoryBook({ story, onReset }: StoryBookProps) {
   const [showKeepsake, setShowKeepsake] = useState(false)
   const audioRef = useRef<HTMLAudioElement | null>(null)
   const autoPlayRef = useRef(false)
+  const currentPageRef = useRef(0)
 
-  // Keep autoPlayRef in sync with autoPlayMode
+  // Keep refs in sync with state
   useEffect(() => {
     autoPlayRef.current = autoPlayMode
   }, [autoPlayMode])
+
+  useEffect(() => {
+    currentPageRef.current = currentPage
+  }, [currentPage])
 
   // Stop reading when page changes manually (but not during auto-play)
   useEffect(() => {
@@ -118,14 +123,16 @@ export default function StoryBook({ story, onReset }: StoryBookProps) {
         URL.revokeObjectURL(audioUrl)
 
         // Auto-advance to next page if auto-play mode is on
-        if (autoPlayRef.current && currentPage < story.pages.length - 1) {
+        // Use currentPageRef.current to get the actual current page (not stale closure value)
+        const pageNow = currentPageRef.current
+        if (autoPlayRef.current && pageNow < story.pages.length - 1) {
           // Small delay before flipping page
           setTimeout(() => {
             if (autoPlayRef.current) {
-              setCurrentPage(prev => prev + 1)
+              setCurrentPage(pageNow + 1)
             }
           }, 1000)
-        } else if (autoPlayRef.current && currentPage === story.pages.length - 1) {
+        } else if (autoPlayRef.current && pageNow === story.pages.length - 1) {
           // End of story - turn off auto-play and show keepsake
           setAutoPlayMode(false)
           setShowKeepsake(true)
