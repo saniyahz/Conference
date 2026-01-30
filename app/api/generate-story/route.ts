@@ -123,93 +123,12 @@ PAGE 10:
   }
 }
 
-// Generate a consistent character description to use across all pages
+// Generate a consistent character description - let the image model figure out the details
 function generateConsistentCharacter(firstPageText: string, originalPrompt: string): string {
   const characterType = extractCharacterType(firstPageText, originalPrompt)
 
-  // Create detailed, consistent character descriptions for common types
-  const characterDescriptions: { [key: string]: string } = {
-    'squirrel': 'fluffy with reddish-brown fur, a big bushy tail, bright curious eyes, tiny paws, and a cute little nose',
-    'chipmunk': 'small with brown fur with distinctive stripes on the back, chubby cheeks, tiny ears, and a small bushy tail',
-    'dog': 'a golden retriever puppy with fluffy cream-colored fur, large warm brown eyes, floppy ears, wearing a red collar',
-    'puppy': 'a fluffy puppy with soft fur, big round eyes, floppy ears, a wagging tail, and a happy expression',
-    'cat': 'an orange tabby cat with tiger-like stripes, bright green eyes, white paws, a pink nose, and a long striped tail',
-    'kitten': 'a fluffy kitten with soft fur, big round eyes, tiny pink nose, small pointed ears, and a playful expression',
-    'dragon': 'a small friendly dragon with soft purple scales, tiny wings, gentle amber eyes, small curved horns, and a friendly smile',
-    'unicorn': 'a white unicorn with a flowing rainbow mane, a golden spiral horn, soft purple eyes, and a rainbow tail',
-    'bear': 'a brown teddy bear with soft caramel fur, black button eyes, a big nose, round ears, and a red bow tie',
-    'rabbit': 'a white bunny with fluffy fur, long floppy ears with pink insides, a tiny pink nose, and bright blue eyes',
-    'bunny': 'a white bunny with fluffy fur, long floppy ears with pink insides, a tiny pink nose, and bright blue eyes',
-    'fox': 'a red fox with orange-red fur, white chest, a big bushy tail with a white tip, and amber eyes',
-    'owl': 'a wise owl with soft brown and white feathers, big round golden eyes, and a small curved beak',
-    'bird': 'a colorful little bird with bright feathers, small beak, tiny feet, and cheerful eyes',
-    'deer': 'a young deer with soft brown fur, white spots, big gentle eyes, and small growing antlers',
-    'fawn': 'a baby deer with soft brown fur covered in white spots, big innocent eyes, and long legs',
-    'elephant': 'a baby elephant with gray skin, large floppy ears, a playful curled trunk, and kind eyes',
-    'lion': 'a young lion cub with golden fur, a small fluffy mane, big amber eyes, and a playful expression',
-    'tiger': 'a tiger cub with orange fur and black stripes, bright eyes, and a playful stance',
-    'monkey': 'a playful monkey with brown fur, a curly tail, big ears, and mischievous eyes',
-    'mouse': 'a small gray mouse with large pink ears, tiny whiskers, bright black eyes, and a long pink tail',
-    'penguin': 'a cute penguin with black and white feathers, an orange beak, and a waddle walk',
-    'turtle': 'a friendly turtle with a green shell, kind eyes, and a slow gentle smile',
-    'frog': 'a bright green frog with big round eyes, a wide smile, and long jumping legs',
-    'butterfly': 'a beautiful butterfly with colorful wings in pink, blue, and purple',
-    'bee': 'a fuzzy bumble bee with yellow and black stripes, tiny wings, and a friendly face',
-    'ant': 'a tiny hardworking ant with a shiny black body, six little legs, antennae, and determined eyes',
-    'ants': 'tiny hardworking ants with shiny black bodies, six little legs each, antennae, working together as a team',
-    'caterpillar': 'a cute fuzzy caterpillar with a green body, many tiny legs, big eyes, and a friendly smile',
-    'spider': 'a friendly spider with eight legs, multiple eyes, and a cute round body spinning a sparkly web',
-    'snail': 'a gentle snail with a colorful spiral shell, cute eye stalks, and a slow peaceful smile',
-    'ladybug': 'a cheerful ladybug with a shiny red shell with black spots, tiny legs, and a happy face',
-    'grasshopper': 'a green grasshopper with long jumping legs, antennae, and wings ready to hop',
-    'cricket': 'a musical cricket with a shiny body, long antennae, and legs ready to chirp a song',
-    'firefly': 'a magical firefly with a glowing yellow light, delicate wings, and a warm friendly glow',
-    'dragonfly': 'a beautiful dragonfly with iridescent wings, a long slender body, and big compound eyes',
-    'worm': 'a friendly pink earthworm with a wiggly body, a cute smile, and rosy cheeks',
-    'beetle': 'a shiny beetle with a colorful hard shell, six legs, and curious antennae',
-    'hedgehog': 'a small hedgehog with soft spines, a tiny nose, bright eyes, and little paws',
-    'otter': 'a playful otter with sleek brown fur, whiskers, and a happy expression',
-    'beaver': 'a friendly beaver with brown fur, a flat tail, big front teeth, and kind eyes',
-    'raccoon': 'a raccoon with gray fur, a black mask around the eyes, and a striped tail',
-    'sheep': 'a fluffy white sheep with soft wool, gentle eyes, tiny ears, and a sweet smile',
-    'lamb': 'a baby lamb with fluffy white wool, big innocent eyes, and a playful bounce',
-    'princess': 'a young princess with flowing hair, a sparkly dress, a small tiara, and kind eyes',
-    'prince': 'a young prince with neat hair, a royal blue jacket, a small crown, and a brave smile',
-    'fairy': 'a tiny fairy with rainbow wings, a flower petal dress, and sparkling eyes',
-    'wizard': 'a young wizard with a purple robe with stars, a pointy hat, and a magic wand',
-    'knight': 'a young knight in shining silver armor, a blue cape, and a friendly smile',
-    'pirate': 'a young pirate with a red bandana, an eye patch, and an adventurous grin',
-    'mermaid': 'a young mermaid with a colorful tail, flowing hair, and a seashell top',
-    'robot': 'a friendly robot with a boxy body, blinking lights, and a happy screen face',
-    'dinosaur': 'a cute baby dinosaur with green scales, big eyes, and a long tail',
-    // Inanimate objects that can be characters (Beauty and the Beast style)
-    'cup': 'a delicate porcelain teacup with golden trim, rosy cheeks painted on, big sparkling eyes, and a warm smile',
-    'teacup': 'a delicate porcelain teacup with golden trim, rosy cheeks painted on, big sparkling eyes, and a warm smile',
-    'teapot': 'a round friendly teapot with a curved spout, painted floral designs, kind eyes, and a motherly smile',
-    'clock': 'an ornate grandfather clock with a friendly clock face, brass pendulum, and wise expression',
-    'candle': 'a tall golden candlestick with a flickering flame, elegant arms, and a charming French mustache',
-    'candlestick': 'a tall golden candlestick with a flickering flame, elegant arms, and a charming expression',
-    'book': 'a magical leather-bound book with golden pages, sparkling letters, and a wise face on the cover',
-    'lamp': 'a friendly brass lamp with a warm glowing light, curved handle, and a gentle smile',
-    'spoon': 'a shiny silver spoon with a smiling face, curved handle like arms, and a cheerful expression',
-    'fork': 'a polished silver fork with a friendly face and prongs that wave like fingers',
-    'plate': 'a decorated dinner plate with a painted face, floral border, and a welcoming smile',
-    'toy': 'a beloved stuffed toy with button eyes, soft fabric body, and a heartwarming smile',
-    'doll': 'a beautiful porcelain doll with painted rosy cheeks, curly hair, and a pretty dress',
-    'train': 'a cheerful toy train with a smiling face on the front, puffing steam, and bright red wheels',
-    'car': 'a cute little car with headlight eyes, a bumper smile, and shiny paint',
-    'boat': 'a friendly little boat with a painted face on the bow and colorful sails',
-    'balloon': 'a bright red balloon with a happy face, floating gently with a curly string',
-    'star': 'a twinkling golden star with a glowing face, sparkling points, and a magical glow',
-    'sun': 'a warm smiling sun with golden rays, rosy cheeks, and a cheerful expression',
-    'moon': 'a gentle crescent moon with a peaceful sleeping face and a soft silver glow',
-    'flower': 'a beautiful flower with colorful petals forming a face, green stem arms, and a sweet smile',
-    'tree': 'a wise old tree with a kind face in the bark, leafy branches like arms, and deep roots'
-  }
-
-  // Return the consistent description, or create a detailed generic one
-  const description = characterDescriptions[characterType] || `cute and friendly with big expressive eyes and a warm smile`
-  return description
+  // Just return a simple, friendly description - the image model knows what characters look like
+  return `a cute, friendly ${characterType} with big expressive eyes and a warm smile, child-friendly cartoon style`
 }
 
 // Extract key scene details from page text
@@ -266,10 +185,11 @@ function generateImagePrompts(story: any, originalPrompt: string): string[] {
 
 // Extract ALL characters mentioned (supports multiple characters like "Spiderman and Donald Duck")
 function extractAllCharacters(text: string, originalPrompt: string): string[] {
-  const lowerText = (text + ' ' + originalPrompt).toLowerCase()
+  const combinedText = text + ' ' + originalPrompt
+  const lowerText = combinedText.toLowerCase()
   const foundCharacters: string[] = []
 
-  // Check for famous characters first (Disney, Marvel, etc.)
+  // Check for famous characters first (Disney, Marvel, etc.) - these need exact matching
   const famousCharacters = [
     'spiderman', 'spider-man', 'spider man', 'batman', 'superman', 'ironman', 'iron man',
     'donald duck', 'mickey mouse', 'minnie mouse', 'goofy', 'pluto', 'daisy duck',
@@ -283,7 +203,6 @@ function extractAllCharacters(text: string, originalPrompt: string): string[] {
 
   for (const char of famousCharacters) {
     if (lowerText.includes(char)) {
-      // Capitalize properly
       const properName = char.split(' ').map(w => w.charAt(0).toUpperCase() + w.slice(1)).join(' ')
       if (!foundCharacters.includes(properName)) {
         foundCharacters.push(properName)
@@ -291,23 +210,42 @@ function extractAllCharacters(text: string, originalPrompt: string): string[] {
     }
   }
 
-  // Then check for regular animals/characters
-  const regularCharacters = [
-    'squirrel', 'chipmunk', 'mouse', 'rabbit', 'bunny', 'cat', 'kitten', 'dog', 'puppy',
-    'bear', 'fox', 'wolf', 'deer', 'owl', 'bird', 'duck', 'duckling',
-    'dragon', 'unicorn', 'horse', 'pony', 'elephant', 'lion', 'tiger', 'monkey',
-    'pig', 'chicken', 'cow', 'sheep', 'goat', 'frog', 'turtle', 'fish', 'dolphin',
-    'butterfly', 'bee', 'ladybug', 'penguin', 'polar bear', 'otter', 'beaver',
-    'hedgehog', 'raccoon', 'dinosaur', 'robot',
-    'ant', 'ants', 'caterpillar', 'spider', 'snail', 'grasshopper', 'cricket', 'firefly', 'dragonfly', 'worm', 'beetle',
-    'princess', 'prince', 'fairy', 'wizard', 'witch', 'knight', 'pirate', 'mermaid',
-    'boy', 'girl', 'child', 'kid'
-  ]
+  // Dynamic character extraction - find characters from patterns in the text
+  // Pattern 1: "[Name] the [creature]" - e.g., "Rosie the cup", "Andy the ant"
+  const namedCharacterPattern = /\b([A-Z][a-z]+)\s+the\s+([a-z]+)/g
+  let match
+  while ((match = namedCharacterPattern.exec(combinedText)) !== null) {
+    const name = match[1]
+    const creature = match[2]
+    const character = `${name} the ${creature}`
+    if (!foundCharacters.some(fc => fc.toLowerCase().includes(creature))) {
+      foundCharacters.push(character)
+    }
+  }
 
-  for (const char of regularCharacters) {
-    if (lowerText.includes(char) && !foundCharacters.some(fc => fc.toLowerCase().includes(char))) {
-      // Don't add "duck" if we already have "Donald Duck"
-      foundCharacters.push('a cute ' + char)
+  // Pattern 2: "a/an/the [adjective]? [creature]" from the original prompt
+  // This captures what the user actually asked for
+  const promptCreaturePattern = /\b(?:a|an|the)\s+(?:little|tiny|big|small|friendly|cute|brave|magical|young)?\s*([a-z]+)\b/gi
+  while ((match = promptCreaturePattern.exec(originalPrompt)) !== null) {
+    const creature = match[1].toLowerCase()
+    // Skip common non-character words
+    const skipWords = ['story', 'adventure', 'tale', 'book', 'day', 'time', 'place', 'way', 'thing', 'lot', 'bit', 'world', 'land', 'home', 'house', 'forest', 'garden', 'name', 'friend']
+    if (!skipWords.includes(creature) && creature.length > 2) {
+      if (!foundCharacters.some(fc => fc.toLowerCase().includes(creature))) {
+        foundCharacters.push('a cute ' + creature)
+      }
+    }
+  }
+
+  // Pattern 3: Look for plural creatures (ants, bees, butterflies, etc.)
+  const pluralPattern = /\b(?:the|some|many|little|tiny)\s+([a-z]+s)\b/gi
+  while ((match = pluralPattern.exec(combinedText)) !== null) {
+    const creature = match[1].toLowerCase()
+    const skipWords = ['stories', 'adventures', 'tales', 'books', 'days', 'times', 'places', 'ways', 'things', 'friends', 'colors', 'eyes', 'words', 'pages']
+    if (!skipWords.includes(creature) && creature.length > 3) {
+      if (!foundCharacters.some(fc => fc.toLowerCase().includes(creature))) {
+        foundCharacters.push('cute ' + creature)
+      }
     }
   }
 
@@ -412,56 +350,63 @@ function parseStory(text: string, originalPrompt: string) {
 }
 
 
+// Dynamically extract character name from prompt
 function extractCharacterName(prompt: string): string {
-  const lowerPrompt = prompt.toLowerCase()
-
-  // Try to find a character type
-  const animals = ['dog', 'cat', 'dragon', 'unicorn', 'bear', 'lion', 'elephant', 'monkey', 'rabbit', 'fox', 'dinosaur', 'bird']
-  for (const animal of animals) {
-    if (lowerPrompt.includes(animal)) {
-      return animal
-    }
+  // Pattern 1: "[Name] the [creature]" - e.g., "Rosie the cup", "Andy the ant"
+  const namedPattern = /\b([A-Z][a-z]+)\s+the\s+([a-z]+)/i
+  const namedMatch = prompt.match(namedPattern)
+  if (namedMatch) {
+    return namedMatch[2] // Return the creature type
   }
 
-  const people = ['princess', 'prince', 'knight', 'wizard', 'fairy', 'pirate']
-  for (const person of people) {
-    if (lowerPrompt.includes(person)) {
-      return person
+  // Pattern 2: "a/an/the [adjective]? [creature]"
+  const creaturePattern = /\b(?:a|an|the)\s+(?:little|tiny|big|small|friendly|cute|brave|magical|young)?\s*([a-z]+)\b/i
+  const creatureMatch = prompt.match(creaturePattern)
+  if (creatureMatch) {
+    const creature = creatureMatch[1].toLowerCase()
+    const skipWords = ['story', 'adventure', 'tale', 'book', 'day', 'time', 'place', 'way', 'thing']
+    if (!skipWords.includes(creature) && creature.length > 2) {
+      return creature
     }
   }
 
   return 'our hero'
 }
 
-// Extract character type from text
+// Dynamically extract character type from text - no hardcoded list needed
 function extractCharacterType(pageText: string, originalPrompt: string): string {
-  const combinedText = `${pageText} ${originalPrompt}`.toLowerCase()
+  const combinedText = `${originalPrompt} ${pageText}`
 
-  // Comprehensive list of characters to search for (including objects that can be characters)
-  const characterTypes = [
-    // Animals
-    'squirrel', 'chipmunk', 'dog', 'puppy', 'cat', 'kitten', 'dragon', 'unicorn',
-    'bear', 'rabbit', 'bunny', 'fox', 'owl', 'bird', 'deer', 'fawn', 'elephant',
-    'lion', 'tiger', 'monkey', 'mouse', 'penguin', 'turtle', 'frog', 'butterfly',
-    'bee', 'hedgehog', 'otter', 'beaver', 'raccoon', 'sheep', 'lamb',
-    // Insects
-    'ant', 'ants', 'caterpillar', 'spider', 'snail', 'grasshopper', 'cricket',
-    'firefly', 'dragonfly', 'worm', 'beetle', 'ladybug',
-    // People/Fantasy
-    'princess', 'prince', 'fairy', 'wizard', 'knight', 'pirate', 'mermaid', 'robot', 'dinosaur',
-    // Inanimate objects (Beauty and the Beast style characters)
-    'teacup', 'cup', 'teapot', 'clock', 'candle', 'candlestick', 'book', 'lamp',
-    'spoon', 'fork', 'plate', 'toy', 'doll', 'train', 'car', 'boat', 'balloon',
-    'star', 'sun', 'moon', 'flower', 'tree'
-  ]
+  // Pattern 1: "[Name] the [creature]" - highest priority
+  const namedPattern = /\b([A-Z][a-z]+)\s+the\s+([a-z]+)/
+  const namedMatch = combinedText.match(namedPattern)
+  if (namedMatch) {
+    return namedMatch[2].toLowerCase()
+  }
 
-  for (const charType of characterTypes) {
-    if (combinedText.includes(charType)) {
-      return charType
+  // Pattern 2: "a/an [adjective]? [creature]" from prompt - second priority
+  const creaturePattern = /\b(?:a|an)\s+(?:little|tiny|big|small|friendly|cute|brave|magical|young|hardworking)?\s*([a-z]+)\b/i
+  const creatureMatch = originalPrompt.match(creaturePattern)
+  if (creatureMatch) {
+    const creature = creatureMatch[1].toLowerCase()
+    const skipWords = ['story', 'adventure', 'tale', 'book', 'day', 'time', 'place', 'way', 'thing', 'lot', 'bit']
+    if (!skipWords.includes(creature) && creature.length > 2) {
+      return creature
     }
   }
 
-  // Check for famous characters
+  // Pattern 3: Look for "the [creatures]" (plural)
+  const pluralPattern = /\b(?:the|some|many)\s+([a-z]+s)\b/i
+  const pluralMatch = combinedText.match(pluralPattern)
+  if (pluralMatch) {
+    const creature = pluralMatch[1].toLowerCase()
+    const skipWords = ['stories', 'adventures', 'tales', 'books', 'days', 'times', 'places', 'ways', 'things', 'friends']
+    if (!skipWords.includes(creature) && creature.length > 3) {
+      return creature
+    }
+  }
+
+  // Check for famous characters as fallback
   const famousCharacters: { [key: string]: string } = {
     'spiderman': 'superhero',
     'spider-man': 'superhero',
