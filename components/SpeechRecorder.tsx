@@ -1,7 +1,7 @@
 'use client'
 
 import { useState, useRef, useEffect } from 'react'
-import { Mic, MicOff, Play, Trash2, Volume2 } from 'lucide-react'
+import { Mic, MicOff, Play, Trash2, Volume2, Keyboard } from 'lucide-react'
 
 interface SpeechRecorderProps {
   onComplete: (text: string, authorName: string) => void
@@ -14,8 +14,10 @@ export default function SpeechRecorder({ onComplete }: SpeechRecorderProps) {
   const [interimText, setInterimText] = useState('')
   const [authorName, setAuthorName] = useState('')
   const [isSupported, setIsSupported] = useState(true)
+  const [showTypeOption, setShowTypeOption] = useState(false)
+  const [noSpeechCount, setNoSpeechCount] = useState(0)
   const recognitionRef = useRef<any>(null)
-  const shouldBeRecordingRef = useRef(false) // Track if we want to keep recording
+  const shouldBeRecordingRef = useRef(false)
 
   useEffect(() => {
     if (typeof window !== 'undefined') {
@@ -30,11 +32,12 @@ export default function SpeechRecorder({ onComplete }: SpeechRecorderProps) {
       recognition.continuous = true
       recognition.interimResults = true
       recognition.lang = 'en-US'
-      // maxAlternatives = 1 (default) for SPEED
+      recognition.maxAlternatives = 3 // Get more alternatives for kids' voices
 
       recognition.onstart = () => {
         setIsStarting(false)
         setIsRecording(true)
+        setNoSpeechCount(0)
       }
 
       recognition.onresult = (event: any) => {
@@ -42,8 +45,11 @@ export default function SpeechRecorder({ onComplete }: SpeechRecorderProps) {
         let interimTranscript = ''
 
         for (let i = event.resultIndex; i < event.results.length; i++) {
-          const transcript = event.results[i][0].transcript
-          if (event.results[i].isFinal) {
+          // Try all alternatives for better recognition
+          const result = event.results[i]
+          const transcript = result[0].transcript
+
+          if (result.isFinal) {
             finalTranscript += transcript + ' '
           } else {
             interimTranscript += transcript
@@ -53,26 +59,39 @@ export default function SpeechRecorder({ onComplete }: SpeechRecorderProps) {
         if (finalTranscript) {
           setTranscription(prev => prev + finalTranscript)
           setInterimText('')
+          setNoSpeechCount(0) // Reset no-speech counter on successful capture
         } else {
           setInterimText(interimTranscript)
         }
       }
 
       recognition.onerror = (event: any) => {
-        console.error('Speech error:', event.error)
+        console.log('Speech event:', event.error)
+
         if (event.error === 'audio-capture') {
           alert('❌ Cannot access microphone! Please allow microphone access and try again.')
           shouldBeRecordingRef.current = false
           setIsRecording(false)
           setIsStarting(false)
+        } else if (event.error === 'no-speech') {
+          // Don't stop - just count and show typing option after multiple failures
+          setNoSpeechCount(prev => {
+            const newCount = prev + 1
+            if (newCount >= 2) {
+              setShowTypeOption(true)
+            }
+            return newCount
+          })
+          // Keep listening - don't stop!
         }
+        // Ignore other errors and keep trying
       }
 
       recognition.onend = () => {
         // Auto-restart if we should still be recording
         if (shouldBeRecordingRef.current) {
-          setIsRecording(false) // Turn red off
-          setIsStarting(true) // Show yellow "starting" state
+          setIsRecording(false)
+          setIsStarting(true)
           setTimeout(() => {
             if (shouldBeRecordingRef.current) {
               try {
@@ -81,9 +100,8 @@ export default function SpeechRecorder({ onComplete }: SpeechRecorderProps) {
                 setIsStarting(false)
               }
             }
-          }, 300) // Longer delay for more reliable restart
+          }, 200) // Faster restart
         } else {
-          // User manually stopped
           setIsRecording(false)
           setIsStarting(false)
         }
@@ -91,16 +109,13 @@ export default function SpeechRecorder({ onComplete }: SpeechRecorderProps) {
 
       recognitionRef.current = recognition
 
-      // CLEANUP: Stop recognition when component unmounts
       return () => {
         shouldBeRecordingRef.current = false
         if (recognition) {
           try {
             recognition.stop()
             recognition.abort()
-          } catch (e) {
-            // Recognition already stopped
-          }
+          } catch (e) {}
         }
       }
     }
@@ -146,27 +161,54 @@ export default function SpeechRecorder({ onComplete }: SpeechRecorderProps) {
   if (!isSupported) {
     return (
       <div className="text-center p-8">
-        <p className="text-red-600 mb-4 text-xl font-bold">
-          ❌ Speech recognition not supported
-        </p>
+        <div className="text-4xl mb-4">⌨️ 🦫</div>
+        <h2 className="text-2xl font-bold text-purple-800 mb-2">
+          Type Your Story Idea!
+        </h2>
         <p className="text-gray-600 mb-4">
-          Please use Google Chrome, Microsoft Edge, or Safari
+          Tell us what adventure you want to go on...
         </p>
-        <div className="max-w-md mx-auto">
+        <div className="max-w-lg mx-auto">
           <textarea
-            className="w-full p-4 border-2 border-purple-300 rounded-lg focus:border-purple-500 focus:outline-none"
-            rows={6}
-            placeholder="Type your story ideas here instead..."
+            className="w-full p-4 border-2 border-purple-300 rounded-xl focus:border-purple-500 focus:outline-none text-lg"
+            rows={5}
+            placeholder="Example: A brave little bunny who goes on an adventure to find a magical rainbow..."
             value={transcription}
             onChange={(e) => setTranscription(e.target.value)}
           />
-          <button
-            onClick={handleSubmit}
-            disabled={!transcription.trim()}
-            className="mt-4 px-8 py-3 bg-purple-600 text-white rounded-full hover:bg-purple-700 disabled:bg-gray-400 disabled:cursor-not-allowed font-semibold"
-          >
-            Create Story
-          </button>
+
+          {/* Author name */}
+          <div className="mt-4">
+            <label className="block text-sm font-semibold text-purple-800 mb-2">
+              📝 Your Name:
+            </label>
+            <input
+              type="text"
+              value={authorName}
+              onChange={(e) => setAuthorName(e.target.value)}
+              placeholder="Enter your name..."
+              className="w-full px-4 py-3 border-2 border-purple-300 rounded-lg focus:border-purple-500 focus:outline-none"
+              maxLength={50}
+            />
+          </div>
+
+          <div className="flex gap-3 justify-center mt-6">
+            <button
+              onClick={() => setIsSupported(true)}
+              className="px-6 py-3 bg-gray-200 text-gray-700 rounded-full hover:bg-gray-300 font-semibold flex items-center gap-2"
+            >
+              <Mic className="w-5 h-5" />
+              Try Voice Again
+            </button>
+            <button
+              onClick={handleSubmit}
+              disabled={!transcription.trim()}
+              className="px-8 py-3 bg-green-500 text-white rounded-full hover:bg-green-600 disabled:bg-gray-400 disabled:cursor-not-allowed font-bold flex items-center gap-2"
+            >
+              <Play className="w-5 h-5" />
+              Create My Story!
+            </button>
+          </div>
         </div>
       </div>
     )
@@ -175,20 +217,42 @@ export default function SpeechRecorder({ onComplete }: SpeechRecorderProps) {
   return (
     <div className="space-y-6">
       <div className="text-center">
-        <div className="bg-blue-100 border-2 border-blue-400 rounded-lg p-4 mb-4">
-          <p className="text-lg font-bold text-blue-900">
-            <Volume2 className="w-6 h-6 inline-block mr-2" />
-            Speak LOUD and CLOSE to the microphone! You can pause between sentences - it keeps listening!
+        {/* Kid-friendly tips */}
+        <div className="bg-gradient-to-r from-blue-100 to-purple-100 border-2 border-blue-400 rounded-xl p-4 mb-4">
+          <p className="text-xl font-bold text-blue-900 mb-2">
+            🎤 Tips for Kids:
           </p>
+          <ul className="text-left text-blue-800 space-y-1 max-w-md mx-auto">
+            <li>📢 Speak <strong>LOUD</strong> like you're talking to grandma!</li>
+            <li>📱 Hold the device <strong>CLOSE</strong> to your mouth</li>
+            <li>🐢 Speak <strong>SLOWLY</strong> and clearly</li>
+            <li>🤫 Make sure it's <strong>QUIET</strong> around you</li>
+          </ul>
         </div>
 
         <h2 className="text-3xl font-bold text-purple-800 mb-2">
-          Tell Us Your Story
+          🦫 Tell Us Your Story!
         </h2>
         <p className="text-gray-700 text-lg">
-          Click the microphone and start speaking!
+          What adventure do you want to go on today?
         </p>
       </div>
+
+      {/* Show typing option if voice isn't working */}
+      {showTypeOption && !transcription && (
+        <div className="bg-amber-50 border-2 border-amber-300 rounded-xl p-4 text-center">
+          <p className="text-amber-800 font-semibold mb-2">
+            🎤 Having trouble with the microphone?
+          </p>
+          <button
+            onClick={() => setIsSupported(false)}
+            className="px-4 py-2 bg-amber-500 text-white rounded-lg hover:bg-amber-600 font-semibold flex items-center gap-2 mx-auto"
+          >
+            <Keyboard className="w-5 h-5" />
+            Type Your Story Instead
+          </button>
+        </div>
+      )}
 
       {/* Recording Controls */}
       <div className="flex justify-center">
