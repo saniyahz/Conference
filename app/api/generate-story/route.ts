@@ -155,6 +155,18 @@ function generateConsistentCharacter(firstPageText: string, originalPrompt: stri
     'frog': 'a bright green frog with big round eyes, a wide smile, and long jumping legs',
     'butterfly': 'a beautiful butterfly with colorful wings in pink, blue, and purple',
     'bee': 'a fuzzy bumble bee with yellow and black stripes, tiny wings, and a friendly face',
+    'ant': 'a tiny hardworking ant with a shiny black body, six little legs, antennae, and determined eyes',
+    'ants': 'tiny hardworking ants with shiny black bodies, six little legs each, antennae, working together as a team',
+    'caterpillar': 'a cute fuzzy caterpillar with a green body, many tiny legs, big eyes, and a friendly smile',
+    'spider': 'a friendly spider with eight legs, multiple eyes, and a cute round body spinning a sparkly web',
+    'snail': 'a gentle snail with a colorful spiral shell, cute eye stalks, and a slow peaceful smile',
+    'ladybug': 'a cheerful ladybug with a shiny red shell with black spots, tiny legs, and a happy face',
+    'grasshopper': 'a green grasshopper with long jumping legs, antennae, and wings ready to hop',
+    'cricket': 'a musical cricket with a shiny body, long antennae, and legs ready to chirp a song',
+    'firefly': 'a magical firefly with a glowing yellow light, delicate wings, and a warm friendly glow',
+    'dragonfly': 'a beautiful dragonfly with iridescent wings, a long slender body, and big compound eyes',
+    'worm': 'a friendly pink earthworm with a wiggly body, a cute smile, and rosy cheeks',
+    'beetle': 'a shiny beetle with a colorful hard shell, six legs, and curious antennae',
     'hedgehog': 'a small hedgehog with soft spines, a tiny nose, bright eyes, and little paws',
     'otter': 'a playful otter with sleek brown fur, whiskers, and a happy expression',
     'beaver': 'a friendly beaver with brown fur, a flat tail, big front teeth, and kind eyes',
@@ -287,6 +299,7 @@ function extractAllCharacters(text: string, originalPrompt: string): string[] {
     'pig', 'chicken', 'cow', 'sheep', 'goat', 'frog', 'turtle', 'fish', 'dolphin',
     'butterfly', 'bee', 'ladybug', 'penguin', 'polar bear', 'otter', 'beaver',
     'hedgehog', 'raccoon', 'dinosaur', 'robot',
+    'ant', 'ants', 'caterpillar', 'spider', 'snail', 'grasshopper', 'cricket', 'firefly', 'dragonfly', 'worm', 'beetle',
     'princess', 'prince', 'fairy', 'wizard', 'witch', 'knight', 'pirate', 'mermaid',
     'boy', 'girl', 'child', 'kid'
   ]
@@ -431,6 +444,9 @@ function extractCharacterType(pageText: string, originalPrompt: string): string 
     'bear', 'rabbit', 'bunny', 'fox', 'owl', 'bird', 'deer', 'fawn', 'elephant',
     'lion', 'tiger', 'monkey', 'mouse', 'penguin', 'turtle', 'frog', 'butterfly',
     'bee', 'hedgehog', 'otter', 'beaver', 'raccoon', 'sheep', 'lamb',
+    // Insects
+    'ant', 'ants', 'caterpillar', 'spider', 'snail', 'grasshopper', 'cricket',
+    'firefly', 'dragonfly', 'worm', 'beetle', 'ladybug',
     // People/Fantasy
     'princess', 'prince', 'fairy', 'wizard', 'knight', 'pirate', 'mermaid', 'robot', 'dinosaur',
     // Inanimate objects (Beauty and the Beast style characters)
