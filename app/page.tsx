@@ -17,7 +17,7 @@ export type Story = {
   title: string
   author: string
   pages: StoryPage[]
-  originalPrompt?: string // The original speech/prompt from the kid
+  originalPrompt?: string
 }
 
 export default function Home() {
@@ -107,30 +107,30 @@ export default function Home() {
   }
 
   return (
-    <main className="min-h-screen p-4 md:p-8">
+    <main className="min-h-screen p-4 md:p-8 bg-gradient-to-br from-sky-50 via-cyan-50 to-teal-50">
       <div className="max-w-6xl mx-auto">
-        {/* Navigation - Beaver themed */}
-        <div className="flex justify-between items-center mb-8 bg-gradient-to-r from-amber-50 to-orange-50 border-2 border-amber-200 rounded-2xl shadow-lg p-4">
+        {/* Navigation */}
+        <div className="flex justify-between items-center mb-8 bg-white/80 backdrop-blur-sm border-2 border-sky-200 rounded-2xl shadow-lg p-4">
           <div className="flex items-center gap-2">
             <span className="text-3xl">🦫</span>
-            <span className="text-xl font-bold text-amber-800">Benny's Story Time</span>
+            <span className="text-xl font-bold text-sky-700">Benny's Story Time</span>
           </div>
           <div className="flex gap-3">
             <Link
               href="/about"
-              className="px-4 py-2 text-amber-700 hover:text-amber-800 font-semibold"
+              className="px-4 py-2 text-sky-600 hover:text-sky-800 font-semibold"
             >
               About Us
             </Link>
             <Link
               href="/pricing"
-              className="px-4 py-2 text-amber-700 hover:text-amber-800 font-semibold"
+              className="px-4 py-2 text-sky-600 hover:text-sky-800 font-semibold"
             >
               Pricing
             </Link>
             <Link
               href="/dashboard"
-              className="px-4 py-2 text-amber-700 hover:text-amber-800 font-semibold flex items-center gap-2"
+              className="px-4 py-2 text-sky-600 hover:text-sky-800 font-semibold flex items-center gap-2"
             >
               <BookOpen className="w-5 h-5" />
               My Library
@@ -138,7 +138,7 @@ export default function Home() {
             {session ? (
               <Link
                 href="/dashboard"
-                className="px-4 py-2 bg-amber-600 text-white rounded-lg hover:bg-amber-700 font-semibold flex items-center gap-2"
+                className="px-4 py-2 bg-sky-500 text-white rounded-lg hover:bg-sky-600 font-semibold flex items-center gap-2"
               >
                 <User className="w-5 h-5" />
                 {session.user?.name || 'Account'}
@@ -146,7 +146,7 @@ export default function Home() {
             ) : (
               <Link
                 href="/auth/signin"
-                className="px-4 py-2 bg-amber-600 text-white rounded-lg hover:bg-amber-700 font-semibold flex items-center gap-2"
+                className="px-4 py-2 bg-sky-500 text-white rounded-lg hover:bg-sky-600 font-semibold flex items-center gap-2"
               >
                 <LogIn className="w-5 h-5" />
                 Sign In
@@ -155,22 +155,22 @@ export default function Home() {
           </div>
         </div>
 
-        {/* Header - Beaver themed */}
+        {/* Header */}
         <div className="text-center mb-8">
           <div className="flex items-center justify-center gap-3 mb-4">
-            <Sparkles className="w-10 h-10 text-amber-500" />
-            <h1 className="text-4xl md:text-5xl font-bold text-amber-800 font-kids">
+            <Sparkles className="w-10 h-10 text-sky-500" />
+            <h1 className="text-4xl md:text-5xl font-bold text-sky-700 font-kids">
               Create Magical Stories
             </h1>
-            <Sparkles className="w-10 h-10 text-amber-500" />
+            <Sparkles className="w-10 h-10 text-sky-500" />
           </div>
-          <p className="text-lg text-amber-700">
+          <p className="text-lg text-sky-600">
             Tell Benny your story ideas and watch them come to life!
           </p>
         </div>
 
-        {/* Main Content - Beaver themed */}
-        <div className="bg-gradient-to-b from-white to-amber-50 border-2 border-amber-100 rounded-3xl shadow-2xl p-6 md:p-10">
+        {/* Main Content */}
+        <div className="bg-white/90 backdrop-blur-sm border-2 border-sky-100 rounded-3xl shadow-2xl p-6 md:p-10">
           {step === 'record' && (
             <SpeechRecorder onComplete={handleTranscriptionComplete} />
           )}
