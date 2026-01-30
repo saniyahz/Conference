@@ -128,13 +128,20 @@ export default function Home() {
             >
               Pricing
             </Link>
+            <Link
+              href="/dashboard"
+              className="px-4 py-2 text-amber-700 hover:text-amber-800 font-semibold flex items-center gap-2"
+            >
+              <BookOpen className="w-5 h-5" />
+              My Library
+            </Link>
             {session ? (
               <Link
                 href="/dashboard"
                 className="px-4 py-2 bg-amber-600 text-white rounded-lg hover:bg-amber-700 font-semibold flex items-center gap-2"
               >
                 <User className="w-5 h-5" />
-                My Stories
+                {session.user?.name || 'Account'}
               </Link>
             ) : (
               <Link
