@@ -1,9 +1,7 @@
 'use client'
 
 import { useState, useEffect } from 'react'
-import { useSession } from 'next-auth/react'
-import { useRouter } from 'next/navigation'
-import { ChevronLeft, ChevronRight, Download, RotateCcw, Save, Loader2, Volume2, VolumeX } from 'lucide-react'
+import { ChevronLeft, ChevronRight, Download, RotateCcw, Volume2, VolumeX } from 'lucide-react'
 import { Story } from '@/app/page'
 import Image from 'next/image'
 
@@ -13,10 +11,7 @@ interface StoryBookProps {
 }
 
 export default function StoryBook({ story, onReset }: StoryBookProps) {
-  const { data: session } = useSession()
-  const router = useRouter()
   const [currentPage, setCurrentPage] = useState(0)
-  const [isSaving, setIsSaving] = useState(false)
   const [isReading, setIsReading] = useState(false)
   const [speechSynthesis, setSpeechSynthesis] = useState<SpeechSynthesis | null>(null)
   const [voicesLoaded, setVoicesLoaded] = useState(false)
@@ -194,42 +189,6 @@ export default function StoryBook({ story, onReset }: StoryBookProps) {
     }
   }
 
-  const handleSave = async () => {
-    if (!session) {
-      if (confirm('You need to sign in to save stories. Would you like to sign in now?')) {
-        router.push('/auth/signin')
-      }
-      return
-    }
-
-    setIsSaving(true)
-
-    try {
-      const response = await fetch('/api/stories', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          title: story.title,
-          pages: story.pages,
-          coverImage: story.pages[0]?.imageUrl,
-        }),
-      })
-
-      const data = await response.json()
-
-      if (!response.ok) {
-        throw new Error(data.error || 'Failed to save story')
-      }
-
-      alert('Story saved successfully! View it in your dashboard.')
-    } catch (error: any) {
-      console.error('Error saving story:', error)
-      alert(error.message || 'Failed to save story. Please try again.')
-    } finally {
-      setIsSaving(false)
-    }
-  }
-
   return (
     <div className="space-y-6">
       {/* Title */}
@@ -344,25 +303,6 @@ export default function StoryBook({ story, onReset }: StoryBookProps) {
 
       {/* Controls */}
       <div className="flex flex-wrap justify-center gap-4">
-        {/* Save Story */}
-        <button
-          onClick={handleSave}
-          disabled={isSaving}
-          className="px-6 py-3 bg-yellow-500 hover:bg-yellow-600 text-white rounded-full font-semibold flex items-center gap-2 transition-all transform hover:scale-105 disabled:bg-gray-400"
-        >
-          {isSaving ? (
-            <>
-              <Loader2 className="w-5 h-5 animate-spin" />
-              Saving...
-            </>
-          ) : (
-            <>
-              <Save className="w-5 h-5" />
-              Save Story
-            </>
-          )}
-        </button>
-
         {/* Download PDF */}
         <button
           onClick={downloadPDF}

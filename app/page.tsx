@@ -1,12 +1,10 @@
 'use client'
 
 import { useState } from 'react'
-import { useSession } from 'next-auth/react'
-import Link from 'next/link'
 import SpeechRecorder from '@/components/SpeechRecorder'
 import StoryBook from '@/components/StoryBook'
 import LoadingSpinner from '@/components/LoadingSpinner'
-import { BookOpen, Sparkles, User, LogIn } from 'lucide-react'
+import { BookOpen, Sparkles } from 'lucide-react'
 
 export type StoryPage = {
   text: string
@@ -20,7 +18,6 @@ export type Story = {
 }
 
 export default function Home() {
-  const { data: session } = useSession()
   const [step, setStep] = useState<'record' | 'generating' | 'generating-images' | 'book'>('record')
   const [story, setStory] = useState<Story | null>(null)
   const [transcription, setTranscription] = useState<string>('')
@@ -113,31 +110,6 @@ export default function Home() {
           <div className="flex items-center gap-2">
             <BookOpen className="w-8 h-8 text-purple-600" />
             <span className="text-xl font-bold text-purple-800">Kids Story Creator</span>
-          </div>
-          <div className="flex gap-3">
-            <Link
-              href="/pricing"
-              className="px-4 py-2 text-purple-600 hover:text-purple-700 font-semibold"
-            >
-              Pricing
-            </Link>
-            {session ? (
-              <Link
-                href="/dashboard"
-                className="px-4 py-2 bg-purple-600 text-white rounded-lg hover:bg-purple-700 font-semibold flex items-center gap-2"
-              >
-                <User className="w-5 h-5" />
-                Dashboard
-              </Link>
-            ) : (
-              <Link
-                href="/auth/signin"
-                className="px-4 py-2 bg-purple-600 text-white rounded-lg hover:bg-purple-700 font-semibold flex items-center gap-2"
-              >
-                <LogIn className="w-5 h-5" />
-                Sign In
-              </Link>
-            )}
           </div>
         </div>
 
