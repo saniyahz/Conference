@@ -205,85 +205,107 @@ function extractSceneFromText(pageText: string): string {
 }
 
 function generateImagePrompts(story: any, originalPrompt: string): string[] {
-  // Get the character type from the story (squirrel, bunny, etc.)
-  const firstPageText = story.pages[0]?.text || ''
-  const characterType = extractCharacterType(firstPageText, originalPrompt)
+  // Extract ALL characters mentioned in the story (may have multiple)
+  const allText = story.pages.map((p: any) => p.text).join(' ')
+  const characters = extractAllCharacters(allText, originalPrompt)
 
-  // Generate ONE consistent character description
-  const consistentCharacter = generateConsistentCharacter(firstPageText, originalPrompt)
-
-  // Simple, clear prompts - ALWAYS use the actual character type, never "character"
+  // Simple, clear prompts that match the actual page content
   const prompts = story.pages.map((page: any, index: number) => {
-    // Get simple scene description from page
-    const sceneDescription = getSimpleScene(page.text || '', index, characterType)
+    const pageText = page.text || ''
 
-    // Build a SIMPLE, CLEAR prompt with explicit animal/character type
-    return `Children's book illustration: A cute ${characterType} ${sceneDescription}. The ${characterType} is ${consistentCharacter}. Disney Pixar style, adorable, friendly, warm colors, soft lighting, beautiful forest background, storybook art. Single scene, one main character. No text, no words, no letters, no humans unless story is about humans.`
+    // Get the key scene from this specific page
+    const sceneDescription = extractSceneDescription(pageText)
+
+    // Build prompt with ALL characters and the actual scene
+    const charactersPart = characters.length > 0
+      ? characters.join(' and ')
+      : 'the main character'
+
+    return `Children's book illustration showing ${charactersPart}. Scene: ${sceneDescription}. Disney Pixar 3D animation style, cute, friendly, colorful, warm lighting, storybook art. No text, no words, no letters.`
   })
 
   return prompts
 }
 
-// Get a simple scene description - uses the actual character type
-function getSimpleScene(pageText: string, pageIndex: number, characterType: string): string {
-  // Default scenes for each page position - uses actual character type
-  const defaultScenes = [
-    'standing happily in their cozy forest home',
-    'playing outside in a sunny meadow with flowers',
-    'discovering something magical and sparkly',
-    'looking determined and ready to help',
-    'being brave and starting an adventure',
-    'trying hard to solve a problem',
-    'learning something important from a wise friend',
-    'working together with animal friends',
-    'celebrating a big success with joy',
-    'hugging friends at a happy celebration'
+// Extract ALL characters mentioned (supports multiple characters like "Spiderman and Donald Duck")
+function extractAllCharacters(text: string, originalPrompt: string): string[] {
+  const lowerText = (text + ' ' + originalPrompt).toLowerCase()
+  const foundCharacters: string[] = []
+
+  // Check for famous characters first (Disney, Marvel, etc.)
+  const famousCharacters = [
+    'spiderman', 'spider-man', 'spider man', 'batman', 'superman', 'ironman', 'iron man',
+    'donald duck', 'mickey mouse', 'minnie mouse', 'goofy', 'pluto', 'daisy duck',
+    'elsa', 'anna', 'olaf', 'moana', 'maui', 'simba', 'nala', 'mufasa', 'timon', 'pumbaa',
+    'woody', 'buzz lightyear', 'buzz', 'nemo', 'dory', 'marlin',
+    'peppa pig', 'george pig', 'paw patrol', 'chase', 'marshall', 'skye',
+    'pikachu', 'pokemon', 'mario', 'luigi', 'sonic', 'tails',
+    'spongebob', 'patrick', 'squidward', 'winnie the pooh', 'pooh bear', 'piglet', 'tigger', 'eeyore',
+    'thomas the train', 'thomas', 'bluey', 'bingo', 'cocomelon', 'jj'
   ]
 
-  // Try to extract setting from text
-  const settings = pageText.match(/\b(forest|garden|castle|meadow|ocean|beach|mountain|village|home|house|cave|river|lake|sky|clouds|tree|woods)\b/i)
-  const setting = settings ? settings[0].toLowerCase() : 'forest'
-
-  // Try to extract action
-  const actions = pageText.match(/\b(playing|running|flying|swimming|dancing|singing|helping|finding|exploring|hugging|celebrating|sleeping|eating|walking|jumping|climbing|gathering|searching|collecting)\b/i)
-  const action = actions ? actions[0].toLowerCase() : ''
-
-  if (action) {
-    return `${action} in a beautiful ${setting}`
-  }
-
-  return defaultScenes[pageIndex] || 'in a magical forest scene'
-}
-
-// Extract the character type (animal or person) - expanded list
-function extractCharacterType(firstPageText: string, originalPrompt: string): string {
-  const lowerText = firstPageText.toLowerCase()
-  const lowerPrompt = originalPrompt.toLowerCase()
-
-  // Expanded list of character types - animals first (most common in kids stories)
-  const characters = [
-    'squirrel', 'chipmunk', 'mouse', 'rabbit', 'bunny', 'cat', 'kitten', 'dog', 'puppy',
-    'bear', 'teddy bear', 'fox', 'wolf', 'deer', 'fawn', 'owl', 'bird', 'robin', 'bluebird',
-    'dragon', 'unicorn', 'horse', 'pony', 'elephant', 'lion', 'tiger', 'monkey', 'gorilla',
-    'pig', 'piglet', 'duck', 'duckling', 'chicken', 'chick', 'cow', 'sheep', 'lamb', 'goat',
-    'frog', 'turtle', 'fish', 'dolphin', 'whale', 'shark', 'octopus', 'crab',
-    'butterfly', 'bee', 'ladybug', 'caterpillar', 'snail',
-    'dinosaur', 't-rex', 'triceratops',
-    'penguin', 'polar bear', 'seal', 'otter', 'beaver',
-    'hedgehog', 'porcupine', 'skunk', 'raccoon', 'badger',
-    'princess', 'prince', 'fairy', 'wizard', 'witch', 'knight', 'pirate', 'mermaid',
-    'robot', 'alien', 'monster', 'giant', 'elf', 'gnome', 'troll',
-    'boy', 'girl', 'child', 'kid'
-  ]
-
-  for (const char of characters) {
-    if (lowerText.includes(char) || lowerPrompt.includes(char)) {
-      return char
+  for (const char of famousCharacters) {
+    if (lowerText.includes(char)) {
+      // Capitalize properly
+      const properName = char.split(' ').map(w => w.charAt(0).toUpperCase() + w.slice(1)).join(' ')
+      if (!foundCharacters.includes(properName)) {
+        foundCharacters.push(properName)
+      }
     }
   }
 
-  // Default to a cute woodland animal if we can't detect
-  return 'little woodland creature'
+  // Then check for regular animals/characters
+  const regularCharacters = [
+    'squirrel', 'chipmunk', 'mouse', 'rabbit', 'bunny', 'cat', 'kitten', 'dog', 'puppy',
+    'bear', 'fox', 'wolf', 'deer', 'owl', 'bird', 'duck', 'duckling',
+    'dragon', 'unicorn', 'horse', 'pony', 'elephant', 'lion', 'tiger', 'monkey',
+    'pig', 'chicken', 'cow', 'sheep', 'goat', 'frog', 'turtle', 'fish', 'dolphin',
+    'butterfly', 'bee', 'ladybug', 'penguin', 'polar bear', 'otter', 'beaver',
+    'hedgehog', 'raccoon', 'dinosaur', 'robot',
+    'princess', 'prince', 'fairy', 'wizard', 'witch', 'knight', 'pirate', 'mermaid',
+    'boy', 'girl', 'child', 'kid'
+  ]
+
+  for (const char of regularCharacters) {
+    if (lowerText.includes(char) && !foundCharacters.some(fc => fc.toLowerCase().includes(char))) {
+      // Don't add "duck" if we already have "Donald Duck"
+      foundCharacters.push('a cute ' + char)
+    }
+  }
+
+  // Limit to max 3 characters to keep image focused
+  return foundCharacters.slice(0, 3)
+}
+
+// Extract the actual scene description from page text
+function extractSceneDescription(pageText: string): string {
+  // Get the key action/scene from the text
+  const sentences = pageText.split(/[.!?]+/).filter(s => s.trim().length > 10)
+  if (sentences.length === 0) return 'in a magical scene'
+
+  // Take first 1-2 sentences and clean them up
+  let scene = sentences.slice(0, 2).join('. ').trim()
+
+  // Shorten if too long
+  if (scene.length > 200) {
+    scene = scene.substring(0, 200) + '...'
+  }
+
+  // Extract key visual elements
+  const settingMatch = pageText.match(/\b(forest|garden|castle|meadow|ocean|beach|mountain|village|home|house|cave|river|lake|sky|clouds|tree|woods|park|playground|room|kitchen|bedroom)\b/i)
+  const setting = settingMatch ? settingMatch[0] : ''
+
+  const actionMatch = pageText.match(/\b(playing|running|flying|swimming|dancing|singing|helping|hugging|celebrating|exploring|walking|jumping|climbing|cheering|laughing|smiling)\b/i)
+  const action = actionMatch ? actionMatch[0] : ''
+
+  // Build a focused scene description
+  if (action && setting) {
+    return `${action} in a beautiful ${setting}. ${scene.substring(0, 100)}`
+  } else if (scene) {
+    return scene.substring(0, 150)
+  }
+
+  return 'in a magical adventure scene'
 }
 
 function parseStory(text: string, originalPrompt: string) {
