@@ -2,6 +2,7 @@
 
 import { useState, useRef, useEffect } from 'react'
 import { Mic, MicOff, Play, Trash2, Keyboard, Loader2, Square } from 'lucide-react'
+import BeaverMascot from './BeaverMascot'
 
 interface SpeechRecorderProps {
   onComplete: (text: string, authorName: string) => void
@@ -227,27 +228,24 @@ export default function SpeechRecorder({ onComplete }: SpeechRecorderProps) {
     return `${mins}:${secs.toString().padStart(2, '0')}`
   }
 
+  // Get beaver greeting based on state
+  const getBeaverGreeting = () => {
+    if (isMicWarmingUp) return "Getting my ears ready..."
+    if (isTranscribing) return "Hmm, let me understand that..."
+    if (isRecording) return "I'm listening! Keep going!"
+    if (transcription) return "Great idea! Want to add more?"
+    return "Hi! Tell me your story idea!"
+  }
+
   return (
     <div className="space-y-6">
       <div className="text-center">
-        {/* Kid-friendly tips */}
-        <div className="bg-gradient-to-r from-blue-100 to-purple-100 border-2 border-blue-400 rounded-xl p-4 mb-4">
-          <p className="text-xl font-bold text-blue-900 mb-2">
-            🎤 Recording Tips:
-          </p>
-          <ul className="text-left text-blue-800 space-y-1 max-w-md mx-auto">
-            <li>📱 Hold the device <strong>CLOSE</strong> to your mouth</li>
-            <li>🔊 Speak at your normal voice - we'll understand you!</li>
-            <li>⏱️ Record for at least <strong>5 seconds</strong></li>
-            <li>🔴 Press the <strong>STOP</strong> button when done</li>
-          </ul>
-        </div>
-
-        <h2 className="text-3xl font-bold text-purple-800 mb-2">
-          🦫 Tell Us Your Story!
+        {/* Beaver-themed header */}
+        <h2 className="text-3xl font-bold text-amber-800 mb-2">
+          What story shall we create today?
         </h2>
-        <p className="text-gray-700 text-lg">
-          What adventure do you want to go on today?
+        <p className="text-gray-700 text-lg mb-6">
+          Press Benny's tummy microphone and tell him your idea!
         </p>
       </div>
 
@@ -279,24 +277,20 @@ export default function SpeechRecorder({ onComplete }: SpeechRecorderProps) {
         </div>
       )}
 
-      {/* Recording Controls */}
+      {/* Beaver Mascot with Recording Controls */}
       <div className="flex flex-col items-center gap-4">
-        {/* Mic warmup indicator */}
-        {isMicWarmingUp && (
-          <div className="bg-amber-100 border-2 border-amber-400 rounded-xl p-4 animate-pulse text-center max-w-md">
-            <div className="flex items-center justify-center gap-3 mb-2">
-              <Loader2 className="w-6 h-6 text-amber-600 animate-spin" />
-              <span className="text-amber-800 font-bold text-lg">Preparing microphone...</span>
-            </div>
-            <p className="text-amber-700">
-              Hold on! The mic takes a moment to warm up. You'll be able to record in just a few seconds!
-            </p>
-          </div>
-        )}
+        <BeaverMascot
+          isRecording={isRecording}
+          isProcessing={isTranscribing || isMicWarmingUp}
+          audioLevel={audioLevel}
+          onMicClick={isRecording ? stopRecording : startRecording}
+          greeting={getBeaverGreeting()}
+          disabled={isTranscribing || isMicWarmingUp}
+        />
 
-        {/* Audio level indicator when recording */}
+        {/* Recording status and audio level */}
         {isRecording && (
-          <div className="w-full max-w-xs">
+          <div className="w-full max-w-xs mt-4">
             <div className="flex items-center justify-between mb-2">
               <span className="text-red-600 font-bold animate-pulse flex items-center gap-2">
                 <span className="w-3 h-3 bg-red-500 rounded-full animate-pulse"></span>
@@ -311,52 +305,19 @@ export default function SpeechRecorder({ onComplete }: SpeechRecorderProps) {
               />
             </div>
             <p className="text-xs text-gray-500 mt-1 text-center">
-              {audioLevel > 30 ? '🎤 Great! We can hear you!' : '🔇 Speak louder or move closer'}
+              {audioLevel > 30 ? 'Great! Benny can hear you!' : 'Speak louder or move closer to Benny'}
             </p>
           </div>
         )}
 
-        {/* Main record button */}
-        <button
-          onClick={isRecording ? stopRecording : startRecording}
-          disabled={isTranscribing || isMicWarmingUp}
-          className={`p-8 rounded-full transition-all transform hover:scale-105 shadow-lg ${
-            isRecording
-              ? 'bg-red-500 hover:bg-red-600 animate-pulse'
-              : isTranscribing || isMicWarmingUp
-              ? 'bg-yellow-500 cursor-wait'
-              : 'bg-purple-600 hover:bg-purple-700'
-          }`}
-        >
-          {isTranscribing || isMicWarmingUp ? (
-            <Loader2 className="w-16 h-16 text-white animate-spin" />
-          ) : isRecording ? (
-            <Square className="w-16 h-16 text-white" />
-          ) : (
-            <Mic className="w-16 h-16 text-white" />
-          )}
-        </button>
-
-        {/* Status text */}
-        <div className="text-center">
-          {isMicWarmingUp ? (
-            <p className="text-xl font-bold text-amber-600 animate-pulse">
-              🎤 Warming up microphone... Please wait!
+        {/* Tips - shown when not recording */}
+        {!isRecording && !transcription && (
+          <div className="bg-gradient-to-r from-amber-50 to-orange-50 border-2 border-amber-300 rounded-xl p-4 max-w-md text-center mt-2">
+            <p className="text-amber-800 font-semibold">
+              Press the microphone on Benny's tummy and tell him about the adventure you want!
             </p>
-          ) : isTranscribing ? (
-            <p className="text-xl font-bold text-yellow-600 animate-pulse">
-              ✨ Understanding your voice... Please wait!
-            </p>
-          ) : isRecording ? (
-            <p className="text-xl font-bold text-red-600">
-              🔴 Recording... Press the square to stop!
-            </p>
-          ) : (
-            <p className="text-gray-600 text-lg font-semibold">
-              {transcription ? '✅ Got it! Record more or create your story!' : 'Tap the microphone to start recording'}
-            </p>
-          )}
-        </div>
+          </div>
+        )}
       </div>
 
       {/* Transcription Display & Manual Input */}
