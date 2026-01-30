@@ -1,12 +1,11 @@
 'use client'
 
 import { useState } from 'react'
-import { useSession } from 'next-auth/react'
 import Link from 'next/link'
 import SpeechRecorder from '@/components/SpeechRecorder'
 import StoryBook from '@/components/StoryBook'
 import LoadingSpinner from '@/components/LoadingSpinner'
-import { BookOpen, Sparkles, User, LogIn } from 'lucide-react'
+import { BookOpen, Sparkles } from 'lucide-react'
 
 export type StoryPage = {
   text: string
@@ -21,7 +20,6 @@ export type Story = {
 }
 
 export default function Home() {
-  const { data: session } = useSession()
   const [step, setStep] = useState<'record' | 'generating' | 'generating-images' | 'book'>('record')
   const [story, setStory] = useState<Story | null>(null)
   const [transcription, setTranscription] = useState<string>('')
