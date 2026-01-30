@@ -130,28 +130,11 @@ export default function Home() {
             </Link>
             <Link
               href="/dashboard"
-              className="px-4 py-2 text-sky-600 hover:text-sky-800 font-semibold flex items-center gap-2"
+              className="px-4 py-2 bg-sky-500 text-white rounded-lg hover:bg-sky-600 font-semibold flex items-center gap-2"
             >
               <BookOpen className="w-5 h-5" />
               My Library
             </Link>
-            {session ? (
-              <Link
-                href="/dashboard"
-                className="px-4 py-2 bg-sky-500 text-white rounded-lg hover:bg-sky-600 font-semibold flex items-center gap-2"
-              >
-                <User className="w-5 h-5" />
-                {session.user?.name || 'Account'}
-              </Link>
-            ) : (
-              <Link
-                href="/auth/signin"
-                className="px-4 py-2 bg-sky-500 text-white rounded-lg hover:bg-sky-600 font-semibold flex items-center gap-2"
-              >
-                <LogIn className="w-5 h-5" />
-                Sign In
-              </Link>
-            )}
           </div>
         </div>
 
