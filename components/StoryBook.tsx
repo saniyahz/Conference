@@ -39,9 +39,12 @@ export default function StoryBook({ story, onReset }: StoryBookProps) {
   const [usage, setUsage] = useState<UsageData | null>(null)
   const [showLoginPrompt, setShowLoginPrompt] = useState(false)
   const [loginPromptAction, setLoginPromptAction] = useState<'download' | 'audio' | 'save' | null>(null)
+  const [preloadStatus, setPreloadStatus] = useState<string>('')
   const audioRef = useRef<HTMLAudioElement | null>(null)
   const autoPlayRef = useRef(false)
   const currentPageRef = useRef(0)
+  const audioCacheRef = useRef<Map<string, string>>(new Map()) // Cache: "pageIndex-voiceId" -> audioUrl
+  const preloadingRef = useRef<Set<string>>(new Set()) // Track which pages are being preloaded
 
   // Fetch usage data when logged in
   useEffect(() => {
@@ -127,6 +130,71 @@ export default function StoryBook({ story, onReset }: StoryBookProps) {
     router.push('/pricing')
   }
 
+  // Pre-load audio for a specific page
+  const preloadAudio = async (pageIndex: number, voiceId: string) => {
+    const cacheKey = `${pageIndex}-${voiceId}`
+
+    // Skip if already cached or currently preloading
+    if (audioCacheRef.current.has(cacheKey) || preloadingRef.current.has(cacheKey)) {
+      return
+    }
+
+    const text = story.pages[pageIndex]?.text
+    if (!text || text.trim().length === 0) return
+
+    preloadingRef.current.add(cacheKey)
+    setPreloadStatus(`Pre-loading page ${pageIndex + 1}...`)
+
+    try {
+      const response = await fetch('/api/generate-speech', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ text, voice: voiceId }),
+      })
+
+      if (response.ok) {
+        const audioBlob = await response.blob()
+        const audioUrl = URL.createObjectURL(audioBlob)
+        audioCacheRef.current.set(cacheKey, audioUrl)
+        setPreloadStatus('')
+      }
+    } catch (error) {
+      console.error('Preload error:', error)
+    } finally {
+      preloadingRef.current.delete(cacheKey)
+    }
+  }
+
+  // Pre-load next few pages when auto-play starts
+  const preloadUpcomingPages = (startPage: number, voiceId: string) => {
+    // Preload next 2 pages
+    for (let i = 1; i <= 2; i++) {
+      const nextPage = startPage + i
+      if (nextPage < story.pages.length) {
+        preloadAudio(nextPage, voiceId)
+      }
+    }
+  }
+
+  // Cleanup audio cache on unmount or voice change
+  useEffect(() => {
+    return () => {
+      // Revoke all cached audio URLs
+      audioCacheRef.current.forEach((url) => {
+        URL.revokeObjectURL(url)
+      })
+      audioCacheRef.current.clear()
+    }
+  }, [])
+
+  // Clear cache when voice changes
+  useEffect(() => {
+    audioCacheRef.current.forEach((url) => {
+      URL.revokeObjectURL(url)
+    })
+    audioCacheRef.current.clear()
+  }, [selectedVoice])
+
   const readAloud = async () => {
     // Check if user is logged in
     if (!session) {
@@ -156,73 +224,93 @@ export default function StoryBook({ story, onReset }: StoryBookProps) {
       return
     }
 
-    setIsGeneratingVoice(true)
+    const cacheKey = `${currentPage}-${selectedVoice.id}`
+    let audioUrl = audioCacheRef.current.get(cacheKey)
 
-    try {
-      // Track audio play usage
-      await fetch('/api/usage/audio', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ storyId: null }),
-      })
+    // If not cached, generate it
+    if (!audioUrl) {
+      setIsGeneratingVoice(true)
 
-      // Call OpenAI TTS API
-      const response = await fetch('/api/generate-speech', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          text: text,
-          voice: selectedVoice.id,
-        }),
-      })
+      try {
+        // Track audio play usage
+        await fetch('/api/usage/audio', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ storyId: null }),
+        })
 
-      if (!response.ok) {
-        throw new Error('Failed to generate voice')
-      }
+        // Call OpenAI TTS API
+        const response = await fetch('/api/generate-speech', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            text: text,
+            voice: selectedVoice.id,
+          }),
+        })
 
-      const audioBlob = await response.blob()
-      const audioUrl = URL.createObjectURL(audioBlob)
-
-      const audio = new Audio(audioUrl)
-      audioRef.current = audio
-
-      audio.onplay = () => {
-        setIsReading(true)
-        setIsGeneratingVoice(false)
-        fetchUsage() // Refresh usage data
-      }
-
-      audio.onended = () => {
-        setIsReading(false)
-        URL.revokeObjectURL(audioUrl)
-
-        const pageNow = currentPageRef.current
-        if (autoPlayRef.current && pageNow < story.pages.length - 1) {
-          setTimeout(() => {
-            if (autoPlayRef.current) {
-              setCurrentPage(pageNow + 1)
-            }
-          }, 1000)
-        } else if (autoPlayRef.current && pageNow === story.pages.length - 1) {
-          setAutoPlayMode(false)
+        if (!response.ok) {
+          throw new Error('Failed to generate voice')
         }
-      }
 
-      audio.onerror = () => {
-        setIsReading(false)
+        const audioBlob = await response.blob()
+        audioUrl = URL.createObjectURL(audioBlob)
+
+        // Cache it for future use
+        audioCacheRef.current.set(cacheKey, audioUrl)
+      } catch (error) {
+        console.error('TTS error:', error)
         setIsGeneratingVoice(false)
-        URL.revokeObjectURL(audioUrl)
+        setIsReading(false)
+        setAutoPlayMode(false)
+        alert('Failed to generate voice. Please try again.')
+        return
+      }
+    }
+
+    // Start preloading next pages
+    preloadUpcomingPages(currentPage, selectedVoice.id)
+
+    // Play the audio
+    const audio = new Audio(audioUrl)
+    audioRef.current = audio
+
+    audio.onplay = () => {
+      setIsReading(true)
+      setIsGeneratingVoice(false)
+      fetchUsage() // Refresh usage data
+    }
+
+    audio.onended = () => {
+      setIsReading(false)
+      // Don't revoke URL - keep it cached for replay
+
+      const pageNow = currentPageRef.current
+      if (autoPlayRef.current && pageNow < story.pages.length - 1) {
+        // Shorter delay since next audio is pre-loaded
+        setTimeout(() => {
+          if (autoPlayRef.current) {
+            setCurrentPage(pageNow + 1)
+          }
+        }, 500)
+      } else if (autoPlayRef.current && pageNow === story.pages.length - 1) {
         setAutoPlayMode(false)
       }
+    }
 
+    audio.onerror = () => {
+      setIsReading(false)
+      setIsGeneratingVoice(false)
+      setAutoPlayMode(false)
+    }
+
+    try {
       await audio.play()
-
     } catch (error) {
-      console.error('TTS error:', error)
+      console.error('Audio play error:', error)
       setIsGeneratingVoice(false)
       setIsReading(false)
       setAutoPlayMode(false)
-      alert('Failed to generate voice. Please try again.')
     }
   }
 
@@ -237,6 +325,11 @@ export default function StoryBook({ story, onReset }: StoryBookProps) {
       router.push('/pricing')
       return
     }
+
+    // Pre-load first few pages immediately
+    const startPage = currentPage === story.pages.length - 1 ? 0 : currentPage
+    preloadAudio(startPage, selectedVoice.id)
+    preloadUpcomingPages(startPage, selectedVoice.id)
 
     setAutoPlayMode(true)
     if (currentPage === story.pages.length - 1) {
