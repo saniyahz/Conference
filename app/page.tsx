@@ -59,7 +59,7 @@ export default function Home() {
 
       // Step 2: Generate images for the story
       setStep('generating-images')
-      setLoadingMessage('Creating beautiful illustrations... (this may take 1-2 minutes)')
+      setLoadingMessage('Creating beautiful illustrations... (this takes 2-4 minutes)')
 
       const imagesResponse = await fetch('/api/generate-images', {
         method: 'POST',

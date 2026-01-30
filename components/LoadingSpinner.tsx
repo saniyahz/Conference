@@ -62,8 +62,8 @@ export default function LoadingSpinner({ message = 'Loading...', stage = 'story'
     return mins > 0 ? `${mins}m ${secs}s` : `${secs}s`
   }
 
-  // Estimated times (SDXL Lightning is much faster!)
-  const estimatedTime = stage === 'story' ? '15-30 seconds' : '30-60 seconds'
+  // Realistic time estimates
+  const estimatedTime = stage === 'story' ? '~30 seconds' : '2-4 minutes'
   const stageIcon = stage === 'story' ? <BookOpen className="w-6 h-6" /> : <Palette className="w-6 h-6" />
 
   return (
@@ -99,9 +99,10 @@ export default function LoadingSpinner({ message = 'Loading...', stage = 'story'
           <div
             className="h-full bg-gradient-to-r from-purple-500 to-pink-500 rounded-full transition-all duration-1000"
             style={{
+              // Story: ~30 seconds (3.3% per second), Images: ~3 minutes = 180s (0.5% per second)
               width: stage === 'story'
-                ? `${Math.min(elapsedTime * 4, 95)}%`
-                : `${Math.min(elapsedTime * 1.5, 95)}%`
+                ? `${Math.min(elapsedTime * 3.3, 95)}%`
+                : `${Math.min(elapsedTime * 0.5, 95)}%`
             }}
           />
         </div>
