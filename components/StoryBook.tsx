@@ -3,7 +3,7 @@
 import { useState, useEffect, useRef } from 'react'
 import { useSession } from 'next-auth/react'
 import { useRouter } from 'next/navigation'
-import { ChevronLeft, ChevronRight, Download, RotateCcw, Save, Loader2, Volume2, VolumeX, BookOpen, PlayCircle, PauseCircle } from 'lucide-react'
+import { ChevronLeft, ChevronRight, Download, RotateCcw, Save, Loader2, Volume2, VolumeX, PlayCircle, PauseCircle } from 'lucide-react'
 import { Story } from '@/app/page'
 import Image from 'next/image'
 
@@ -29,7 +29,6 @@ export default function StoryBook({ story, onReset }: StoryBookProps) {
   const [isGeneratingVoice, setIsGeneratingVoice] = useState(false)
   const [selectedVoice, setSelectedVoice] = useState(VOICE_OPTIONS[0])
   const [autoPlayMode, setAutoPlayMode] = useState(false)
-  const [showKeepsake, setShowKeepsake] = useState(false)
   const audioRef = useRef<HTMLAudioElement | null>(null)
   const autoPlayRef = useRef(false)
   const currentPageRef = useRef(0)
@@ -133,9 +132,8 @@ export default function StoryBook({ story, onReset }: StoryBookProps) {
             }
           }, 1000)
         } else if (autoPlayRef.current && pageNow === story.pages.length - 1) {
-          // End of story - turn off auto-play and show keepsake
+          // End of story - turn off auto-play
           setAutoPlayMode(false)
-          setShowKeepsake(true)
         }
       }
 
@@ -461,15 +459,6 @@ export default function StoryBook({ story, onReset }: StoryBookProps) {
           Download Book
         </button>
 
-        {/* View Story Text Keepsake */}
-        <button
-          onClick={() => setShowKeepsake(true)}
-          className="px-6 py-3 bg-pink-500 hover:bg-pink-600 text-white rounded-full font-semibold flex items-center gap-2 transition-all transform hover:scale-105"
-        >
-          <BookOpen className="w-5 h-5" />
-          View Full Story
-        </button>
-
         {/* Create New Story */}
         <button
           onClick={onReset}
@@ -480,110 +469,6 @@ export default function StoryBook({ story, onReset }: StoryBookProps) {
         </button>
       </div>
 
-      {/* Story Keepsake Modal */}
-      {showKeepsake && (
-        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
-          <div className="bg-white rounded-3xl shadow-2xl max-w-4xl w-full max-h-[90vh] overflow-y-auto">
-            {/* Modal Header */}
-            <div className="sticky top-0 bg-gradient-to-r from-purple-600 to-pink-600 text-white p-6 rounded-t-3xl">
-              <div className="flex justify-between items-center">
-                <div>
-                  <h2 className="text-2xl md:text-3xl font-bold">📖 {story.title}</h2>
-                  <p className="text-purple-100 mt-1">Written by: {story.author || 'Young Author'}</p>
-                </div>
-                <button
-                  onClick={() => setShowKeepsake(false)}
-                  className="p-2 hover:bg-white hover:bg-opacity-20 rounded-full transition-all"
-                >
-                  <span className="text-2xl">✕</span>
-                </button>
-              </div>
-            </div>
-
-            {/* Story Content */}
-            <div className="p-6 md:p-8">
-              {/* Cover Image */}
-              {story.pages[0]?.imageUrl && (
-                <div className="relative w-full h-64 md:h-80 rounded-xl overflow-hidden mb-8 shadow-lg">
-                  <Image
-                    src={story.pages[0].imageUrl}
-                    alt="Story cover"
-                    fill
-                    className="object-cover"
-                    unoptimized
-                  />
-                  <div className="absolute inset-0 bg-gradient-to-t from-black/50 to-transparent" />
-                  <div className="absolute bottom-4 left-4 right-4 text-white">
-                    <h3 className="text-xl md:text-2xl font-bold">{story.title}</h3>
-                    <p className="text-sm opacity-90">A story by {story.author || 'Young Author'}</p>
-                  </div>
-                </div>
-              )}
-
-              {/* Full Story Text */}
-              <div className="space-y-6">
-                <div className="text-center mb-8">
-                  <div className="inline-block h-1 w-24 bg-purple-300 rounded-full"></div>
-                </div>
-
-                {story.pages.map((page, index) => (
-                  <div key={index} className="pb-6 border-b border-purple-100 last:border-0">
-                    <div className="flex items-center gap-3 mb-3">
-                      <span className="bg-purple-100 text-purple-700 px-3 py-1 rounded-full text-sm font-semibold">
-                        Page {index + 1}
-                      </span>
-                    </div>
-                    <p className="text-gray-700 leading-relaxed text-lg font-serif">
-                      {page.text}
-                    </p>
-                  </div>
-                ))}
-
-                {/* The End */}
-                <div className="text-center pt-8">
-                  <div className="inline-block h-1 w-24 bg-purple-300 rounded-full mb-4"></div>
-                  <p className="text-2xl font-bold text-purple-800">✨ The End ✨</p>
-                  <p className="text-gray-500 mt-2 italic">
-                    Thank you for reading! 🦫
-                  </p>
-                </div>
-
-                {/* Keepsake Footer */}
-                <div className="mt-8 p-6 bg-gradient-to-r from-purple-50 to-pink-50 rounded-xl border-2 border-purple-200">
-                  <div className="text-center">
-                    <p className="text-purple-800 font-semibold text-lg">
-                      🌟 Story Keepsake 🌟
-                    </p>
-                    <p className="text-purple-600 mt-2">
-                      This magical story was created by <strong>{story.author || 'Young Author'}</strong>
-                    </p>
-                    <p className="text-gray-500 text-sm mt-1">
-                      Brought to life with ✨ AI magic ✨
-                    </p>
-                  </div>
-                </div>
-              </div>
-            </div>
-
-            {/* Modal Footer */}
-            <div className="sticky bottom-0 bg-white border-t border-gray-200 p-4 rounded-b-3xl flex justify-center gap-4">
-              <button
-                onClick={downloadPDF}
-                className="px-6 py-3 bg-green-500 hover:bg-green-600 text-white rounded-full font-semibold flex items-center gap-2"
-              >
-                <Download className="w-5 h-5" />
-                Download as Book
-              </button>
-              <button
-                onClick={() => setShowKeepsake(false)}
-                className="px-6 py-3 bg-purple-600 hover:bg-purple-700 text-white rounded-full font-semibold"
-              >
-                Close
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
     </div>
   )
 }

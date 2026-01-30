@@ -17,6 +17,7 @@ export type Story = {
   title: string
   author: string
   pages: StoryPage[]
+  originalPrompt?: string // The original speech/prompt from the kid
 }
 
 export default function Home() {

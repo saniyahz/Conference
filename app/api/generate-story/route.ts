@@ -89,6 +89,7 @@ PAGE 10:
       story: {
         title: story.title,
         pages: story.pages,
+        originalPrompt: prompt, // Include original speech/prompt from the kid
       },
       imagePrompts,
     })
@@ -187,88 +188,51 @@ function generateImagePrompts(story: any, originalPrompt: string): string[] {
   const firstPageText = story.pages[0]?.text || ''
   const consistentCharacter = generateConsistentCharacter(firstPageText, originalPrompt)
 
-  // Extract character name for consistent reference
-  const characterName = extractCharacterName(originalPrompt)
-  const characterId = `CHARACTER_${characterName.toUpperCase().replace(/\s+/g, '_')}`
-
-  // Disney/Pixar style description - friendly, cute, not scary
-  const styleGuide = "Disney Pixar 3D animated movie style, Dreamworks animation quality, cute big expressive cartoon eyes, friendly round face, soft rounded features, warm golden lighting, vibrant cheerful saturated colors, professional animation studio quality, adorable character design, family-friendly G-rated, wholesome, heartwarming"
-
-  // Strong negative elements to avoid
-  const avoidElements = "NO text, NO words, NO letters, NO writing, NO scary elements, NO dark themes, NOT realistic, NOT photorealistic, NOT creepy"
-
-  // Generate prompts for each page based on ACTUAL story content
+  // Simple, clear prompts that focus on SCENE not character sheets
   const prompts = story.pages.map((page: any, index: number) => {
-    // Extract the real scene from the page text
-    const sceneFromStory = extractSceneFromText(page.text || '')
+    // Get simple scene description from page
+    const sceneDescription = getSimpleScene(page.text || '', index)
 
-    // Get specific action/emotion for this page
-    const pageAction = extractPageAction(page.text || '', index)
-
-    // Build prompt with ULTRA STRONG character consistency + Disney style
-    // Using character ID and detailed description repeated for consistency
-    return `[${characterId}] ${styleGuide}.
-MAIN CHARACTER (must appear EXACTLY the same in every image): ${consistentCharacter}.
-This is page ${index + 1} of a storybook featuring [${characterId}].
-Scene: ${sceneFromStory}.
-Action: ${pageAction}.
-CRITICAL: The main character [${characterId}] must have IDENTICAL appearance - same exact colors, same exact features, same exact outfit, same exact proportions as in all other pages.
-Beautiful illustrated storybook background. ${avoidElements}.`
+    // Build a SIMPLE, CLEAR prompt - one scene, one character
+    return `Children's book illustration, single scene: ${sceneDescription}. Main character: ${consistentCharacter}. Disney Pixar style, cute, friendly, warm colors, soft lighting, beautiful background, storybook art. No text, no words, no letters.`
   })
 
   return prompts
 }
 
-// Extract specific action/emotion from page text for better scene description
-function extractPageAction(pageText: string, pageIndex: number): string {
-  const sentences = pageText.split(/[.!?]+/).filter(s => s.trim().length > 5)
+// Get a simple scene description - just the key action
+function getSimpleScene(pageText: string, pageIndex: number): string {
+  // Default scenes for each page position
+  const defaultScenes = [
+    'character standing happily in their cozy home',
+    'character playing outside in a sunny meadow',
+    'character discovering something magical and sparkly',
+    'character looking worried but determined',
+    'character being brave and ready for adventure',
+    'character trying hard to solve a problem',
+    'character learning something important from a wise friend',
+    'character working together with friends',
+    'character celebrating a big success',
+    'character hugging friends at a happy celebration'
+  ]
 
-  // Get the main action sentence (usually first or second sentence)
-  const actionSentence = sentences.slice(0, 2).join('. ')
+  // Try to extract setting from text
+  const settings = pageText.match(/\b(forest|garden|castle|meadow|ocean|beach|mountain|village|home|house|cave|river|lake|sky|clouds)\b/i)
+  const setting = settings ? settings[0].toLowerCase() : ''
 
-  // Extract emotion
-  const emotions: { [key: string]: string } = {
-    'happy': 'looking happy and joyful',
-    'sad': 'looking a bit worried but hopeful',
-    'excited': 'looking excited and enthusiastic',
-    'scared': 'looking brave despite being nervous',
-    'brave': 'standing tall and courageous',
-    'curious': 'looking curious and interested',
-    'surprised': 'looking pleasantly surprised',
-    'proud': 'looking proud and accomplished',
-    'love': 'surrounded by warmth and love',
-    'friend': 'with friends nearby',
-    'help': 'helping others kindly',
-    'magic': 'surrounded by magical sparkles',
-    'adventure': 'ready for adventure',
-    'celebrate': 'celebrating joyfully'
+  // Try to extract action
+  const actions = pageText.match(/\b(playing|running|flying|swimming|dancing|singing|helping|finding|exploring|hugging|celebrating|sleeping|eating|walking|jumping|climbing)\b/i)
+  const action = actions ? actions[0].toLowerCase() : ''
+
+  if (setting && action) {
+    return `character ${action} in a beautiful ${setting}`
+  } else if (setting) {
+    return `character in a beautiful ${setting}`
+  } else if (action) {
+    return `character ${action}`
   }
 
-  let emotion = 'looking friendly and cheerful'
-  for (const [keyword, desc] of Object.entries(emotions)) {
-    if (pageText.toLowerCase().includes(keyword)) {
-      emotion = desc
-      break
-    }
-  }
-
-  // Page-specific context
-  const pageContext: { [key: number]: string } = {
-    0: 'introduction scene, character shown clearly in their home environment',
-    1: 'daily life scene, character doing their favorite activity',
-    2: 'discovery scene, character noticing something interesting',
-    3: 'challenge appears, character reacting to a problem',
-    4: 'determination scene, character deciding to be brave',
-    5: 'trying scene, character attempting to solve the problem',
-    6: 'learning scene, character gaining wisdom',
-    7: 'teamwork scene, character with friends working together',
-    8: 'triumph scene, character succeeding',
-    9: 'celebration scene, character happy with friends and family'
-  }
-
-  const context = pageContext[pageIndex] || 'story scene'
-
-  return `${context}, character ${emotion}`
+  return defaultScenes[pageIndex] || 'character in a magical scene'
 }
 
 // Extract just the character type (animal/person) without detailed description

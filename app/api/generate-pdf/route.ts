@@ -217,109 +217,79 @@ export async function POST(request: NextRequest) {
       pdf.line(margin + 20, pageHeight - 25, pageWidth - margin - 20, pageHeight - 25)
     }
 
-    // ========== STORY KEEPSAKE PAGES (Full Story Text) ==========
-    pdf.addPage()
+    // ========== ORIGINAL STORY IDEA PAGE ==========
+    // Only add this page if we have the original prompt
+    if (story.originalPrompt) {
+      pdf.addPage()
 
-    // Cream background
-    pdf.setFillColor(255, 253, 250)
-    pdf.rect(0, 0, pageWidth, pageHeight, 'F')
+      // Cream background
+      pdf.setFillColor(255, 253, 250)
+      pdf.rect(0, 0, pageWidth, pageHeight, 'F')
 
-    // Decorative border
-    pdf.setDrawColor(88, 28, 135)
-    pdf.setLineWidth(1.5)
-    pdf.roundedRect(15, 15, pageWidth - 30, pageHeight - 30, 2, 2, 'S')
+      // Decorative border
+      pdf.setDrawColor(88, 28, 135)
+      pdf.setLineWidth(1.5)
+      pdf.roundedRect(15, 15, pageWidth - 30, pageHeight - 30, 2, 2, 'S')
 
-    // Header
-    pdf.setTextColor(88, 28, 135)
-    pdf.setFontSize(24)
-    pdf.setFont('helvetica', 'bold')
-    pdf.text('Story Keepsake', pageWidth / 2, 35, { align: 'center' })
-
-    // Decorative line
-    pdf.setDrawColor(218, 165, 32)
-    pdf.setLineWidth(1)
-    pdf.line(50, 42, pageWidth - 50, 42)
-
-    // Title
-    pdf.setFontSize(18)
-    pdf.setTextColor(0, 0, 0)
-    const keepsakeTitleLines = pdf.splitTextToSize(story.title, contentWidth - 20)
-    keepsakeTitleLines.forEach((line: string, index: number) => {
-      pdf.text(line, pageWidth / 2, 55 + (index * 8), { align: 'center' })
-    })
-
-    // Author
-    pdf.setFontSize(12)
-    pdf.setFont('helvetica', 'italic')
-    pdf.setTextColor(100, 100, 100)
-    pdf.text(`by ${story.author || 'Young Author'}`, pageWidth / 2, 55 + (keepsakeTitleLines.length * 8) + 8, { align: 'center' })
-
-    // Full story text - starting position
-    let keepsakeY = 55 + (keepsakeTitleLines.length * 8) + 25
-    let keepsakePageNum = 1
-
-    pdf.setFont('helvetica', 'normal')
-    pdf.setFontSize(10)
-    pdf.setTextColor(50, 50, 50)
-
-    for (let i = 0; i < story.pages.length; i++) {
-      // Page label
-      pdf.setFont('helvetica', 'bold')
+      // Header with speech bubble icon
       pdf.setTextColor(88, 28, 135)
-      const pageLabel = `Page ${i + 1}:`
-      pdf.text(pageLabel, margin + 5, keepsakeY)
-      keepsakeY += 5
+      pdf.setFontSize(24)
+      pdf.setFont('helvetica', 'bold')
+      pdf.text('The Original Story Idea', pageWidth / 2, 45, { align: 'center' })
 
-      // Page text
-      pdf.setFont('helvetica', 'normal')
+      // Subtitle
+      pdf.setFontSize(14)
+      pdf.setFont('helvetica', 'italic')
+      pdf.setTextColor(100, 100, 100)
+      pdf.text(`As told by ${story.author || 'Young Author'}`, pageWidth / 2, 58, { align: 'center' })
+
+      // Decorative line
+      pdf.setDrawColor(218, 165, 32)
+      pdf.setLineWidth(1)
+      pdf.line(50, 65, pageWidth - 50, 65)
+
+      // Quote box background
+      pdf.setFillColor(250, 245, 255)
+      pdf.roundedRect(25, 80, pageWidth - 50, 100, 5, 5, 'F')
+      pdf.setDrawColor(180, 160, 200)
+      pdf.setLineWidth(0.5)
+      pdf.roundedRect(25, 80, pageWidth - 50, 100, 5, 5, 'S')
+
+      // Opening quote mark
+      pdf.setTextColor(88, 28, 135)
+      pdf.setFontSize(48)
+      pdf.setFont('helvetica', 'bold')
+      pdf.text('"', 35, 105)
+
+      // The original prompt text
       pdf.setTextColor(50, 50, 50)
-      const pageTextLines = pdf.splitTextToSize(story.pages[i].text, contentWidth - 10)
-
-      for (const line of pageTextLines) {
-        // Check if we need a new page
-        if (keepsakeY > pageHeight - 40) {
-          // Page number
-          pdf.setTextColor(100, 100, 100)
-          pdf.setFontSize(10)
-          pdf.text(`Keepsake ${keepsakePageNum}`, pageWidth / 2, pageHeight - 20, { align: 'center' })
-
-          // New page
-          pdf.addPage()
-          keepsakePageNum++
-
-          // Background
-          pdf.setFillColor(255, 253, 250)
-          pdf.rect(0, 0, pageWidth, pageHeight, 'F')
-
-          // Border
-          pdf.setDrawColor(88, 28, 135)
-          pdf.setLineWidth(1.5)
-          pdf.roundedRect(15, 15, pageWidth - 30, pageHeight - 30, 2, 2, 'S')
-
-          // Header
-          pdf.setTextColor(88, 28, 135)
-          pdf.setFontSize(16)
-          pdf.setFont('helvetica', 'bold')
-          pdf.text('Story Keepsake (continued)', pageWidth / 2, 30, { align: 'center' })
-
-          keepsakeY = 45
-          pdf.setFontSize(10)
-          pdf.setFont('helvetica', 'normal')
-          pdf.setTextColor(50, 50, 50)
+      pdf.setFontSize(14)
+      pdf.setFont('helvetica', 'normal')
+      const promptLines = pdf.splitTextToSize(story.originalPrompt, contentWidth - 40)
+      let promptY = 100
+      promptLines.forEach((line: string) => {
+        if (promptY < 170) {
+          pdf.text(line, 45, promptY)
+          promptY += 8
         }
+      })
 
-        pdf.text(line, margin + 5, keepsakeY)
-        keepsakeY += 5
-      }
+      // Closing quote mark
+      pdf.setTextColor(88, 28, 135)
+      pdf.setFontSize(48)
+      pdf.setFont('helvetica', 'bold')
+      pdf.text('"', pageWidth - 45, promptY + 5)
 
-      // Add spacing between pages
-      keepsakeY += 8
+      // Footer message
+      pdf.setTextColor(100, 100, 100)
+      pdf.setFontSize(11)
+      pdf.setFont('helvetica', 'italic')
+      pdf.text('This magical story grew from this wonderful idea!', pageWidth / 2, 200, { align: 'center' })
+
+      // Small beaver emoji placeholder text
+      pdf.setFontSize(10)
+      pdf.text('Created with Kids Story Creator', pageWidth / 2, 215, { align: 'center' })
     }
-
-    // Final keepsake page number
-    pdf.setTextColor(100, 100, 100)
-    pdf.setFontSize(10)
-    pdf.text(`Keepsake ${keepsakePageNum}`, pageWidth / 2, pageHeight - 20, { align: 'center' })
 
     // ========== BACK COVER ==========
     pdf.addPage()
