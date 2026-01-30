@@ -14,30 +14,31 @@ async function generateImageWithRetry(
   prompt: string,
   imageIndex: number,
   imagePromptsLength: number,
-  maxRetries = 3
+  maxRetries = 2
 ): Promise<string> {
   for (let attempt = 1; attempt <= maxRetries; attempt++) {
     try {
-          // Use Stable Diffusion XL - optimized for speed
-          const cleanPrompt = `${prompt}, children's book illustration, soft watercolor style, vibrant colors, whimsical, kid-friendly, pure visual artwork`
+          // Enhanced prompt for Disney/Pixar style
+          const cleanPrompt = `${prompt}, masterpiece, best quality, highly detailed`
 
-          // Strong negative prompt to prevent ANY text
-          const negativePrompt = `text, words, letters, writing, caption, label, watermark, signature, logo, typography, font, numbers`
+          // Strong negative prompt - no text AND no scary elements
+          const negativePrompt = `text, words, letters, writing, caption, label, watermark, signature, logo, typography, font, numbers, scary, creepy, horror, dark, evil, ugly, deformed, bad anatomy, bad proportions, gross, disturbing, nightmare, frightening, realistic, photorealistic`
 
           console.log(`Image ${imageIndex + 1}: Attempt ${attempt}/${maxRetries}`)
 
+          // Use SDXL Lightning - 4x faster than regular SDXL!
           const output = await replicate.run(
-            "stability-ai/sdxl:7762fd07cf82c948538e41f63f77d685e02b063e37e496e96eefd46c929f9bdc",
+            "bytedance/sdxl-lightning-4step:5599ed30703defd1d160a25a63321b4dec97101d98b4674bcc56e41f62f35637",
             {
               input: {
                 prompt: cleanPrompt,
                 negative_prompt: negativePrompt,
-                width: 768,
-                height: 768,
+                width: 1024,
+                height: 1024,
                 num_outputs: 1,
                 scheduler: "K_EULER",
-                num_inference_steps: 25,
-                guidance_scale: 7.5
+                num_inference_steps: 4,
+                guidance_scale: 0
               }
             }
           )
@@ -87,15 +88,15 @@ async function generateImageWithRetry(
         const isRateLimit = error.message?.includes('rate limit') || is429
 
         if (isRateLimit && attempt < maxRetries) {
-          // Wait longer for rate limits - use exponential backoff
-          const waitTime = attempt === 1 ? 8000 : attempt === 2 ? 15000 : 25000
+          // Wait for rate limits
+          const waitTime = attempt === 1 ? 5000 : 10000
           console.log(`Rate limited, waiting ${waitTime}ms before retry...`)
           await sleep(waitTime)
           continue
         } else if (attempt < maxRetries) {
-          // For other errors, wait a bit before retry
-          console.log(`Error on attempt ${attempt}, retrying in 5s...`)
-          await sleep(5000)
+          // For other errors, quick retry
+          console.log(`Error on attempt ${attempt}, retrying in 3s...`)
+          await sleep(3000)
           continue
         } else {
           // Max retries reached
@@ -142,9 +143,9 @@ export async function POST(request: NextRequest) {
         imageUrls.push('') // Push empty string for failed images
       }
 
-      // Delay between each image to avoid rate limits (3 seconds)
+      // Shorter delay - SDXL Lightning is much faster
       if (i < imagePrompts.length - 1) {
-        await sleep(3000)
+        await sleep(1500)
       }
     }
 

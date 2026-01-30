@@ -62,8 +62,8 @@ export default function LoadingSpinner({ message = 'Loading...', stage = 'story'
     return mins > 0 ? `${mins}m ${secs}s` : `${secs}s`
   }
 
-  // Estimated times
-  const estimatedTime = stage === 'story' ? '15-30 seconds' : '1-2 minutes'
+  // Estimated times (SDXL Lightning is much faster!)
+  const estimatedTime = stage === 'story' ? '15-30 seconds' : '30-60 seconds'
   const stageIcon = stage === 'story' ? <BookOpen className="w-6 h-6" /> : <Palette className="w-6 h-6" />
 
   return (

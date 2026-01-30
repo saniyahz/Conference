@@ -187,13 +187,16 @@ function generateImagePrompts(story: any, originalPrompt: string): string[] {
   const firstPageText = story.pages[0]?.text || ''
   const consistentCharacter = generateConsistentCharacter(firstPageText, originalPrompt)
 
+  // Disney/Pixar style description - friendly, cute, not scary
+  const styleGuide = "Disney Pixar style, cute big expressive eyes, friendly face, soft rounded features, warm lighting, vibrant cheerful colors, 3D animated movie quality, adorable character design, family-friendly, NOT scary, NOT realistic, NOT creepy"
+
   // Generate prompts for each page based on ACTUAL story content
   const prompts = story.pages.map((page: any, index: number) => {
     // Extract the real scene from the page text
     const sceneFromStory = extractSceneFromText(page.text || '')
 
-    // Build prompt with character + actual scene content
-    return `Children's book illustration: ${sceneFromStory}. Main character: ${consistentCharacter}. Show the ACTION and ENVIRONMENT described. Style: soft watercolor, pastel colors, whimsical, kid-friendly, detailed background and scenery.`
+    // Build prompt with STRONG character consistency + Disney style
+    return `${styleGuide}. Scene: ${sceneFromStory}. SAME CHARACTER IN EVERY IMAGE: ${consistentCharacter}. The character must look IDENTICAL in every frame - same colors, same features, same outfit. Beautiful detailed background showing the environment.`
   })
 
   return prompts
