@@ -30,7 +30,7 @@ async function generateImageWithRetry(
                 aspect_ratio: "1:1",
                 output_format: "png",
                 output_quality: 90,
-                safety_tolerance: 2,
+                safety_tolerance: 5,
                 prompt_upsampling: true
               }
             }

@@ -145,7 +145,8 @@ function generateConsistentCharacter(firstPageText: string, originalPrompt: stri
     'fairy': 'a specific tiny fairy with translucent rainbow wings, wearing a flowing pink dress made of flower petals, long blonde hair with small flowers, holding a silver wand with a star on top, and sparkling blue eyes',
     'wizard': 'a specific young wizard with a long purple robe covered in silver stars and moons, a tall pointed purple hat, a long wooden wand with a crystal on top, kind gray eyes, and a long white beard',
     'knight': 'a specific young knight wearing shining silver armor with gold trim, a flowing blue cape, a small silver helmet with a red feather plume, holding a silver sword, and a friendly smile',
-    'pirate': 'a specific young pirate wearing a red bandana with white dots, a brown leather vest, white shirt with rolled-up sleeves, black pants, brown boots, an eye patch over the left eye, and an adventurous grin'
+    'pirate': 'a specific young pirate wearing a red bandana with white dots, a brown leather vest, white shirt with rolled-up sleeves, black pants, brown boots, an eye patch over the left eye, and an adventurous grin',
+    'skeleton': 'a specific friendly cartoon skeleton with clean white bones, a big cheerful smile with visible teeth, large round friendly eye sockets with a happy expression, wearing a colorful bow tie, dancing pose with arms spread wide, and an overall cute and playful appearance (NOT scary or spooky, kid-friendly cartoon style)'
   }
 
   // Return the consistent description, or create a detailed generic one
@@ -197,7 +198,7 @@ function extractSimpleCharacterType(firstPageText: string, originalPrompt: strin
   const characters = [
     'mouse', 'rabbit', 'bunny', 'cat', 'dog', 'bear', 'fox', 'dragon',
     'unicorn', 'elephant', 'lion', 'pig', 'duck', 'bird', 'dinosaur',
-    'princess', 'prince', 'fairy', 'wizard', 'knight', 'pirate'
+    'princess', 'prince', 'fairy', 'wizard', 'knight', 'pirate', 'skeleton'
   ]
 
   for (const char of characters) {
@@ -286,7 +287,7 @@ function extractCharacterName(prompt: string): string {
     }
   }
 
-  const people = ['princess', 'prince', 'knight', 'wizard', 'fairy', 'pirate']
+  const people = ['princess', 'prince', 'knight', 'wizard', 'fairy', 'pirate', 'skeleton']
   for (const person of people) {
     if (lowerPrompt.includes(person)) {
       return person
