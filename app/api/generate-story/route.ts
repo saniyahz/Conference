@@ -125,32 +125,53 @@ PAGE 10:
 
 // Generate a consistent character description to use across all pages
 function generateConsistentCharacter(firstPageText: string, originalPrompt: string): string {
-  const characterType = extractSimpleCharacterType(firstPageText, originalPrompt)
+  const characterType = extractCharacterType(firstPageText, originalPrompt)
 
-  // Create VERY detailed, consistent character descriptions for common types
-  // Include specific colors, features, clothing, and accessories that won't change
+  // Create detailed, consistent character descriptions for common types
   const characterDescriptions: { [key: string]: string } = {
-    'dog': 'a specific golden retriever puppy with fluffy cream-colored fur, large warm brown eyes, a small black nose, wearing a bright red collar with a silver tag, floppy ears, and a constantly wagging tail',
-    'cat': 'a specific orange tabby cat with distinctive tiger-like stripes, bright emerald green eyes, white paws and chest, a pink nose, and a long striped tail',
-    'dragon': 'a specific small dragon with soft pink scales covering its entire body, cream-colored belly, tiny translucent wings with golden veins, gentle amber eyes, small curved horns, and a friendly smile',
-    'unicorn': 'a specific white unicorn with a flowing rainbow-colored mane (red, orange, yellow, green, blue, purple bands), a long golden spiral horn on its forehead, soft purple eyes, white coat, and a rainbow-colored tail',
-    'bear': 'a specific brown teddy bear with caramel-colored soft fur, small black button eyes, a large black button nose, a friendly smile, round ears, and a small red bow tie',
-    'rabbit': 'a specific white bunny with pure white fluffy fur, very long floppy ears with pink insides, a tiny pink nose, bright blue eyes, a small round fluffy tail, and white whiskers',
-    'bunny': 'a specific white bunny with pure white fluffy fur, very long floppy ears with pink insides, a tiny pink nose, bright blue eyes, a small round fluffy tail, and white whiskers',
-    'fox': 'a specific red fox with bright orange-red fur on its body, white fur on its chest and belly, black paws and ear tips, a large bushy orange tail with a white tip, amber eyes, and pointy ears',
-    'elephant': 'a specific baby elephant with light gray wrinkled skin, large floppy ears with pink insides, small white tusks just starting to grow, a playful curled trunk, small brown eyes, and chunky legs',
-    'lion': 'a specific young lion cub with golden-tan fur, a small fluffy orange mane starting to grow, round face, big amber eyes, small pink nose, white whiskers, and a tuft at the end of its tail',
-    'mouse': 'a specific small gray mouse with soft gray fur, very large round pink ears, tiny black whiskers, bright black eyes like beads, a long pink tail, and small white paws',
-    'princess': 'a specific young princess with long flowing brown hair with small sparkles, wearing a lavender dress with golden embroidery, a small silver tiara with purple gems, kind green eyes, and a gentle smile',
-    'prince': 'a specific young prince with neat dark hair, wearing a royal blue jacket with gold buttons, white pants, a small gold crown, brown eyes, and a brave friendly expression',
-    'fairy': 'a specific tiny fairy with translucent rainbow wings, wearing a flowing pink dress made of flower petals, long blonde hair with small flowers, holding a silver wand with a star on top, and sparkling blue eyes',
-    'wizard': 'a specific young wizard with a long purple robe covered in silver stars and moons, a tall pointed purple hat, a long wooden wand with a crystal on top, kind gray eyes, and a long white beard',
-    'knight': 'a specific young knight wearing shining silver armor with gold trim, a flowing blue cape, a small silver helmet with a red feather plume, holding a silver sword, and a friendly smile',
-    'pirate': 'a specific young pirate wearing a red bandana with white dots, a brown leather vest, white shirt with rolled-up sleeves, black pants, brown boots, an eye patch over the left eye, and an adventurous grin'
+    'squirrel': 'fluffy with reddish-brown fur, a big bushy tail, bright curious eyes, tiny paws, and a cute little nose',
+    'chipmunk': 'small with brown fur with distinctive stripes on the back, chubby cheeks, tiny ears, and a small bushy tail',
+    'dog': 'a golden retriever puppy with fluffy cream-colored fur, large warm brown eyes, floppy ears, wearing a red collar',
+    'puppy': 'a fluffy puppy with soft fur, big round eyes, floppy ears, a wagging tail, and a happy expression',
+    'cat': 'an orange tabby cat with tiger-like stripes, bright green eyes, white paws, a pink nose, and a long striped tail',
+    'kitten': 'a fluffy kitten with soft fur, big round eyes, tiny pink nose, small pointed ears, and a playful expression',
+    'dragon': 'a small friendly dragon with soft purple scales, tiny wings, gentle amber eyes, small curved horns, and a friendly smile',
+    'unicorn': 'a white unicorn with a flowing rainbow mane, a golden spiral horn, soft purple eyes, and a rainbow tail',
+    'bear': 'a brown teddy bear with soft caramel fur, black button eyes, a big nose, round ears, and a red bow tie',
+    'rabbit': 'a white bunny with fluffy fur, long floppy ears with pink insides, a tiny pink nose, and bright blue eyes',
+    'bunny': 'a white bunny with fluffy fur, long floppy ears with pink insides, a tiny pink nose, and bright blue eyes',
+    'fox': 'a red fox with orange-red fur, white chest, a big bushy tail with a white tip, and amber eyes',
+    'owl': 'a wise owl with soft brown and white feathers, big round golden eyes, and a small curved beak',
+    'bird': 'a colorful little bird with bright feathers, small beak, tiny feet, and cheerful eyes',
+    'deer': 'a young deer with soft brown fur, white spots, big gentle eyes, and small growing antlers',
+    'fawn': 'a baby deer with soft brown fur covered in white spots, big innocent eyes, and long legs',
+    'elephant': 'a baby elephant with gray skin, large floppy ears, a playful curled trunk, and kind eyes',
+    'lion': 'a young lion cub with golden fur, a small fluffy mane, big amber eyes, and a playful expression',
+    'tiger': 'a tiger cub with orange fur and black stripes, bright eyes, and a playful stance',
+    'monkey': 'a playful monkey with brown fur, a curly tail, big ears, and mischievous eyes',
+    'mouse': 'a small gray mouse with large pink ears, tiny whiskers, bright black eyes, and a long pink tail',
+    'penguin': 'a cute penguin with black and white feathers, an orange beak, and a waddle walk',
+    'turtle': 'a friendly turtle with a green shell, kind eyes, and a slow gentle smile',
+    'frog': 'a bright green frog with big round eyes, a wide smile, and long jumping legs',
+    'butterfly': 'a beautiful butterfly with colorful wings in pink, blue, and purple',
+    'bee': 'a fuzzy bumble bee with yellow and black stripes, tiny wings, and a friendly face',
+    'hedgehog': 'a small hedgehog with soft spines, a tiny nose, bright eyes, and little paws',
+    'otter': 'a playful otter with sleek brown fur, whiskers, and a happy expression',
+    'beaver': 'a friendly beaver with brown fur, a flat tail, big front teeth, and kind eyes',
+    'raccoon': 'a raccoon with gray fur, a black mask around the eyes, and a striped tail',
+    'princess': 'a young princess with flowing hair, a sparkly dress, a small tiara, and kind eyes',
+    'prince': 'a young prince with neat hair, a royal blue jacket, a small crown, and a brave smile',
+    'fairy': 'a tiny fairy with rainbow wings, a flower petal dress, and sparkling eyes',
+    'wizard': 'a young wizard with a purple robe with stars, a pointy hat, and a magic wand',
+    'knight': 'a young knight in shining silver armor, a blue cape, and a friendly smile',
+    'pirate': 'a young pirate with a red bandana, an eye patch, and an adventurous grin',
+    'mermaid': 'a young mermaid with a colorful tail, flowing hair, and a seashell top',
+    'robot': 'a friendly robot with a boxy body, blinking lights, and a happy screen face',
+    'dinosaur': 'a cute baby dinosaur with green scales, big eyes, and a long tail'
   }
 
   // Return the consistent description, or create a detailed generic one
-  const description = characterDescriptions[characterType] || `a specific young ${characterType} with distinctive features: kind warm eyes, friendly smile, consistent appearance throughout`
+  const description = characterDescriptions[characterType] || `cute and friendly with big expressive eyes and a warm smile`
   return description
 }
 
@@ -184,67 +205,75 @@ function extractSceneFromText(pageText: string): string {
 }
 
 function generateImagePrompts(story: any, originalPrompt: string): string[] {
-  // Generate ONE consistent character description to use for all pages
+  // Get the character type from the story (squirrel, bunny, etc.)
   const firstPageText = story.pages[0]?.text || ''
+  const characterType = extractCharacterType(firstPageText, originalPrompt)
+
+  // Generate ONE consistent character description
   const consistentCharacter = generateConsistentCharacter(firstPageText, originalPrompt)
 
-  // Simple, clear prompts that focus on SCENE not character sheets
+  // Simple, clear prompts - ALWAYS use the actual character type, never "character"
   const prompts = story.pages.map((page: any, index: number) => {
     // Get simple scene description from page
-    const sceneDescription = getSimpleScene(page.text || '', index)
+    const sceneDescription = getSimpleScene(page.text || '', index, characterType)
 
-    // Build a SIMPLE, CLEAR prompt - one scene, one character
-    return `Children's book illustration, single scene: ${sceneDescription}. Main character: ${consistentCharacter}. Disney Pixar style, cute, friendly, warm colors, soft lighting, beautiful background, storybook art. No text, no words, no letters.`
+    // Build a SIMPLE, CLEAR prompt with explicit animal/character type
+    return `Children's book illustration: A cute ${characterType} ${sceneDescription}. The ${characterType} is ${consistentCharacter}. Disney Pixar style, adorable, friendly, warm colors, soft lighting, beautiful forest background, storybook art. Single scene, one main character. No text, no words, no letters, no humans unless story is about humans.`
   })
 
   return prompts
 }
 
-// Get a simple scene description - just the key action
-function getSimpleScene(pageText: string, pageIndex: number): string {
-  // Default scenes for each page position
+// Get a simple scene description - uses the actual character type
+function getSimpleScene(pageText: string, pageIndex: number, characterType: string): string {
+  // Default scenes for each page position - uses actual character type
   const defaultScenes = [
-    'character standing happily in their cozy home',
-    'character playing outside in a sunny meadow',
-    'character discovering something magical and sparkly',
-    'character looking worried but determined',
-    'character being brave and ready for adventure',
-    'character trying hard to solve a problem',
-    'character learning something important from a wise friend',
-    'character working together with friends',
-    'character celebrating a big success',
-    'character hugging friends at a happy celebration'
+    'standing happily in their cozy forest home',
+    'playing outside in a sunny meadow with flowers',
+    'discovering something magical and sparkly',
+    'looking determined and ready to help',
+    'being brave and starting an adventure',
+    'trying hard to solve a problem',
+    'learning something important from a wise friend',
+    'working together with animal friends',
+    'celebrating a big success with joy',
+    'hugging friends at a happy celebration'
   ]
 
   // Try to extract setting from text
-  const settings = pageText.match(/\b(forest|garden|castle|meadow|ocean|beach|mountain|village|home|house|cave|river|lake|sky|clouds)\b/i)
-  const setting = settings ? settings[0].toLowerCase() : ''
+  const settings = pageText.match(/\b(forest|garden|castle|meadow|ocean|beach|mountain|village|home|house|cave|river|lake|sky|clouds|tree|woods)\b/i)
+  const setting = settings ? settings[0].toLowerCase() : 'forest'
 
   // Try to extract action
-  const actions = pageText.match(/\b(playing|running|flying|swimming|dancing|singing|helping|finding|exploring|hugging|celebrating|sleeping|eating|walking|jumping|climbing)\b/i)
+  const actions = pageText.match(/\b(playing|running|flying|swimming|dancing|singing|helping|finding|exploring|hugging|celebrating|sleeping|eating|walking|jumping|climbing|gathering|searching|collecting)\b/i)
   const action = actions ? actions[0].toLowerCase() : ''
 
-  if (setting && action) {
-    return `character ${action} in a beautiful ${setting}`
-  } else if (setting) {
-    return `character in a beautiful ${setting}`
-  } else if (action) {
-    return `character ${action}`
+  if (action) {
+    return `${action} in a beautiful ${setting}`
   }
 
-  return defaultScenes[pageIndex] || 'character in a magical scene'
+  return defaultScenes[pageIndex] || 'in a magical forest scene'
 }
 
-// Extract just the character type (animal/person) without detailed description
-function extractSimpleCharacterType(firstPageText: string, originalPrompt: string): string {
+// Extract the character type (animal or person) - expanded list
+function extractCharacterType(firstPageText: string, originalPrompt: string): string {
   const lowerText = firstPageText.toLowerCase()
   const lowerPrompt = originalPrompt.toLowerCase()
 
-  // Simple character types (just the animal/person, no details)
+  // Expanded list of character types - animals first (most common in kids stories)
   const characters = [
-    'mouse', 'rabbit', 'bunny', 'cat', 'dog', 'bear', 'fox', 'dragon',
-    'unicorn', 'elephant', 'lion', 'pig', 'duck', 'bird', 'dinosaur',
-    'princess', 'prince', 'fairy', 'wizard', 'knight', 'pirate'
+    'squirrel', 'chipmunk', 'mouse', 'rabbit', 'bunny', 'cat', 'kitten', 'dog', 'puppy',
+    'bear', 'teddy bear', 'fox', 'wolf', 'deer', 'fawn', 'owl', 'bird', 'robin', 'bluebird',
+    'dragon', 'unicorn', 'horse', 'pony', 'elephant', 'lion', 'tiger', 'monkey', 'gorilla',
+    'pig', 'piglet', 'duck', 'duckling', 'chicken', 'chick', 'cow', 'sheep', 'lamb', 'goat',
+    'frog', 'turtle', 'fish', 'dolphin', 'whale', 'shark', 'octopus', 'crab',
+    'butterfly', 'bee', 'ladybug', 'caterpillar', 'snail',
+    'dinosaur', 't-rex', 'triceratops',
+    'penguin', 'polar bear', 'seal', 'otter', 'beaver',
+    'hedgehog', 'porcupine', 'skunk', 'raccoon', 'badger',
+    'princess', 'prince', 'fairy', 'wizard', 'witch', 'knight', 'pirate', 'mermaid',
+    'robot', 'alien', 'monster', 'giant', 'elf', 'gnome', 'troll',
+    'boy', 'girl', 'child', 'kid'
   ]
 
   for (const char of characters) {
@@ -253,7 +282,8 @@ function extractSimpleCharacterType(firstPageText: string, originalPrompt: strin
     }
   }
 
-  return 'child character'
+  // Default to a cute woodland animal if we can't detect
+  return 'little woodland creature'
 }
 
 function parseStory(text: string, originalPrompt: string) {
