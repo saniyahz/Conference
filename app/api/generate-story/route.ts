@@ -223,7 +223,28 @@ function extractAllCharacters(text: string, originalPrompt: string): string[] {
     }
   }
 
-  // Pattern 2: "a/an/the [adjective]? [creature]" from the original prompt
+  // Pattern 2: "a/an [adjective]? [Creature] named [Name]" - e.g., "a massive Rhinoceros named Romy"
+  const creatureNamedPattern = /\b(?:a|an)\s+(?:\w+\s+)?([A-Z][a-z]+)\s+named\s+([A-Z][a-z]+)/g
+  while ((match = creatureNamedPattern.exec(combinedText)) !== null) {
+    const creature = match[1].toLowerCase()
+    const name = match[2]
+    if (!foundCharacters.some(fc => fc.toLowerCase().includes(creature))) {
+      foundCharacters.push(`${name} the ${creature}`)
+    }
+  }
+
+  // Pattern 3: "[Creature] named [Name]" - e.g., "Rhinoceros named Romy"
+  const simpleCreatureNamedPattern = /\b([A-Z][a-z]+)\s+named\s+([A-Z][a-z]+)/g
+  while ((match = simpleCreatureNamedPattern.exec(combinedText)) !== null) {
+    const creature = match[1].toLowerCase()
+    const name = match[2]
+    const skipWords = ['friend', 'place', 'story', 'adventure', 'home', 'house', 'one', 'day']
+    if (!skipWords.includes(creature) && !foundCharacters.some(fc => fc.toLowerCase().includes(creature))) {
+      foundCharacters.push(`${name} the ${creature}`)
+    }
+  }
+
+  // Pattern 4: "a/an/the [adjective]? [creature]" from the original prompt
   // This captures what the user actually asked for
   const promptCreaturePattern = /\b(?:a|an|the)\s+(?:little|tiny|big|small|friendly|cute|brave|magical|young)?\s*([a-z]+)\b/gi
   while ((match = promptCreaturePattern.exec(originalPrompt)) !== null) {
@@ -384,8 +405,26 @@ function extractCharacterType(pageText: string, originalPrompt: string): string 
     return namedMatch[2].toLowerCase()
   }
 
-  // Pattern 2: "a/an [adjective]? [creature]" from prompt - second priority
-  const creaturePattern = /\b(?:a|an)\s+(?:little|tiny|big|small|friendly|cute|brave|magical|young|hardworking)?\s*([a-z]+)\b/i
+  // Pattern 2: "a/an [adjective]? [Creature] named [Name]" - e.g., "a massive Rhinoceros named Romy"
+  const creatureNamedPattern = /\b(?:a|an)\s+(?:\w+\s+)?([A-Z][a-z]+)\s+named\s+[A-Z][a-z]+/
+  const creatureNamedMatch = combinedText.match(creatureNamedPattern)
+  if (creatureNamedMatch) {
+    return creatureNamedMatch[1].toLowerCase()
+  }
+
+  // Pattern 3: "[Creature] named [Name]" - e.g., "Rhinoceros named Romy"
+  const simpleCreatureNamedPattern = /\b([A-Z][a-z]+)\s+named\s+[A-Z][a-z]+/
+  const simpleCreatureNamedMatch = combinedText.match(simpleCreatureNamedPattern)
+  if (simpleCreatureNamedMatch) {
+    const creature = simpleCreatureNamedMatch[1].toLowerCase()
+    const skipWords = ['friend', 'place', 'story', 'adventure', 'home', 'house', 'one', 'day']
+    if (!skipWords.includes(creature)) {
+      return creature
+    }
+  }
+
+  // Pattern 4: "a/an [adjective]? [creature]" from prompt
+  const creaturePattern = /\b(?:a|an)\s+(?:little|tiny|big|small|friendly|cute|brave|magical|young|hardworking|massive|gentle)?\s*([a-z]+)\b/i
   const creatureMatch = originalPrompt.match(creaturePattern)
   if (creatureMatch) {
     const creature = creatureMatch[1].toLowerCase()
@@ -395,7 +434,7 @@ function extractCharacterType(pageText: string, originalPrompt: string): string 
     }
   }
 
-  // Pattern 3: Look for "the [creatures]" (plural)
+  // Pattern 5: Look for "the [creatures]" (plural)
   const pluralPattern = /\b(?:the|some|many)\s+([a-z]+s)\b/i
   const pluralMatch = combinedText.match(pluralPattern)
   if (pluralMatch) {
