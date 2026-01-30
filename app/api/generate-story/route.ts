@@ -211,12 +211,12 @@ function extractAllCharacters(text: string, originalPrompt: string): string[] {
   }
 
   // Dynamic character extraction - find characters from patterns in the text
-  // Pattern 1: "[Name] the [creature]" - e.g., "Rosie the cup", "Andy the ant"
-  const namedCharacterPattern = /\b([A-Z][a-z]+)\s+the\s+([a-z]+)/g
+  // Pattern 1: "[Name] the [creature]" - e.g., "Rosie the Cup", "Annie the Ant"
+  const namedCharacterPattern = /\b([A-Z][a-z]+)\s+the\s+([A-Za-z]+)/g
   let match
   while ((match = namedCharacterPattern.exec(combinedText)) !== null) {
     const name = match[1]
-    const creature = match[2]
+    const creature = match[2].toLowerCase()
     const character = `${name} the ${creature}`
     if (!foundCharacters.some(fc => fc.toLowerCase().includes(creature))) {
       foundCharacters.push(character)
@@ -352,11 +352,11 @@ function parseStory(text: string, originalPrompt: string) {
 
 // Dynamically extract character name from prompt
 function extractCharacterName(prompt: string): string {
-  // Pattern 1: "[Name] the [creature]" - e.g., "Rosie the cup", "Andy the ant"
-  const namedPattern = /\b([A-Z][a-z]+)\s+the\s+([a-z]+)/i
+  // Pattern 1: "[Name] the [creature]" - e.g., "Rosie the Cup", "Annie the Ant"
+  const namedPattern = /\b([A-Z][a-z]+)\s+the\s+([A-Za-z]+)/i
   const namedMatch = prompt.match(namedPattern)
   if (namedMatch) {
-    return namedMatch[2] // Return the creature type
+    return namedMatch[2].toLowerCase() // Return the creature type
   }
 
   // Pattern 2: "a/an/the [adjective]? [creature]"
@@ -377,8 +377,8 @@ function extractCharacterName(prompt: string): string {
 function extractCharacterType(pageText: string, originalPrompt: string): string {
   const combinedText = `${originalPrompt} ${pageText}`
 
-  // Pattern 1: "[Name] the [creature]" - highest priority
-  const namedPattern = /\b([A-Z][a-z]+)\s+the\s+([a-z]+)/
+  // Pattern 1: "[Name] the [creature]" - highest priority (handles "Annie the Ant")
+  const namedPattern = /\b([A-Z][a-z]+)\s+the\s+([A-Za-z]+)/
   const namedMatch = combinedText.match(namedPattern)
   if (namedMatch) {
     return namedMatch[2].toLowerCase()
