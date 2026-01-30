@@ -3,9 +3,10 @@
 import { useState, useEffect, useRef } from 'react'
 import { useSession } from 'next-auth/react'
 import { useRouter } from 'next/navigation'
-import { ChevronLeft, ChevronRight, Download, RotateCcw, Save, Loader2, Volume2, VolumeX, PlayCircle, PauseCircle } from 'lucide-react'
+import { ChevronLeft, ChevronRight, Download, RotateCcw, Save, Loader2, Volume2, VolumeX, PlayCircle, PauseCircle, Lock, LogIn } from 'lucide-react'
 import { Story } from '@/app/page'
 import Image from 'next/image'
+import { PLANS, PlanType, canDownload, canPlayAudio, canSaveToLibrary } from '@/lib/subscription'
 
 interface StoryBookProps {
   story: Story
@@ -20,8 +21,14 @@ const VOICE_OPTIONS = [
   { id: 'friendly', name: '✨ Friendly Guide', description: 'Soft & gentle' },
 ]
 
+type UsageData = {
+  storiesCreatedThisMonth: number
+  downloadsThisMonth: number
+  audioPlaysThisMonth: number
+}
+
 export default function StoryBook({ story, onReset }: StoryBookProps) {
-  const { data: session } = useSession()
+  const { data: session, status } = useSession()
   const router = useRouter()
   const [currentPage, setCurrentPage] = useState(0)
   const [isSaving, setIsSaving] = useState(false)
@@ -29,9 +36,29 @@ export default function StoryBook({ story, onReset }: StoryBookProps) {
   const [isGeneratingVoice, setIsGeneratingVoice] = useState(false)
   const [selectedVoice, setSelectedVoice] = useState(VOICE_OPTIONS[0])
   const [autoPlayMode, setAutoPlayMode] = useState(false)
+  const [usage, setUsage] = useState<UsageData | null>(null)
+  const [showLoginPrompt, setShowLoginPrompt] = useState(false)
+  const [loginPromptAction, setLoginPromptAction] = useState<'download' | 'audio' | 'save' | null>(null)
   const audioRef = useRef<HTMLAudioElement | null>(null)
   const autoPlayRef = useRef(false)
   const currentPageRef = useRef(0)
+
+  // Fetch usage data when logged in
+  useEffect(() => {
+    if (session) {
+      fetchUsage()
+    }
+  }, [session])
+
+  const fetchUsage = async () => {
+    try {
+      const response = await fetch('/api/usage')
+      const data = await response.json()
+      setUsage(data.usage)
+    } catch (error) {
+      console.error('Error fetching usage:', error)
+    }
+  }
 
   // Keep refs in sync with state
   useEffect(() => {
@@ -52,7 +79,6 @@ export default function StoryBook({ story, onReset }: StoryBookProps) {
   // Auto-start reading when auto-play mode starts a new page
   useEffect(() => {
     if (autoPlayMode && !isReading && !isGeneratingVoice && currentPage < story.pages.length) {
-      // Small delay before starting to read the new page
       const timer = setTimeout(() => {
         if (autoPlayRef.current) {
           readAloud()
@@ -70,7 +96,51 @@ export default function StoryBook({ story, onReset }: StoryBookProps) {
     }
   }, [])
 
+  const getPlanType = (): PlanType => {
+    return (session?.user?.subscription?.plan as PlanType) || 'free'
+  }
+
+  const checkCanDownload = (): boolean => {
+    if (!session) return false
+    const plan = getPlanType()
+    return canDownload(plan, usage?.downloadsThisMonth || 0)
+  }
+
+  const checkCanPlayAudio = (): boolean => {
+    if (!session) return false
+    const plan = getPlanType()
+    return canPlayAudio(plan, usage?.audioPlaysThisMonth || 0)
+  }
+
+  const promptLogin = (action: 'download' | 'audio' | 'save') => {
+    setLoginPromptAction(action)
+    setShowLoginPrompt(true)
+  }
+
+  const handleLoginRedirect = () => {
+    setShowLoginPrompt(false)
+    router.push('/auth/signin?callbackUrl=' + encodeURIComponent(window.location.pathname))
+  }
+
+  const handleUpgradeRedirect = () => {
+    setShowLoginPrompt(false)
+    router.push('/pricing')
+  }
+
   const readAloud = async () => {
+    // Check if user is logged in
+    if (!session) {
+      promptLogin('audio')
+      return
+    }
+
+    // Check usage limits
+    if (!checkCanPlayAudio()) {
+      alert('You have reached your audio play limit for this month. Please upgrade your plan for unlimited audio.')
+      router.push('/pricing')
+      return
+    }
+
     // If already reading, stop (and disable auto-play if it was on)
     if (isReading) {
       stopReading()
@@ -80,7 +150,6 @@ export default function StoryBook({ story, onReset }: StoryBookProps) {
 
     const text = story.pages[currentPage].text
     if (!text || text.trim().length === 0) {
-      // If in auto-play mode and no text, try next page
       if (autoPlayRef.current && currentPage < story.pages.length - 1) {
         setCurrentPage(prev => prev + 1)
       }
@@ -90,6 +159,13 @@ export default function StoryBook({ story, onReset }: StoryBookProps) {
     setIsGeneratingVoice(true)
 
     try {
+      // Track audio play usage
+      await fetch('/api/usage/audio', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ storyId: null }),
+      })
+
       // Call OpenAI TTS API
       const response = await fetch('/api/generate-speech', {
         method: 'POST',
@@ -104,35 +180,30 @@ export default function StoryBook({ story, onReset }: StoryBookProps) {
         throw new Error('Failed to generate voice')
       }
 
-      // Get audio blob and create URL
       const audioBlob = await response.blob()
       const audioUrl = URL.createObjectURL(audioBlob)
 
-      // Create and play audio
       const audio = new Audio(audioUrl)
       audioRef.current = audio
 
       audio.onplay = () => {
         setIsReading(true)
         setIsGeneratingVoice(false)
+        fetchUsage() // Refresh usage data
       }
 
       audio.onended = () => {
         setIsReading(false)
         URL.revokeObjectURL(audioUrl)
 
-        // Auto-advance to next page if auto-play mode is on
-        // Use currentPageRef.current to get the actual current page (not stale closure value)
         const pageNow = currentPageRef.current
         if (autoPlayRef.current && pageNow < story.pages.length - 1) {
-          // Small delay before flipping page
           setTimeout(() => {
             if (autoPlayRef.current) {
               setCurrentPage(pageNow + 1)
             }
           }, 1000)
         } else if (autoPlayRef.current && pageNow === story.pages.length - 1) {
-          // End of story - turn off auto-play
           setAutoPlayMode(false)
         }
       }
@@ -141,7 +212,6 @@ export default function StoryBook({ story, onReset }: StoryBookProps) {
         setIsReading(false)
         setIsGeneratingVoice(false)
         URL.revokeObjectURL(audioUrl)
-        // Stop auto-play on error
         setAutoPlayMode(false)
       }
 
@@ -156,17 +226,24 @@ export default function StoryBook({ story, onReset }: StoryBookProps) {
     }
   }
 
-  // Start auto-play mode (reads entire story automatically)
   const startAutoPlay = () => {
+    if (!session) {
+      promptLogin('audio')
+      return
+    }
+
+    if (!checkCanPlayAudio()) {
+      alert('You have reached your audio play limit for this month. Please upgrade your plan for unlimited audio.')
+      router.push('/pricing')
+      return
+    }
+
     setAutoPlayMode(true)
-    // Start from current page or beginning
     if (currentPage === story.pages.length - 1) {
       setCurrentPage(0)
     }
-    // The useEffect will trigger reading when autoPlayMode changes
   }
 
-  // Stop auto-play mode
   const stopAutoPlay = () => {
     setAutoPlayMode(false)
     stopReading()
@@ -195,7 +272,27 @@ export default function StoryBook({ story, onReset }: StoryBookProps) {
   }
 
   const downloadPDF = async () => {
+    // Check if user is logged in
+    if (!session) {
+      promptLogin('download')
+      return
+    }
+
+    // Check usage limits
+    if (!checkCanDownload()) {
+      alert('You have reached your download limit for this month. Please upgrade your plan for unlimited downloads.')
+      router.push('/pricing')
+      return
+    }
+
     try {
+      // Track download usage first
+      await fetch('/api/usage/download', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ storyId: null }),
+      })
+
       const response = await fetch('/api/generate-pdf', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -215,6 +312,9 @@ export default function StoryBook({ story, onReset }: StoryBookProps) {
       a.click()
       window.URL.revokeObjectURL(url)
       document.body.removeChild(a)
+
+      // Refresh usage data
+      fetchUsage()
     } catch (error) {
       console.error('Error downloading PDF:', error)
       alert('Failed to download PDF. Please try again.')
@@ -223,9 +323,7 @@ export default function StoryBook({ story, onReset }: StoryBookProps) {
 
   const handleSave = async () => {
     if (!session) {
-      if (confirm('You need to sign in to save stories. Would you like to sign in now?')) {
-        router.push('/auth/signin')
-      }
+      promptLogin('save')
       return
     }
 
@@ -237,6 +335,8 @@ export default function StoryBook({ story, onReset }: StoryBookProps) {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           title: story.title,
+          author: story.author,
+          originalPrompt: story.originalPrompt,
           pages: story.pages,
           coverImage: story.pages[0]?.imageUrl,
         }),
@@ -245,10 +345,17 @@ export default function StoryBook({ story, onReset }: StoryBookProps) {
       const data = await response.json()
 
       if (!response.ok) {
-        throw new Error(data.error || 'Failed to save story')
+        if (data.error?.includes('library limit')) {
+          alert('You have reached your library limit. Please upgrade your plan to save more stories.')
+          router.push('/pricing')
+        } else {
+          throw new Error(data.error || 'Failed to save story')
+        }
+        return
       }
 
-      alert('Story saved successfully! View it in your dashboard.')
+      alert('Story saved successfully! View it in your library.')
+      router.push('/dashboard')
     } catch (error: any) {
       console.error('Error saving story:', error)
       alert(error.message || 'Failed to save story. Please try again.')
@@ -257,8 +364,56 @@ export default function StoryBook({ story, onReset }: StoryBookProps) {
     }
   }
 
+  const getActionText = () => {
+    switch (loginPromptAction) {
+      case 'download':
+        return 'download stories as PDF'
+      case 'audio':
+        return 'listen to stories read aloud'
+      case 'save':
+        return 'save stories to your library'
+      default:
+        return 'use this feature'
+    }
+  }
+
   return (
     <div className="space-y-6">
+      {/* Login Prompt Modal */}
+      {showLoginPrompt && (
+        <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
+          <div className="bg-white rounded-2xl shadow-2xl max-w-md w-full p-8 text-center">
+            <div className="w-16 h-16 bg-purple-100 rounded-full flex items-center justify-center mx-auto mb-4">
+              <Lock className="w-8 h-8 text-purple-600" />
+            </div>
+            <h3 className="text-2xl font-bold text-gray-800 mb-2">
+              Sign In Required
+            </h3>
+            <p className="text-gray-600 mb-6">
+              Create a free account to {getActionText()}. It only takes a moment!
+            </p>
+            <div className="space-y-3">
+              <button
+                onClick={handleLoginRedirect}
+                className="w-full py-3 bg-purple-600 text-white rounded-lg hover:bg-purple-700 font-semibold flex items-center justify-center gap-2"
+              >
+                <LogIn className="w-5 h-5" />
+                Sign In / Sign Up
+              </button>
+              <button
+                onClick={() => setShowLoginPrompt(false)}
+                className="w-full py-3 border-2 border-gray-300 text-gray-600 rounded-lg hover:bg-gray-50 font-semibold"
+              >
+                Maybe Later
+              </button>
+            </div>
+            <p className="text-xs text-gray-500 mt-4">
+              Free accounts include 1 story, 1 download, and 3 audio plays per month.
+            </p>
+          </div>
+        </div>
+      )}
+
       {/* Voice Selector & Auto-Play */}
       <div className="flex flex-wrap items-center justify-center gap-4 bg-gradient-to-r from-amber-50 to-orange-50 rounded-xl p-4 border-2 border-amber-200">
         <span className="text-2xl">🎙️</span>
@@ -297,6 +452,7 @@ export default function StoryBook({ story, onReset }: StoryBookProps) {
             <>
               <PlayCircle className="w-5 h-5" />
               Auto-Play Story
+              {!session && <Lock className="w-4 h-4" />}
             </>
           )}
         </button>
@@ -327,7 +483,7 @@ export default function StoryBook({ story, onReset }: StoryBookProps) {
       </div>
 
 
-      {/* Book Pages - Side by side layout like Gemini */}
+      {/* Book Pages - Side by side layout */}
       <div className="relative bg-white rounded-2xl shadow-2xl overflow-hidden border-2 border-gray-200" style={{ minHeight: '600px' }}>
         {/* Page Number */}
         <div className="absolute top-4 right-4 bg-purple-600 text-white px-4 py-2 rounded-full font-semibold z-10">
@@ -356,7 +512,6 @@ export default function StoryBook({ story, onReset }: StoryBookProps) {
 
           {/* Right Side - Text */}
           <div className="flex flex-col justify-center p-8 md:p-12 bg-gradient-to-br from-yellow-50/30 to-orange-50/30">
-            {/* Story Title at top of text page */}
             <div className="mb-6">
               <h2 className="text-sm font-semibold text-gray-500 uppercase tracking-wide mb-2">
                 {story.author || 'Young Author'}
@@ -364,14 +519,12 @@ export default function StoryBook({ story, onReset }: StoryBookProps) {
               <div className="h-px bg-purple-200 w-16"></div>
             </div>
 
-            {/* Story Text */}
             <div className="flex-1 flex items-center">
               <p className="text-base md:text-lg lg:text-xl text-gray-800 leading-relaxed font-serif">
                 {story.pages[currentPage].text}
               </p>
             </div>
 
-            {/* Page indicator at bottom */}
             <div className="mt-6 text-center">
               <div className="inline-block h-px bg-purple-200 w-24"></div>
               <div className="text-sm text-gray-400 mt-2">{currentPage + 1}</div>
@@ -415,6 +568,7 @@ export default function StoryBook({ story, onReset }: StoryBookProps) {
               <>
                 <Volume2 className="w-5 h-5" />
                 🦫 Read Aloud
+                {!session && <Lock className="w-4 h-4 ml-1" />}
               </>
             )}
           </button>
@@ -446,6 +600,7 @@ export default function StoryBook({ story, onReset }: StoryBookProps) {
             <>
               <Save className="w-5 h-5" />
               Save Story
+              {!session && <Lock className="w-4 h-4 ml-1" />}
             </>
           )}
         </button>
@@ -457,6 +612,7 @@ export default function StoryBook({ story, onReset }: StoryBookProps) {
         >
           <Download className="w-5 h-5" />
           Download Book
+          {!session && <Lock className="w-4 h-4 ml-1" />}
         </button>
 
         {/* Create New Story */}
@@ -469,6 +625,21 @@ export default function StoryBook({ story, onReset }: StoryBookProps) {
         </button>
       </div>
 
+      {/* Usage Info for logged-in users */}
+      {session && usage && (
+        <div className="bg-gray-50 rounded-xl p-4 text-center">
+          <p className="text-sm text-gray-600">
+            This month: {usage.downloadsThisMonth} downloads • {usage.audioPlaysThisMonth} audio plays
+            {' '}
+            <button
+              onClick={() => router.push('/pricing')}
+              className="text-purple-600 hover:underline font-medium"
+            >
+              Upgrade for unlimited
+            </button>
+          </p>
+        </div>
+      )}
     </div>
   )
 }

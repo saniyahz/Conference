@@ -28,7 +28,7 @@ export async function POST(request: NextRequest) {
     // Hash password
     const hashedPassword = await hash(password, 12)
 
-    // Create user with free subscription
+    // Create user with free subscription and usage tracking
     const user = await prisma.user.create({
       data: {
         name,
@@ -40,12 +40,23 @@ export async function POST(request: NextRequest) {
             status: 'active',
             currentPeriodStart: new Date(),
             currentPeriodEnd: new Date(Date.now() + 365 * 24 * 60 * 60 * 1000), // 1 year
-            storiesSavedThisMonth: 0,
+          },
+        },
+        usageTracking: {
+          create: {
+            storiesCreatedThisMonth: 0,
+            downloadsThisMonth: 0,
+            audioPlaysThisMonth: 0,
+            totalStoriesCreated: 0,
+            totalDownloads: 0,
+            totalAudioPlays: 0,
+            lastResetDate: new Date(),
           },
         },
       },
       include: {
         subscription: true,
+        usageTracking: true,
       },
     })
 

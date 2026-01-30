@@ -9,73 +9,157 @@ datasource db {
   url      = env("DATABASE_URL")
 }
 
+// NextAuth Account model for OAuth providers (Google, etc.)
+model Account {
+  id                String  @id @default(cuid())
+  userId            String
+  type              String
+  provider          String
+  providerAccountId String
+  refresh_token     String?
+  access_token      String?
+  expires_at        Int?
+  token_type        String?
+  scope             String?
+  id_token          String?
+  session_state     String?
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([provider, providerAccountId])
+}
+
+// NextAuth Session model
+model Session {
+  id           String   @id @default(cuid())
+  sessionToken String   @unique
+  userId       String
+  expires      DateTime
+  user         User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+}
+
+// NextAuth VerificationToken model
+model VerificationToken {
+  identifier String
+  token      String   @unique
+  expires    DateTime
+
+  @@unique([identifier, token])
+}
+
 model User {
   id            String    @id @default(cuid())
   name          String?
   email         String    @unique
-  password      String
+  password      String?   // Optional for OAuth users
   emailVerified DateTime?
   image         String?
   createdAt     DateTime  @default(now())
   updatedAt     DateTime  @updatedAt
 
+  accounts      Account[]
+  sessions      Session[]
   subscription  Subscription?
   stories       Story[]
   orders        PrintOrder[]
+  usageTracking UsageTracking?
 }
 
 model Subscription {
-  id                String   @id @default(cuid())
-  userId            String   @unique
-  user              User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  id                   String   @id @default(cuid())
+  userId               String   @unique
+  user                 User     @relation(fields: [userId], references: [id], onDelete: Cascade)
 
-  plan              String   // "free", "monthly", "yearly", "unlimited_monthly", "unlimited_yearly"
-  status            String   // "active", "cancelled", "expired"
-  stripeCustomerId  String?  @unique
-  stripeSubscriptionId String? @unique
+  plan                 String   @default("free") // "free", "basic", "premium"
+  billingCycle         String?  // "monthly", "yearly"
+  status               String   @default("active") // "active", "cancelled", "expired", "past_due"
 
-  currentPeriodStart DateTime
-  currentPeriodEnd   DateTime
-  storiesSavedThisMonth Int @default(0)
+  stripeCustomerId     String?  @unique
+  stripeSubscriptionId String?  @unique
+  stripePriceId        String?
 
-  createdAt         DateTime @default(now())
-  updatedAt         DateTime @updatedAt
+  currentPeriodStart   DateTime @default(now())
+  currentPeriodEnd     DateTime?
+  cancelAtPeriodEnd    Boolean  @default(false)
+
+  createdAt            DateTime @default(now())
+  updatedAt            DateTime @updatedAt
+}
+
+model UsageTracking {
+  id                    String   @id @default(cuid())
+  userId                String   @unique
+  user                  User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  // Monthly usage counters (reset each billing period)
+  storiesCreatedThisMonth  Int      @default(0)
+  downloadsThisMonth       Int      @default(0)
+  audioPlaysThisMonth      Int      @default(0)
+
+  // Lifetime totals
+  totalStoriesCreated      Int      @default(0)
+  totalDownloads           Int      @default(0)
+  totalAudioPlays          Int      @default(0)
+
+  // Last reset date for monthly counters
+  lastResetDate            DateTime @default(now())
+
+  createdAt                DateTime @default(now())
+  updatedAt                DateTime @updatedAt
 }
 
 model Story {
-  id          String   @id @default(cuid())
-  userId      String
-  user        User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  id              String   @id @default(cuid())
+  userId          String
+  user            User     @relation(fields: [userId], references: [id], onDelete: Cascade)
 
-  title       String
-  pages       String   // JSON string of pages
-  coverImage  String?
+  title           String
+  author          String?
+  originalPrompt  String?  // What the kid originally said
+  pages           String   // JSON string of pages
+  coverImage      String?
 
-  isSaved     Boolean  @default(false)
-  createdAt   DateTime @default(now())
-  updatedAt   DateTime @updatedAt
+  isSaved         Boolean  @default(false)
+  downloadCount   Int      @default(0)
+  audioPlayCount  Int      @default(0)
+
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
 
   @@index([userId])
 }
 
 model PrintOrder {
-  id          String   @id @default(cuid())
-  userId      String
-  user        User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  id              String   @id @default(cuid())
+  userId          String
+  user            User     @relation(fields: [userId], references: [id], onDelete: Cascade)
 
-  storyId     String
+  storyId         String
+  storyTitle      String?
 
-  status      String   // "pending", "processing", "shipped", "completed", "cancelled"
+  status          String   // "pending", "processing", "printed", "shipped", "delivered", "cancelled"
 
-  basePrice   Float
-  discount    Float
-  totalPrice  Float
+  // Pricing
+  basePrice       Float
+  discountPercent Float    @default(0)
+  discountAmount  Float    @default(0)
+  shippingCost    Float    @default(0)
+  totalPrice      Float
 
-  shippingAddress String
+  // Shipping details
+  shippingName    String?
+  shippingAddress String?
+  shippingCity    String?
+  shippingState   String?
+  shippingZip     String?
+  shippingCountry String?
   trackingNumber  String?
 
-  createdAt   DateTime @default(now())
-  updatedAt   DateTime @updatedAt
+  // Stripe payment
+  stripePaymentIntentId String?
+
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
 
   @@index([userId])
 }

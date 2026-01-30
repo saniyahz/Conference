@@ -394,3 +394,49 @@ function extractCharacterName(prompt: string): string {
 
   return 'our hero'
 }
+
+// Extract character type from text
+function extractCharacterType(pageText: string, originalPrompt: string): string {
+  const combinedText = `${pageText} ${originalPrompt}`.toLowerCase()
+
+  // Comprehensive list of characters to search for
+  const characterTypes = [
+    'squirrel', 'chipmunk', 'dog', 'puppy', 'cat', 'kitten', 'dragon', 'unicorn',
+    'bear', 'rabbit', 'bunny', 'fox', 'owl', 'bird', 'deer', 'fawn', 'elephant',
+    'lion', 'tiger', 'monkey', 'mouse', 'penguin', 'turtle', 'frog', 'butterfly',
+    'bee', 'hedgehog', 'otter', 'beaver', 'raccoon', 'princess', 'prince', 'fairy',
+    'wizard', 'knight', 'pirate', 'mermaid', 'robot', 'dinosaur'
+  ]
+
+  for (const charType of characterTypes) {
+    if (combinedText.includes(charType)) {
+      return charType
+    }
+  }
+
+  // Check for famous characters
+  const famousCharacters: { [key: string]: string } = {
+    'spiderman': 'superhero',
+    'spider-man': 'superhero',
+    'batman': 'superhero',
+    'superman': 'superhero',
+    'donald duck': 'duck',
+    'mickey mouse': 'mouse',
+    'minnie mouse': 'mouse',
+    'winnie': 'bear',
+    'pooh': 'bear',
+    'elsa': 'princess',
+    'anna': 'princess',
+    'moana': 'princess',
+    'rapunzel': 'princess',
+    'cinderella': 'princess'
+  }
+
+  for (const [name, type] of Object.entries(famousCharacters)) {
+    if (combinedText.includes(name)) {
+      return type
+    }
+  }
+
+  return 'character'
+}

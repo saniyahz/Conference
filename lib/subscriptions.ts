@@ -1,4 +1,4 @@
-export type SubscriptionPlan = 'free' | 'monthly' | 'yearly' | 'unlimited_monthly' | 'unlimited_yearly'
+export type SubscriptionPlan = 'free' | 'basic' | 'basic_yearly' | 'premium' | 'premium_yearly'
 
 export const SUBSCRIPTION_PLANS = {
   free: {
@@ -6,66 +6,93 @@ export const SUBSCRIPTION_PLANS = {
     price: 0,
     interval: null,
     features: [
-      'Unlimited story creation',
+      '1 story per month',
+      '1 PDF download',
+      '3 audio plays',
       'Save 1 story',
-      'Full print price ($30)',
+      'Full print price ($20)',
     ],
-    storiesLimit: 1,
+    storiesPerMonth: 1,
+    downloadsPerMonth: 1,
+    audioPlaysPerMonth: 3,
+    libraryLimit: 1,
     printDiscount: 0,
   },
-  monthly: {
-    name: 'Monthly',
-    price: 5,
+  basic: {
+    name: 'Basic',
+    price: 4.99,
     interval: 'month',
     features: [
-      'Unlimited story creation',
-      'Save up to 5 stories per month',
+      '10 stories per month',
+      'Unlimited downloads',
+      'Unlimited audio plays',
+      'Save up to 25 stories',
       '15% off printing',
     ],
-    storiesLimit: 5,
+    storiesPerMonth: 10,
+    downloadsPerMonth: -1, // unlimited
+    audioPlaysPerMonth: -1,
+    libraryLimit: 25,
     printDiscount: 0.15,
   },
-  yearly: {
-    name: 'Yearly',
-    price: 48, // $5 * 12 * 0.8 (20% discount)
+  basic_yearly: {
+    name: 'Basic Yearly',
+    price: 39.99, // ~$3.33/mo - 33% savings
     interval: 'year',
     features: [
-      'Unlimited story creation',
-      'Save up to 5 stories per month',
+      '10 stories per month',
+      'Unlimited downloads',
+      'Unlimited audio plays',
+      'Save up to 25 stories',
       '15% off printing',
-      '20% off subscription',
+      'Save 33% vs monthly',
     ],
-    storiesLimit: 5,
+    storiesPerMonth: 10,
+    downloadsPerMonth: -1,
+    audioPlaysPerMonth: -1,
+    libraryLimit: 25,
     printDiscount: 0.15,
   },
-  unlimited_monthly: {
-    name: 'Unlimited Monthly',
-    price: 15,
+  premium: {
+    name: 'Premium',
+    price: 9.99,
     interval: 'month',
     features: [
-      'Unlimited everything',
-      'Save unlimited stories',
-      '50% off printing',
+      'Unlimited stories',
+      'Unlimited downloads',
+      'Unlimited audio plays',
+      'Unlimited library',
+      '30% off printing',
+      'Priority support',
     ],
-    storiesLimit: -1, // -1 means unlimited
-    printDiscount: 0.5,
+    storiesPerMonth: -1, // unlimited
+    downloadsPerMonth: -1,
+    audioPlaysPerMonth: -1,
+    libraryLimit: -1, // unlimited
+    printDiscount: 0.30,
   },
-  unlimited_yearly: {
-    name: 'Unlimited Yearly',
-    price: 144, // $15 * 12 * 0.8 (20% discount)
+  premium_yearly: {
+    name: 'Premium Yearly',
+    price: 79.99, // ~$6.67/mo - 33% savings
     interval: 'year',
     features: [
-      'Unlimited everything',
-      'Save unlimited stories',
-      '50% off printing',
-      '20% off subscription',
+      'Unlimited stories',
+      'Unlimited downloads',
+      'Unlimited audio plays',
+      'Unlimited library',
+      '30% off printing',
+      'Priority support',
+      'Save 33% vs monthly',
     ],
-    storiesLimit: -1,
-    printDiscount: 0.5,
+    storiesPerMonth: -1,
+    downloadsPerMonth: -1,
+    audioPlaysPerMonth: -1,
+    libraryLimit: -1,
+    printDiscount: 0.30,
   },
 } as const
 
-export const PRINT_BASE_PRICE = 30
+export const PRINT_BASE_PRICE = 20 // Base price for a printed book
 
 export function calculatePrintPrice(plan: SubscriptionPlan): number {
   const planInfo = SUBSCRIPTION_PLANS[plan]
@@ -73,17 +100,56 @@ export function calculatePrintPrice(plan: SubscriptionPlan): number {
   return PRINT_BASE_PRICE * (1 - discount)
 }
 
-export function canSaveStory(currentlySaved: number, plan: SubscriptionPlan): boolean {
+export function canCreateStory(storiesThisMonth: number, plan: SubscriptionPlan): boolean {
   const planInfo = SUBSCRIPTION_PLANS[plan]
+  if (planInfo.storiesPerMonth === -1) return true
+  return storiesThisMonth < planInfo.storiesPerMonth
+}
 
-  // Unlimited
-  if (planInfo.storiesLimit === -1) {
-    return true
-  }
+export function canDownload(downloadsThisMonth: number, plan: SubscriptionPlan): boolean {
+  const planInfo = SUBSCRIPTION_PLANS[plan]
+  if (planInfo.downloadsPerMonth === -1) return true
+  return downloadsThisMonth < planInfo.downloadsPerMonth
+}
 
-  return currentlySaved < planInfo.storiesLimit
+export function canPlayAudio(audioPlaysThisMonth: number, plan: SubscriptionPlan): boolean {
+  const planInfo = SUBSCRIPTION_PLANS[plan]
+  if (planInfo.audioPlaysPerMonth === -1) return true
+  return audioPlaysThisMonth < planInfo.audioPlaysPerMonth
+}
+
+export function canSaveToLibrary(currentlySaved: number, plan: SubscriptionPlan): boolean {
+  const planInfo = SUBSCRIPTION_PLANS[plan]
+  if (planInfo.libraryLimit === -1) return true
+  return currentlySaved < planInfo.libraryLimit
+}
+
+export function getRemainingStories(storiesThisMonth: number, plan: SubscriptionPlan): number | 'unlimited' {
+  const planInfo = SUBSCRIPTION_PLANS[plan]
+  if (planInfo.storiesPerMonth === -1) return 'unlimited'
+  return Math.max(0, planInfo.storiesPerMonth - storiesThisMonth)
+}
+
+export function getRemainingDownloads(downloadsThisMonth: number, plan: SubscriptionPlan): number | 'unlimited' {
+  const planInfo = SUBSCRIPTION_PLANS[plan]
+  if (planInfo.downloadsPerMonth === -1) return 'unlimited'
+  return Math.max(0, planInfo.downloadsPerMonth - downloadsThisMonth)
+}
+
+export function getRemainingAudioPlays(audioPlaysThisMonth: number, plan: SubscriptionPlan): number | 'unlimited' {
+  const planInfo = SUBSCRIPTION_PLANS[plan]
+  if (planInfo.audioPlaysPerMonth === -1) return 'unlimited'
+  return Math.max(0, planInfo.audioPlaysPerMonth - audioPlaysThisMonth)
 }
 
 export function getDiscountPercentage(discount: number): string {
   return `${Math.round(discount * 100)}%`
+}
+
+// Price IDs for Stripe (set these in .env)
+export const STRIPE_PRICE_IDS = {
+  basic: process.env.STRIPE_BASIC_MONTHLY_PRICE_ID || '',
+  basic_yearly: process.env.STRIPE_BASIC_YEARLY_PRICE_ID || '',
+  premium: process.env.STRIPE_PREMIUM_MONTHLY_PRICE_ID || '',
+  premium_yearly: process.env.STRIPE_PREMIUM_YEARLY_PRICE_ID || '',
 }

@@ -2,7 +2,7 @@ import { NextRequest, NextResponse } from 'next/server'
 import { getServerSession } from 'next-auth'
 import { authOptions } from '@/lib/auth'
 import { prisma } from '@/lib/prisma'
-import { canSaveStory } from '@/lib/subscriptions'
+import { canSaveToLibrary, PlanType } from '@/lib/subscription'
 
 // Get all saved stories for current user
 export async function GET(request: NextRequest) {
@@ -42,7 +42,7 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
     }
 
-    const { title, pages, coverImage } = await request.json()
+    const { title, author, originalPrompt, pages, coverImage } = await request.json()
 
     if (!title || !pages) {
       return NextResponse.json(
@@ -56,12 +56,7 @@ export async function POST(request: NextRequest) {
       where: { userId: session.user.id },
     })
 
-    if (!subscription) {
-      return NextResponse.json(
-        { error: 'Subscription not found' },
-        { status: 404 }
-      )
-    }
+    const plan = (subscription?.plan || 'free') as PlanType
 
     // Check if user can save more stories
     const savedStoriesCount = await prisma.story.count({
@@ -71,9 +66,9 @@ export async function POST(request: NextRequest) {
       },
     })
 
-    if (!canSaveStory(savedStoriesCount, subscription.plan as any)) {
+    if (!canSaveToLibrary(plan, savedStoriesCount)) {
       return NextResponse.json(
-        { error: 'Story limit reached for your plan. Please upgrade to save more stories.' },
+        { error: 'You have reached your library limit for your plan. Please upgrade to save more stories.' },
         { status: 403 }
       )
     }
@@ -83,17 +78,25 @@ export async function POST(request: NextRequest) {
       data: {
         userId: session.user.id,
         title,
+        author,
+        originalPrompt,
         pages: JSON.stringify(pages),
         coverImage,
         isSaved: true,
       },
     })
 
-    // Update stories saved this month
-    await prisma.subscription.update({
+    // Update usage tracking - story created
+    await prisma.usageTracking.upsert({
       where: { userId: session.user.id },
-      data: {
-        storiesSavedThisMonth: subscription.storiesSavedThisMonth + 1,
+      update: {
+        storiesCreatedThisMonth: { increment: 1 },
+        totalStoriesCreated: { increment: 1 },
+      },
+      create: {
+        userId: session.user.id,
+        storiesCreatedThisMonth: 1,
+        totalStoriesCreated: 1,
       },
     })
 

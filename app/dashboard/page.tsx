@@ -4,39 +4,73 @@ import { useEffect, useState } from 'react'
 import { useSession, signOut } from 'next-auth/react'
 import { useRouter } from 'next/navigation'
 import Link from 'next/link'
-import { BookOpen, Trash2, LogOut, CreditCard, Plus, Loader2, Printer } from 'lucide-react'
-import { SUBSCRIPTION_PLANS } from '@/lib/subscriptions'
+import {
+  BookOpen,
+  Trash2,
+  LogOut,
+  CreditCard,
+  Plus,
+  Loader2,
+  Printer,
+  Download,
+  Volume2,
+  Eye,
+  Library,
+  Sparkles
+} from 'lucide-react'
+import { PLANS, PlanType } from '@/lib/subscription'
 
 type Story = {
   id: string
   title: string
+  author?: string
   pages: string
   coverImage?: string
   createdAt: string
+  downloadCount: number
+  audioPlayCount: number
+  isSaved: boolean
+}
+
+type UsageTracking = {
+  storiesCreatedThisMonth: number
+  downloadsThisMonth: number
+  audioPlaysThisMonth: number
+  totalStoriesCreated: number
 }
 
 export default function DashboardPage() {
   const { data: session, status } = useSession()
   const router = useRouter()
   const [stories, setStories] = useState<Story[]>([])
+  const [usage, setUsage] = useState<UsageTracking | null>(null)
   const [isLoading, setIsLoading] = useState(true)
   const [deletingId, setDeletingId] = useState<string | null>(null)
+  const [downloadingId, setDownloadingId] = useState<string | null>(null)
+  const [playingId, setPlayingId] = useState<string | null>(null)
 
   useEffect(() => {
     if (status === 'unauthenticated') {
       router.push('/auth/signin')
     } else if (status === 'authenticated') {
-      fetchStories()
+      fetchData()
     }
   }, [status])
 
-  const fetchStories = async () => {
+  const fetchData = async () => {
     try {
-      const response = await fetch('/api/stories')
-      const data = await response.json()
-      setStories(data.stories || [])
+      const [storiesRes, usageRes] = await Promise.all([
+        fetch('/api/stories'),
+        fetch('/api/usage')
+      ])
+
+      const storiesData = await storiesRes.json()
+      const usageData = await usageRes.json()
+
+      setStories(storiesData.stories || [])
+      setUsage(usageData.usage || null)
     } catch (error) {
-      console.error('Error fetching stories:', error)
+      console.error('Error fetching data:', error)
     } finally {
       setIsLoading(false)
     }
@@ -67,33 +101,54 @@ export default function DashboardPage() {
     }
   }
 
-  const handlePrint = async (storyId: string) => {
-    const address = prompt('Enter your shipping address:')
-    if (!address) return
+  const handleDownload = async (story: Story) => {
+    setDownloadingId(story.id)
 
     try {
-      const response = await fetch('/api/print-order', {
+      const pages = JSON.parse(story.pages)
+      const response = await fetch('/api/generate-pdf', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ storyId, shippingAddress: address }),
+        body: JSON.stringify({
+          story: {
+            title: story.title,
+            author: story.author,
+            pages
+          }
+        }),
       })
 
-      const data = await response.json()
-
       if (response.ok) {
-        alert(data.message)
+        const blob = await response.blob()
+        const url = window.URL.createObjectURL(blob)
+        const a = document.createElement('a')
+        a.href = url
+        a.download = `${story.title.replace(/[^a-z0-9]/gi, '_').toLowerCase()}.pdf`
+        document.body.appendChild(a)
+        a.click()
+        document.body.removeChild(a)
+        window.URL.revokeObjectURL(url)
+
+        // Update usage tracking
+        await fetch('/api/usage/download', { method: 'POST', body: JSON.stringify({ storyId: story.id }) })
       } else {
-        alert('Failed to create print order')
+        alert('Failed to download PDF')
       }
     } catch (error) {
-      console.error('Error creating print order:', error)
-      alert('Failed to create print order')
+      console.error('Error downloading PDF:', error)
+      alert('Failed to download PDF')
+    } finally {
+      setDownloadingId(null)
     }
+  }
+
+  const handlePrint = async (storyId: string) => {
+    router.push(`/print/${storyId}`)
   }
 
   if (status === 'loading' || isLoading) {
     return (
-      <div className="min-h-screen flex items-center justify-center">
+      <div className="min-h-screen flex items-center justify-center bg-gradient-to-br from-purple-100 via-pink-100 to-blue-100">
         <Loader2 className="w-12 h-12 text-purple-600 animate-spin" />
       </div>
     )
@@ -104,20 +159,35 @@ export default function DashboardPage() {
   }
 
   const subscription = session.user.subscription
-  const plan = subscription?.plan || 'free'
-  const planInfo = SUBSCRIPTION_PLANS[plan as keyof typeof SUBSCRIPTION_PLANS]
+  const planType = (subscription?.plan || 'free') as PlanType
+  const planInfo = PLANS[planType]
+  const limits = planInfo.limits
+
+  // Calculate remaining allowances
+  const storiesRemaining = limits.storiesPerMonth === -1
+    ? 'Unlimited'
+    : Math.max(0, limits.storiesPerMonth - (usage?.storiesCreatedThisMonth || 0))
+  const downloadsRemaining = limits.downloadsPerMonth === -1
+    ? 'Unlimited'
+    : Math.max(0, limits.downloadsPerMonth - (usage?.downloadsThisMonth || 0))
+  const audioRemaining = limits.audioPlaysPerMonth === -1
+    ? 'Unlimited'
+    : Math.max(0, limits.audioPlaysPerMonth - (usage?.audioPlaysThisMonth || 0))
+  const libraryRemaining = limits.maxLibrarySize === -1
+    ? 'Unlimited'
+    : Math.max(0, limits.maxLibrarySize - stories.filter(s => s.isSaved).length)
 
   return (
-    <div className="min-h-screen p-4 md:p-8">
+    <div className="min-h-screen p-4 md:p-8 bg-gradient-to-br from-purple-100 via-pink-100 to-blue-100">
       <div className="max-w-7xl mx-auto">
         {/* Header */}
         <div className="bg-white rounded-2xl shadow-xl p-6 mb-8">
           <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-4">
             <div>
-              <div className="flex items-center gap-2 mb-2">
+              <Link href="/" className="flex items-center gap-2 mb-2">
                 <BookOpen className="w-8 h-8 text-purple-600" />
-                <h1 className="text-3xl font-bold text-purple-800">My Dashboard</h1>
-              </div>
+                <h1 className="text-3xl font-bold text-purple-800">My Library</h1>
+              </Link>
               <p className="text-gray-600">Welcome back, {session.user.name || session.user.email}!</p>
             </div>
             <div className="flex gap-3">
@@ -126,11 +196,11 @@ export default function DashboardPage() {
                 className="px-4 py-2 border-2 border-purple-600 text-purple-600 rounded-lg hover:bg-purple-50 font-semibold flex items-center gap-2"
               >
                 <CreditCard className="w-5 h-5" />
-                Upgrade
+                {planType === 'free' ? 'Upgrade' : 'Manage Plan'}
               </Link>
               <button
                 onClick={() => signOut({ callbackUrl: '/' })}
-                className="px-4 py-2 bg-red-500 text-white rounded-lg hover:bg-red-600 font-semibold flex items-center gap-2"
+                className="px-4 py-2 bg-gray-200 text-gray-700 rounded-lg hover:bg-gray-300 font-semibold flex items-center gap-2"
               >
                 <LogOut className="w-5 h-5" />
                 Sign Out
@@ -139,20 +209,60 @@ export default function DashboardPage() {
           </div>
         </div>
 
-        {/* Subscription Info */}
-        <div className="bg-gradient-to-br from-purple-600 to-pink-600 text-white rounded-2xl shadow-xl p-6 mb-8">
-          <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-4">
-            <div>
-              <h2 className="text-2xl font-bold mb-2">Current Plan: {planInfo.name}</h2>
-              <p className="text-white/90">
-                Stories saved: {stories.length}
-                {planInfo.storiesLimit > 0 && ` / ${planInfo.storiesLimit}`}
-                {planInfo.storiesLimit === -1 && ' (Unlimited)'}
-              </p>
+        {/* Subscription & Usage Info */}
+        <div className="grid md:grid-cols-2 gap-6 mb-8">
+          {/* Current Plan */}
+          <div className="bg-gradient-to-br from-purple-600 to-pink-600 text-white rounded-2xl shadow-xl p-6">
+            <div className="flex items-center gap-2 mb-4">
+              <Sparkles className="w-6 h-6 text-yellow-300" />
+              <h2 className="text-xl font-bold">{planInfo.name} Plan</h2>
             </div>
+            <p className="text-white/90 mb-4">{planInfo.description}</p>
             <div className="bg-white/20 backdrop-blur-sm rounded-lg p-4">
               <p className="text-sm text-white/90 mb-1">Print Discount</p>
-              <p className="text-2xl font-bold">{Math.round(planInfo.printDiscount * 100)}% OFF</p>
+              <p className="text-2xl font-bold">{limits.printDiscountPercent}% OFF</p>
+            </div>
+            {planType === 'free' && (
+              <Link
+                href="/pricing"
+                className="mt-4 block w-full text-center bg-white text-purple-600 py-2 rounded-lg font-semibold hover:bg-gray-100"
+              >
+                Upgrade for Unlimited Stories
+              </Link>
+            )}
+          </div>
+
+          {/* Usage Stats */}
+          <div className="bg-white rounded-2xl shadow-xl p-6">
+            <div className="flex items-center gap-2 mb-4">
+              <Library className="w-6 h-6 text-purple-600" />
+              <h2 className="text-xl font-bold text-gray-800">This Month's Usage</h2>
+            </div>
+            <div className="grid grid-cols-2 gap-4">
+              <div className="bg-purple-50 rounded-lg p-3">
+                <p className="text-sm text-gray-600">Stories</p>
+                <p className="text-lg font-bold text-purple-800">
+                  {usage?.storiesCreatedThisMonth || 0} / {limits.storiesPerMonth === -1 ? '∞' : limits.storiesPerMonth}
+                </p>
+              </div>
+              <div className="bg-blue-50 rounded-lg p-3">
+                <p className="text-sm text-gray-600">Downloads</p>
+                <p className="text-lg font-bold text-blue-800">
+                  {usage?.downloadsThisMonth || 0} / {limits.downloadsPerMonth === -1 ? '∞' : limits.downloadsPerMonth}
+                </p>
+              </div>
+              <div className="bg-green-50 rounded-lg p-3">
+                <p className="text-sm text-gray-600">Audio Plays</p>
+                <p className="text-lg font-bold text-green-800">
+                  {usage?.audioPlaysThisMonth || 0} / {limits.audioPlaysPerMonth === -1 ? '∞' : limits.audioPlaysPerMonth}
+                </p>
+              </div>
+              <div className="bg-amber-50 rounded-lg p-3">
+                <p className="text-sm text-gray-600">Library</p>
+                <p className="text-lg font-bold text-amber-800">
+                  {stories.filter(s => s.isSaved).length} / {limits.maxLibrarySize === -1 ? '∞' : limits.maxLibrarySize}
+                </p>
+              </div>
             </div>
           </div>
         </div>
@@ -187,34 +297,72 @@ export default function DashboardPage() {
             <div className="grid md:grid-cols-2 lg:grid-cols-3 gap-6">
               {stories.map((story) => {
                 const pages = JSON.parse(story.pages)
+                const firstPageImage = pages[0]?.imageUrl
                 return (
                   <div
                     key={story.id}
-                    className="bg-gradient-to-br from-yellow-50 to-orange-50 rounded-xl shadow-lg p-6 border-2 border-amber-200"
+                    className="bg-gradient-to-br from-yellow-50 to-orange-50 rounded-xl shadow-lg overflow-hidden border-2 border-amber-200"
                   >
-                    <h3 className="text-xl font-bold text-purple-800 mb-2">{story.title}</h3>
-                    <p className="text-gray-600 text-sm mb-4">
-                      {pages.length} pages • Created {new Date(story.createdAt).toLocaleDateString()}
-                    </p>
-                    <div className="flex gap-2">
-                      <button
-                        onClick={() => handlePrint(story.id)}
-                        className="flex-1 px-3 py-2 bg-green-500 text-white rounded-lg hover:bg-green-600 font-semibold text-sm flex items-center justify-center gap-1"
-                      >
-                        <Printer className="w-4 h-4" />
-                        Print
-                      </button>
-                      <button
-                        onClick={() => handleDelete(story.id)}
-                        disabled={deletingId === story.id}
-                        className="px-3 py-2 bg-red-500 text-white rounded-lg hover:bg-red-600 font-semibold text-sm flex items-center justify-center gap-1 disabled:bg-gray-400"
-                      >
-                        {deletingId === story.id ? (
-                          <Loader2 className="w-4 h-4 animate-spin" />
-                        ) : (
-                          <Trash2 className="w-4 h-4" />
-                        )}
-                      </button>
+                    {/* Cover Image */}
+                    {firstPageImage && (
+                      <div className="h-40 bg-purple-100 overflow-hidden">
+                        <img
+                          src={firstPageImage}
+                          alt={story.title}
+                          className="w-full h-full object-cover"
+                        />
+                      </div>
+                    )}
+
+                    <div className="p-4">
+                      <h3 className="text-xl font-bold text-purple-800 mb-1">{story.title}</h3>
+                      {story.author && (
+                        <p className="text-sm text-gray-600 mb-2">by {story.author}</p>
+                      )}
+                      <p className="text-gray-500 text-sm mb-4">
+                        {pages.length} pages • {new Date(story.createdAt).toLocaleDateString()}
+                      </p>
+
+                      {/* Action Buttons */}
+                      <div className="flex flex-wrap gap-2">
+                        <button
+                          onClick={() => router.push(`/story/${story.id}`)}
+                          className="flex-1 min-w-[80px] px-3 py-2 bg-purple-500 text-white rounded-lg hover:bg-purple-600 font-medium text-sm flex items-center justify-center gap-1"
+                        >
+                          <Eye className="w-4 h-4" />
+                          View
+                        </button>
+                        <button
+                          onClick={() => handleDownload(story)}
+                          disabled={downloadingId === story.id || (typeof downloadsRemaining === 'number' && downloadsRemaining <= 0)}
+                          className="flex-1 min-w-[80px] px-3 py-2 bg-blue-500 text-white rounded-lg hover:bg-blue-600 font-medium text-sm flex items-center justify-center gap-1 disabled:bg-gray-400"
+                        >
+                          {downloadingId === story.id ? (
+                            <Loader2 className="w-4 h-4 animate-spin" />
+                          ) : (
+                            <Download className="w-4 h-4" />
+                          )}
+                          PDF
+                        </button>
+                        <button
+                          onClick={() => handlePrint(story.id)}
+                          className="flex-1 min-w-[80px] px-3 py-2 bg-green-500 text-white rounded-lg hover:bg-green-600 font-medium text-sm flex items-center justify-center gap-1"
+                        >
+                          <Printer className="w-4 h-4" />
+                          Print
+                        </button>
+                        <button
+                          onClick={() => handleDelete(story.id)}
+                          disabled={deletingId === story.id}
+                          className="px-3 py-2 bg-red-500 text-white rounded-lg hover:bg-red-600 font-medium text-sm flex items-center justify-center disabled:bg-gray-400"
+                        >
+                          {deletingId === story.id ? (
+                            <Loader2 className="w-4 h-4 animate-spin" />
+                          ) : (
+                            <Trash2 className="w-4 h-4" />
+                          )}
+                        </button>
+                      </div>
                     </div>
                   </div>
                 )
