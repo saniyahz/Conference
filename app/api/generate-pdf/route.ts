@@ -217,6 +217,110 @@ export async function POST(request: NextRequest) {
       pdf.line(margin + 20, pageHeight - 25, pageWidth - margin - 20, pageHeight - 25)
     }
 
+    // ========== STORY KEEPSAKE PAGES (Full Story Text) ==========
+    pdf.addPage()
+
+    // Cream background
+    pdf.setFillColor(255, 253, 250)
+    pdf.rect(0, 0, pageWidth, pageHeight, 'F')
+
+    // Decorative border
+    pdf.setDrawColor(88, 28, 135)
+    pdf.setLineWidth(1.5)
+    pdf.roundedRect(15, 15, pageWidth - 30, pageHeight - 30, 2, 2, 'S')
+
+    // Header
+    pdf.setTextColor(88, 28, 135)
+    pdf.setFontSize(24)
+    pdf.setFont('helvetica', 'bold')
+    pdf.text('Story Keepsake', pageWidth / 2, 35, { align: 'center' })
+
+    // Decorative line
+    pdf.setDrawColor(218, 165, 32)
+    pdf.setLineWidth(1)
+    pdf.line(50, 42, pageWidth - 50, 42)
+
+    // Title
+    pdf.setFontSize(18)
+    pdf.setTextColor(0, 0, 0)
+    const keepsakeTitleLines = pdf.splitTextToSize(story.title, contentWidth - 20)
+    keepsakeTitleLines.forEach((line: string, index: number) => {
+      pdf.text(line, pageWidth / 2, 55 + (index * 8), { align: 'center' })
+    })
+
+    // Author
+    pdf.setFontSize(12)
+    pdf.setFont('helvetica', 'italic')
+    pdf.setTextColor(100, 100, 100)
+    pdf.text(`by ${story.author || 'Young Author'}`, pageWidth / 2, 55 + (keepsakeTitleLines.length * 8) + 8, { align: 'center' })
+
+    // Full story text - starting position
+    let keepsakeY = 55 + (keepsakeTitleLines.length * 8) + 25
+    let keepsakePageNum = 1
+
+    pdf.setFont('helvetica', 'normal')
+    pdf.setFontSize(10)
+    pdf.setTextColor(50, 50, 50)
+
+    for (let i = 0; i < story.pages.length; i++) {
+      // Page label
+      pdf.setFont('helvetica', 'bold')
+      pdf.setTextColor(88, 28, 135)
+      const pageLabel = `Page ${i + 1}:`
+      pdf.text(pageLabel, margin + 5, keepsakeY)
+      keepsakeY += 5
+
+      // Page text
+      pdf.setFont('helvetica', 'normal')
+      pdf.setTextColor(50, 50, 50)
+      const pageTextLines = pdf.splitTextToSize(story.pages[i].text, contentWidth - 10)
+
+      for (const line of pageTextLines) {
+        // Check if we need a new page
+        if (keepsakeY > pageHeight - 40) {
+          // Page number
+          pdf.setTextColor(100, 100, 100)
+          pdf.setFontSize(10)
+          pdf.text(`Keepsake ${keepsakePageNum}`, pageWidth / 2, pageHeight - 20, { align: 'center' })
+
+          // New page
+          pdf.addPage()
+          keepsakePageNum++
+
+          // Background
+          pdf.setFillColor(255, 253, 250)
+          pdf.rect(0, 0, pageWidth, pageHeight, 'F')
+
+          // Border
+          pdf.setDrawColor(88, 28, 135)
+          pdf.setLineWidth(1.5)
+          pdf.roundedRect(15, 15, pageWidth - 30, pageHeight - 30, 2, 2, 'S')
+
+          // Header
+          pdf.setTextColor(88, 28, 135)
+          pdf.setFontSize(16)
+          pdf.setFont('helvetica', 'bold')
+          pdf.text('Story Keepsake (continued)', pageWidth / 2, 30, { align: 'center' })
+
+          keepsakeY = 45
+          pdf.setFontSize(10)
+          pdf.setFont('helvetica', 'normal')
+          pdf.setTextColor(50, 50, 50)
+        }
+
+        pdf.text(line, margin + 5, keepsakeY)
+        keepsakeY += 5
+      }
+
+      // Add spacing between pages
+      keepsakeY += 8
+    }
+
+    // Final keepsake page number
+    pdf.setTextColor(100, 100, 100)
+    pdf.setFontSize(10)
+    pdf.text(`Keepsake ${keepsakePageNum}`, pageWidth / 2, pageHeight - 20, { align: 'center' })
+
     // ========== BACK COVER ==========
     pdf.addPage()
     pdf.setFillColor(88, 28, 135)
@@ -226,15 +330,27 @@ export async function POST(request: NextRequest) {
     pdf.setTextColor(255, 215, 0)
     pdf.setFontSize(36)
     pdf.setFont('helvetica', 'bold')
-    pdf.text('The End', pageWidth / 2, pageHeight / 2 - 20, { align: 'center' })
+    pdf.text('The End', pageWidth / 2, pageHeight / 2 - 30, { align: 'center' })
 
     pdf.setFontSize(18)
     pdf.setFont('helvetica', 'italic')
     pdf.setTextColor(255, 255, 255)
-    pdf.text('Thank you for reading!', pageWidth / 2, pageHeight / 2 + 10, { align: 'center' })
+    pdf.text('Thank you for reading!', pageWidth / 2, pageHeight / 2, { align: 'center' })
 
     pdf.setFontSize(12)
-    pdf.text('May your stories always bring joy', pageWidth / 2, pageHeight / 2 + 25, { align: 'center' })
+    pdf.text('May your stories always bring joy', pageWidth / 2, pageHeight / 2 + 15, { align: 'center' })
+
+    // Author credit
+    pdf.setFontSize(14)
+    pdf.setFont('helvetica', 'bold')
+    pdf.setTextColor(255, 215, 0)
+    pdf.text(`Story by: ${story.author || 'Young Author'}`, pageWidth / 2, pageHeight / 2 + 40, { align: 'center' })
+
+    // Date
+    pdf.setFontSize(10)
+    pdf.setFont('helvetica', 'normal')
+    pdf.setTextColor(200, 200, 200)
+    pdf.text(`Created: ${today}`, pageWidth / 2, pageHeight / 2 + 55, { align: 'center' })
 
     // Decorative stars on back cover
     const stars = [
