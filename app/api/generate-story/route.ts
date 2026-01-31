@@ -5,6 +5,23 @@ const replicate = new Replicate({
   auth: process.env.REPLICATE_API_TOKEN,
 })
 
+// Character DNA interface for visual consistency
+interface CharacterDNA {
+  name: string
+  type: 'human' | 'animal' | 'object' | 'creature' | 'other'
+  physical_form: string
+  material_or_texture: string
+  color_palette: string[]
+  facial_features: string
+  accessories: string
+  personality_visuals: string
+  movement_style: string
+  unique_identifiers: string
+}
+
+// Negative prompt to avoid scary/inconsistent images
+const NEGATIVE_PROMPT = `photorealistic, hyper-realistic, dark themes, scary, sharp edges, dramatic lighting, adult features, extra limbs, extra characters, inconsistent clothing, realistic textures, 3D render, anime style, text in image, logos, watermarks, small eyes, angry expression, creepy, horror, realistic eyes`
+
 export async function POST(request: NextRequest) {
   try {
     const { prompt } = await request.json()
@@ -16,54 +33,87 @@ export async function POST(request: NextRequest) {
       )
     }
 
-    // Use Replicate Llama 3.3 70B (FREE!) to generate story
-    const systemPrompt = `You are a creative children's story writer. Create engaging, unique 10-page stories for kids aged 4-8 based on their ideas (like Google Gemini Storybook format).
+    // Use Replicate Llama to generate story with Character DNA
+    const systemPrompt = `You are an AI children's storybook author and visual director.
+
+Your job is to:
+1. Generate a complete children's story with a clear beginning, middle, end, and moral.
+2. Create visually consistent characters that may be human, animal, object, or magical beings.
+3. Ensure every story page has a matching image scene description suitable for illustration.
+4. Maintain strict visual consistency across all pages.
 
 IMPORTANT RULES:
-- Create a UNIQUE story based on what the child says - don't use generic templates
-- The story should be EXACTLY 10 pages long
-- Each page should be 5-8 sentences - rich, engaging, detailed content
-- Include a clear beginning, middle, and end with good pacing
-- Include a simple problem and how it's solved
-- Keep it kid-friendly, non-religious, non-political
-- Make it fun, magical, and age-appropriate
-- Use the EXACT character names and details the child mentions
-- Each page should describe a vivid visual scene with soft pastel colors
+- Characters must NEVER change appearance, materials, colors, or accessories.
+- Do NOT introduce new characters unless explicitly mentioned in the child's idea.
+- The story must be age-appropriate, gentle, kind, and emotionally safe.
+- Themes should include kindness, curiosity, courage, and not fearing the unknown.
+- Objects and animals may have expressive faces ONLY if defined in character DNA.
+- The visual description for each page must match the story text exactly.
+- The story should be EXACTLY 10 pages long.
+- Each page should be 5-8 sentences - rich, engaging, detailed content.
 
 FORMAT YOUR RESPONSE EXACTLY LIKE THIS:
+
+CHARACTER_DNA:
+{
+  "name": "[character name]",
+  "type": "[human/animal/object/creature/other]",
+  "physical_form": "[body shape and size description]",
+  "material_or_texture": "[fur/skin/fabric/material type]",
+  "color_palette": ["primary color", "secondary color", "accent color"],
+  "facial_features": "[big round sparkly eyes, small cute nose, rosy cheeks, warm smile]",
+  "accessories": "[any clothing, hats, glasses, etc. or 'none']",
+  "personality_visuals": "[how emotions show - bouncy when happy, droopy when sad]",
+  "movement_style": "[how they move - waddles, hops, floats, etc.]",
+  "unique_identifiers": "[special marks, patterns, or features that make them unique]"
+}
+
+STORY_WORLD_DNA:
+[2-3 sentences describing the world's visual style - colors, lighting, atmosphere, setting type]
+
 TITLE: [Creative title based on their idea]
 
 PAGE 1:
-[5-8 sentences - introduction of main character, their personality, and their beautiful world]
+TEXT: [5-8 sentences - introduction of main character, their personality, and their beautiful world]
+SCENE: [Visual description of exactly what to illustrate - character pose, expression, setting, lighting]
 
 PAGE 2:
-[5-8 sentences - character's daily life, what they love to do, their friends]
+TEXT: [5-8 sentences - character's daily life, what they love to do, their friends]
+SCENE: [Visual description for illustration]
 
 PAGE 3:
-[5-8 sentences - something interesting happens, adventure begins]
+TEXT: [5-8 sentences - something interesting happens, adventure begins]
+SCENE: [Visual description for illustration]
 
 PAGE 4:
-[5-8 sentences - problem or challenge is discovered, character reacts with emotion]
+TEXT: [5-8 sentences - problem or challenge is discovered, character reacts with emotion]
+SCENE: [Visual description for illustration]
 
 PAGE 5:
-[5-8 sentences - character decides to face the challenge, gathers courage]
+TEXT: [5-8 sentences - character decides to face the challenge, gathers courage]
+SCENE: [Visual description for illustration]
 
 PAGE 6:
-[5-8 sentences - working to solve problem, trying first approach]
+TEXT: [5-8 sentences - working to solve problem, trying first approach]
+SCENE: [Visual description for illustration]
 
 PAGE 7:
-[5-8 sentences - setback or complication, character learns something important]
+TEXT: [5-8 sentences - setback or complication, character learns something important]
+SCENE: [Visual description for illustration]
 
 PAGE 8:
-[5-8 sentences - teamwork and new strategy, friends help]
+TEXT: [5-8 sentences - teamwork and new strategy, friends help]
+SCENE: [Visual description for illustration]
 
 PAGE 9:
-[5-8 sentences - problem solved successfully, moment of triumph]
+TEXT: [5-8 sentences - problem solved successfully, moment of triumph]
+SCENE: [Visual description for illustration]
 
 PAGE 10:
-[5-8 sentences - celebration, what they learned, happy ending with friends and family]`
+TEXT: [5-8 sentences - celebration, what they learned, happy ending with friends and family]
+SCENE: [Visual description for illustration]`
 
-    const userPrompt = `A child wants a story about: "${prompt}". Create a unique, magical 10-page story based on their idea!`
+    const userPrompt = `A child wants a story about: "${prompt}". Create a unique, magical 10-page story with complete Character DNA and scene descriptions!`
 
     const output = await replicate.run(
       "meta/meta-llama-3.1-405b-instruct",
@@ -71,7 +121,7 @@ PAGE 10:
         input: {
           prompt: `${systemPrompt}\n\n${userPrompt}`,
           temperature: 0.9,
-          max_tokens: 3000,
+          max_tokens: 4000,
           top_p: 0.9,
         }
       }
@@ -79,19 +129,22 @@ PAGE 10:
 
     const storyText = output.join('')
 
-    // Parse the story
-    const story = parseStory(storyText, prompt)
+    // Parse the story with Character DNA
+    const story = parseStoryWithDNA(storyText, prompt)
 
-    // Generate image prompts for each page
-    const imagePrompts = generateImagePrompts(story, prompt)
+    // Generate image prompts using Character DNA template
+    const imagePrompts = generateImagePromptsWithDNA(story)
 
     return NextResponse.json({
       story: {
         title: story.title,
         pages: story.pages,
-        originalPrompt: prompt, // Include original speech/prompt from the kid
+        originalPrompt: prompt,
+        characterDNA: story.characterDNA,
+        storyWorldDNA: story.storyWorldDNA,
       },
       imagePrompts,
+      negativePrompt: NEGATIVE_PROMPT,
     })
   } catch (error: any) {
     console.error('Error generating story:', error)
@@ -123,404 +176,237 @@ PAGE 10:
   }
 }
 
-// Generate a consistent character description - let the image model figure out the details
-function generateConsistentCharacter(firstPageText: string, originalPrompt: string): string {
-  const characterType = extractCharacterType(firstPageText, originalPrompt)
+// Generate image prompts using Character DNA template
+function generateImagePromptsWithDNA(story: any): string[] {
+  const characterDNA = story.characterDNA
+  const storyWorldDNA = story.storyWorldDNA
 
-  // Just return a simple, friendly description - the image model knows what characters look like
-  return `a cute, friendly ${characterType} with big expressive eyes and a warm smile, child-friendly cartoon style`
-}
-
-// Extract key scene details from page text
-function extractSceneFromText(pageText: string): string {
-  // Get the first 2-3 sentences which usually describe the main action
-  const sentences = pageText.split(/[.!?]+/).filter(s => s.trim().length > 10)
-  const keyContent = sentences.slice(0, 2).join('. ')
-
-  // Extract action words and settings
-  const actionWords = keyContent.match(/\b(walking|running|flying|swimming|climbing|playing|dancing|singing|crying|laughing|hugging|helping|finding|discovering|exploring|hiding|chasing|jumping|sitting|standing|looking|watching|eating|sleeping|dreaming|building|creating|painting|reading|talking|whispering|shouting|celebrating|fighting|saving|rescuing|meeting|greeting)\b/gi) || []
-
-  const settingWords = keyContent.match(/\b(forest|garden|castle|house|home|mountain|river|lake|ocean|beach|sky|clouds|rainbow|cave|village|town|city|school|park|meadow|field|kitchen|bedroom|library|tower|bridge|path|road|tree|flowers|stars|moon|sun)\b/gi) || []
-
-  const emotionWords = keyContent.match(/\b(happy|sad|excited|worried|scared|brave|curious|surprised|amazed|proud|nervous|hopeful|determined|joyful|peaceful|magical)\b/gi) || []
-
-  // Build a condensed scene description
-  let scene = keyContent.slice(0, 150) // Take first 150 chars of content
-
-  if (actionWords.length > 0) {
-    scene += `, ${actionWords[0]} action`
-  }
-  if (settingWords.length > 0) {
-    scene += `, ${settingWords.join(' and ')} setting`
-  }
-  if (emotionWords.length > 0) {
-    scene += `, ${emotionWords[0]} mood`
-  }
-
-  return scene
-}
-
-function generateImagePrompts(story: any, originalPrompt: string): string[] {
-  // Extract ALL characters mentioned in the story (may have multiple)
-  const allText = story.pages.map((p: any) => p.text).join(' ')
-  const characters = extractAllCharacters(allText, originalPrompt)
-
-  // Create a consistent character appearance description used across ALL pages
-  const characterAppearance = createConsistentCharacterAppearance(characters, originalPrompt)
-
-  // Improved prompts with explicit friendly features and consistency
   const prompts = story.pages.map((page: any, index: number) => {
-    const pageText = page.text || ''
+    const sceneDescription = page.scene || extractSceneFromText(page.text)
 
-    // Get the key scene from this specific page
-    const sceneDescription = extractSceneDescription(pageText)
+    // Build the comprehensive image prompt with locked character DNA
+    return `Children's illustrated storybook image.
 
-    // Build prompt with consistent character appearance and child-safe style
-    return `Cute children's book watercolor illustration. ${characterAppearance}. Scene: ${sceneDescription}.
+CHARACTERS (locked, do not alter):
+${JSON.stringify(characterDNA, null, 2)}
 
-Style requirements: Soft 2D hand-drawn watercolor style, pastel colors, gentle rounded shapes. Characters must have BIG ROUND FRIENDLY EYES with large pupils and sparkle highlights, soft gentle smiling expressions, rosy cheeks, small cute nose. Use warm soft lighting, dreamy atmosphere, storybook feel.
+STORY WORLD:
+${storyWorldDNA}
 
-IMPORTANT: Eyes must be large, round, friendly and NON-SCARY. No realistic eyes, no small eyes, no angry expressions, no dark shadows on face. Keep everything soft, warm, and child-friendly.
+ART STYLE:
+Soft children's book illustration, watercolor or pastel texture, rounded shapes, gentle lighting, storybook proportions, expressive but simple faces, no realism, no sharp edges. Characters must have BIG ROUND FRIENDLY EYES with large pupils and sparkle highlights, rosy cheeks, warm gentle smile.
 
-No text, no words, no letters, no numbers in the image.`
+SCENE:
+${sceneDescription}
+
+STRICT RULES:
+- Do NOT invent new characters
+- Do NOT change character materials or colors
+- Objects must remain objects
+- Animals must retain species traits
+- Match the scene exactly
+- Keep safe and child-friendly
+- Eyes must be large, round, friendly and NON-SCARY
+- No text, words, letters, or numbers in the image
+
+This illustration must match all previous pages in style and character appearance.`
   })
 
   return prompts
 }
 
-// Create a consistent character description to use across all pages
-function createConsistentCharacterAppearance(characters: string[], originalPrompt: string): string {
-  if (characters.length === 0) {
-    return 'A cute friendly main character with big round sparkly eyes, rosy cheeks, and a warm gentle smile'
-  }
-
-  // Build detailed, friendly descriptions for each character
-  const characterDescriptions = characters.map(char => {
-    const lowerChar = char.toLowerCase()
-
-    // Add friendly features to each character type
-    if (lowerChar.includes('ant') || lowerChar.includes('bug') || lowerChar.includes('bee')) {
-      return `${char} (adorable tiny character with oversized round sparkly eyes, tiny smile, wearing a cute little outfit)`
-    } else if (lowerChar.includes('bear') || lowerChar.includes('beaver') || lowerChar.includes('bunny') || lowerChar.includes('rabbit')) {
-      return `${char} (fluffy and cuddly with big round button eyes, pink nose, soft fur, happy expression)`
-    } else if (lowerChar.includes('cat') || lowerChar.includes('kitten')) {
-      return `${char} (soft fluffy kitten with huge round sparkly eyes, tiny pink nose, whiskers, sweet expression)`
-    } else if (lowerChar.includes('dog') || lowerChar.includes('puppy')) {
-      return `${char} (adorable puppy with big shiny round eyes, floppy ears, wagging tail, friendly smile)`
-    } else if (lowerChar.includes('bird') || lowerChar.includes('owl') || lowerChar.includes('duck')) {
-      return `${char} (cute feathered friend with big round friendly eyes, small beak, colorful soft feathers)`
-    } else if (lowerChar.includes('dragon') || lowerChar.includes('dinosaur')) {
-      return `${char} (baby-like and adorable with huge round innocent eyes, tiny wings/spines, chubby body, friendly smile)`
-    } else if (lowerChar.includes('fish') || lowerChar.includes('sea') || lowerChar.includes('ocean')) {
-      return `${char} (cute aquatic friend with big sparkly round eyes, friendly fins, happy expression)`
-    } else if (lowerChar.includes('mouse') || lowerChar.includes('squirrel') || lowerChar.includes('hamster')) {
-      return `${char} (tiny adorable creature with oversized round shiny eyes, tiny paws, fluffy tail, sweet smile)`
-    } else if (lowerChar.includes('princess') || lowerChar.includes('prince') || lowerChar.includes('girl') || lowerChar.includes('boy')) {
-      return `${char} (cute cartoon child with big round sparkly eyes, rosy cheeks, friendly smile, soft features)`
-    } else if (lowerChar.includes('unicorn') || lowerChar.includes('pony') || lowerChar.includes('horse')) {
-      return `${char} (magical and cute with huge round gentle eyes, flowing soft mane, sparkles, sweet expression)`
-    } else if (lowerChar.includes('elephant') || lowerChar.includes('hippo') || lowerChar.includes('rhino')) {
-      return `${char} (gentle giant baby with enormous round friendly eyes, soft gray/pink skin, happy smile)`
-    } else if (lowerChar.includes('lion') || lowerChar.includes('tiger') || lowerChar.includes('fox')) {
-      return `${char} (cute cub-like with big round curious eyes, soft fluffy fur, friendly expression)`
-    } else if (lowerChar.includes('frog') || lowerChar.includes('turtle')) {
-      return `${char} (adorable with huge bulging friendly round eyes, green skin, cute smile)`
-    } else if (lowerChar.includes('superhero') || lowerChar.includes('spiderman') || lowerChar.includes('batman')) {
-      return `${char} (cute kid-friendly cartoon version with big round friendly eyes visible, colorful costume, heroic but gentle pose)`
-    } else {
-      // Generic friendly description for any character
-      return `${char} (adorable cartoon version with big round sparkly friendly eyes, rosy cheeks, soft rounded features, warm gentle smile)`
+// Parse story response that includes Character DNA
+function parseStoryWithDNA(text: string, originalPrompt: string) {
+  // Extract Character DNA JSON
+  let characterDNA: CharacterDNA | null = null
+  const dnaMatch = text.match(/CHARACTER_DNA:\s*(\{[\s\S]*?\})\s*(?=STORY_WORLD_DNA|TITLE)/i)
+  if (dnaMatch) {
+    try {
+      characterDNA = JSON.parse(dnaMatch[1])
+    } catch (e) {
+      // If JSON parsing fails, create default DNA
+      characterDNA = createDefaultCharacterDNA(originalPrompt)
     }
-  })
-
-  return characterDescriptions.join(' and ')
-}
-
-// Extract ALL characters mentioned (supports multiple characters like "Spiderman and Donald Duck")
-function extractAllCharacters(text: string, originalPrompt: string): string[] {
-  const combinedText = text + ' ' + originalPrompt
-  const lowerText = combinedText.toLowerCase()
-  const foundCharacters: string[] = []
-
-  // Check for famous characters first (Disney, Marvel, etc.) - these need exact matching
-  const famousCharacters = [
-    'spiderman', 'spider-man', 'spider man', 'batman', 'superman', 'ironman', 'iron man',
-    'donald duck', 'mickey mouse', 'minnie mouse', 'goofy', 'pluto', 'daisy duck',
-    'elsa', 'anna', 'olaf', 'moana', 'maui', 'simba', 'nala', 'mufasa', 'timon', 'pumbaa',
-    'woody', 'buzz lightyear', 'buzz', 'nemo', 'dory', 'marlin',
-    'peppa pig', 'george pig', 'paw patrol', 'chase', 'marshall', 'skye',
-    'pikachu', 'pokemon', 'mario', 'luigi', 'sonic', 'tails',
-    'spongebob', 'patrick', 'squidward', 'winnie the pooh', 'pooh bear', 'piglet', 'tigger', 'eeyore',
-    'thomas the train', 'thomas', 'bluey', 'bingo', 'cocomelon', 'jj'
-  ]
-
-  for (const char of famousCharacters) {
-    if (lowerText.includes(char)) {
-      const properName = char.split(' ').map(w => w.charAt(0).toUpperCase() + w.slice(1)).join(' ')
-      if (!foundCharacters.includes(properName)) {
-        foundCharacters.push(properName)
-      }
-    }
+  } else {
+    characterDNA = createDefaultCharacterDNA(originalPrompt)
   }
 
-  // Dynamic character extraction - find characters from patterns in the text
-  // Pattern 1: "[Name] the [creature]" - e.g., "Rosie the Cup", "Annie the Ant"
-  const namedCharacterPattern = /\b([A-Z][a-z]+)\s+the\s+([A-Za-z]+)/g
-  let match
-  while ((match = namedCharacterPattern.exec(combinedText)) !== null) {
-    const name = match[1]
-    const creature = match[2].toLowerCase()
-    const character = `${name} the ${creature}`
-    if (!foundCharacters.some(fc => fc.toLowerCase().includes(creature))) {
-      foundCharacters.push(character)
-    }
+  // Extract Story World DNA
+  let storyWorldDNA = 'A soft, dreamy world painted in gentle pastel colors with warm golden sunlight, fluffy clouds, and magical sparkles floating in the air. Cozy cottages, friendly forests, and rainbow-touched meadows.'
+  const worldMatch = text.match(/STORY_WORLD_DNA:\s*([\s\S]*?)(?=TITLE:)/i)
+  if (worldMatch) {
+    storyWorldDNA = worldMatch[1].trim()
   }
 
-  // Pattern 2: "a/an [adjective]? [Creature] named [Name]" - e.g., "a massive Rhinoceros named Romy"
-  const creatureNamedPattern = /\b(?:a|an)\s+(?:\w+\s+)?([A-Z][a-z]+)\s+named\s+([A-Z][a-z]+)/g
-  while ((match = creatureNamedPattern.exec(combinedText)) !== null) {
-    const creature = match[1].toLowerCase()
-    const name = match[2]
-    if (!foundCharacters.some(fc => fc.toLowerCase().includes(creature))) {
-      foundCharacters.push(`${name} the ${creature}`)
-    }
-  }
-
-  // Pattern 3: "[Creature] named [Name]" - e.g., "Rhinoceros named Romy"
-  const simpleCreatureNamedPattern = /\b([A-Z][a-z]+)\s+named\s+([A-Z][a-z]+)/g
-  while ((match = simpleCreatureNamedPattern.exec(combinedText)) !== null) {
-    const creature = match[1].toLowerCase()
-    const name = match[2]
-    const skipWords = ['friend', 'place', 'story', 'adventure', 'home', 'house', 'one', 'day']
-    if (!skipWords.includes(creature) && !foundCharacters.some(fc => fc.toLowerCase().includes(creature))) {
-      foundCharacters.push(`${name} the ${creature}`)
-    }
-  }
-
-  // Pattern 4: "a/an/the [adjective]? [creature]" from the original prompt
-  // This captures what the user actually asked for
-  const promptCreaturePattern = /\b(?:a|an|the)\s+(?:little|tiny|big|small|friendly|cute|brave|magical|young)?\s*([a-z]+)\b/gi
-  while ((match = promptCreaturePattern.exec(originalPrompt)) !== null) {
-    const creature = match[1].toLowerCase()
-    // Skip common non-character words
-    const skipWords = ['story', 'adventure', 'tale', 'book', 'day', 'time', 'place', 'way', 'thing', 'lot', 'bit', 'world', 'land', 'home', 'house', 'forest', 'garden', 'name', 'friend']
-    if (!skipWords.includes(creature) && creature.length > 2) {
-      if (!foundCharacters.some(fc => fc.toLowerCase().includes(creature))) {
-        foundCharacters.push('a cute ' + creature)
-      }
-    }
-  }
-
-  // Pattern 3: Look for plural creatures (ants, bees, butterflies, etc.)
-  const pluralPattern = /\b(?:the|some|many|little|tiny)\s+([a-z]+s)\b/gi
-  while ((match = pluralPattern.exec(combinedText)) !== null) {
-    const creature = match[1].toLowerCase()
-    const skipWords = ['stories', 'adventures', 'tales', 'books', 'days', 'times', 'places', 'ways', 'things', 'friends', 'colors', 'eyes', 'words', 'pages']
-    if (!skipWords.includes(creature) && creature.length > 3) {
-      if (!foundCharacters.some(fc => fc.toLowerCase().includes(creature))) {
-        foundCharacters.push('cute ' + creature)
-      }
-    }
-  }
-
-  // Limit to max 3 characters to keep image focused
-  return foundCharacters.slice(0, 3)
-}
-
-// Extract the actual scene description from page text
-function extractSceneDescription(pageText: string): string {
-  // Get the key action/scene from the text
-  const sentences = pageText.split(/[.!?]+/).filter(s => s.trim().length > 10)
-  if (sentences.length === 0) return 'in a magical scene'
-
-  // Take first 1-2 sentences and clean them up
-  let scene = sentences.slice(0, 2).join('. ').trim()
-
-  // Shorten if too long
-  if (scene.length > 200) {
-    scene = scene.substring(0, 200) + '...'
-  }
-
-  // Extract key visual elements
-  const settingMatch = pageText.match(/\b(forest|garden|castle|meadow|ocean|beach|mountain|village|home|house|cave|river|lake|sky|clouds|tree|woods|park|playground|room|kitchen|bedroom)\b/i)
-  const setting = settingMatch ? settingMatch[0] : ''
-
-  const actionMatch = pageText.match(/\b(playing|running|flying|swimming|dancing|singing|helping|hugging|celebrating|exploring|walking|jumping|climbing|cheering|laughing|smiling)\b/i)
-  const action = actionMatch ? actionMatch[0] : ''
-
-  // Build a focused scene description
-  if (action && setting) {
-    return `${action} in a beautiful ${setting}. ${scene.substring(0, 100)}`
-  } else if (scene) {
-    return scene.substring(0, 150)
-  }
-
-  return 'in a magical adventure scene'
-}
-
-function parseStory(text: string, originalPrompt: string) {
   // Extract title
   const titleMatch = text.match(/TITLE:\s*(.+?)(?:\n|PAGE)/i)
   const title = titleMatch ? titleMatch[1].trim() : 'My Amazing Story'
 
-  // Extract pages (looking for 10 pages)
-  const pages: { text: string }[] = []
+  // Extract pages with TEXT and SCENE
+  const pages: { text: string; scene: string }[] = []
 
   for (let i = 1; i <= 10; i++) {
-    const pageRegex = new RegExp(`PAGE ${i}:\\s*(.+?)(?=PAGE ${i + 1}:|$)`, 'is')
+    const pageRegex = new RegExp(`PAGE ${i}:[\\s\\S]*?TEXT:\\s*([\\s\\S]*?)(?:SCENE:\\s*([\\s\\S]*?))?(?=PAGE ${i + 1}:|$)`, 'i')
     const pageMatch = text.match(pageRegex)
 
     if (pageMatch) {
-      const pageText = pageMatch[1].trim()
-      // Clean up any extra whitespace
-      const cleanedText = pageText.replace(/\n\n+/g, ' ').trim()
-      pages.push({ text: cleanedText })
-    }
-  }
-
-  // Fallback if parsing fails - split into 10 pages
-  if (pages.length < 8) {
-    const sentences = text.split(/[.!?]+/).filter(s => s.trim().length > 20)
-    const sentencesPerPage = Math.max(5, Math.floor(sentences.length / 10))
-
-    pages.length = 0 // Clear any partial pages
-    for (let i = 0; i < 10; i++) {
-      const start = i * sentencesPerPage
-      const end = start + sentencesPerPage
-      const pageText = sentences.slice(start, end).join('. ') + '.'
-      if (pageText.trim().length > 10) {
-        pages.push({ text: pageText.trim() })
+      const pageText = pageMatch[1].trim().replace(/\n\n+/g, ' ').replace(/SCENE:.*$/i, '').trim()
+      const sceneText = pageMatch[2] ? pageMatch[2].trim().replace(/\n\n+/g, ' ') : ''
+      pages.push({ text: pageText, scene: sceneText })
+    } else {
+      // Fallback: try old format without TEXT:/SCENE: markers
+      const oldPageRegex = new RegExp(`PAGE ${i}:\\s*(.+?)(?=PAGE ${i + 1}:|$)`, 'is')
+      const oldPageMatch = text.match(oldPageRegex)
+      if (oldPageMatch) {
+        const pageText = oldPageMatch[1].trim().replace(/\n\n+/g, ' ')
+        pages.push({ text: pageText, scene: '' })
       }
     }
   }
 
-  // Final fallback - create 10 rich pages
+  // Fallback if parsing fails
   if (pages.length < 8) {
-    const char = extractCharacterName(originalPrompt)
-    pages.length = 0
-    pages.push(
-      { text: `Once upon a time in a soft, dreamy land painted in gentle pastel colors, there lived a wonderful ${char} with the brightest eyes and kindest heart. Their home was filled with warmth and love, surrounded by flowering meadows in shades of lavender and peach. Every day was filled with wonder and excitement as ${char} explored the beautiful world around them. The sun always seemed to shine with a soft golden glow whenever ${char} was near.` },
-      { text: `Each morning, ${char} would wake up to the sweet songs of bluebirds and butterflies dancing outside the window. They loved to spend time with their best friends, playing gentle games and sharing stories. The days were peaceful and happy, filled with laughter and joy. ${char} felt grateful for all the beauty and friendship that surrounded them every single day.` },
-      { text: `One special morning, something unusual caught ${char}'s attention - a gentle shimmer in the air, like tiny sparkles of soft light. The sparkles seemed to be calling out, inviting ${char} to follow them on an adventure. ${char} felt curious and excited, wondering where this magical trail might lead. With a deep breath and a hopeful smile, ${char} decided to follow the gentle lights.` },
-      { text: `As ${char} followed the sparkles deeper into the enchanted forest, they discovered that something important was happening. A beautiful rainbow had lost its colors and had faded to pale gray. The forest creatures gathered around, looking worried and sad. ${char} felt their heart fill with determination - they knew they had to help bring back the rainbow's beautiful colors. This was going to be an important adventure.` },
-      { text: `${char} stood tall and brave, even though the task seemed big and challenging. They remembered all the kind things their friends had taught them about courage and helping others. Taking a deep breath, ${char} decided to search for the magic that could restore the rainbow's colors. They packed a small bag with supplies and set off with hope in their heart, ready to do whatever it took to help.` },
-      { text: `Along the winding path, ${char} tried to gather colors from flowers and butterflies, thinking they could paint the rainbow back to life. They collected petals of pink roses, yellow daisies, and blue forget-me-nots in a gentle basket. ${char} climbed up to where the rainbow touched the ground and carefully tried to sprinkle the colors onto it. The rainbow glowed softly for a moment, but the colors didn't quite stick. ${char} realized they needed to try something different.` },
-      { text: `Sitting down to rest and think, ${char} felt a little discouraged but not defeated. A wise old owl landed nearby and spoke in a gentle voice: "True colors come from joy and love shared with friends." ${char} understood now - they needed to bring their friends together! This wasn't a challenge to face alone. ${char} felt excited and hopeful again, learning that asking for help is a sign of wisdom, not weakness.` },
-      { text: `${char} hurried back and gathered all their dear friends - the rabbits, the deer, the squirrels, and the birds. Each friend brought their own special gift: songs of joy, dances of happiness, stories of love, and acts of kindness. Together, they formed a circle beneath the faded rainbow and shared all the beautiful, warm feelings in their hearts. The air began to shimmer and glow with gentle light as their friendship and love filled the space around them.` },
-      { text: `Suddenly, like magic born from pure love and friendship, colors began to bloom across the rainbow! Soft pink, gentle yellow, peaceful blue, lovely green, and warm purple spread across the sky in the most beautiful arch anyone had ever seen. The colors were even more beautiful than before - softer, warmer, more magical. ${char} and all their friends cheered and danced with joy! They had done it together! The rainbow sparkled with happiness, grateful for the love that had brought it back to life.` },
-      { text: `The whole forest celebrated with a wonderful party filled with music, dancing, and delicious treats. ${char} realized something very important: the most powerful magic in the world comes from friendship, kindness, and working together. The rainbow would forever remember the love that saved it, and ${char} would forever remember this magical adventure. As the sun set in beautiful pastel colors, ${char} hugged all their friends tightly, knowing that together, they could overcome anything. And they all lived happily ever after, ready for whatever adventures tomorrow might bring!` }
-    )
+    return parseStoryFallback(text, originalPrompt, characterDNA, storyWorldDNA)
   }
 
   // Ensure exactly 10 pages
   while (pages.length < 10) {
-    pages.push({ text: 'And the magical adventure continued with wonder, love, and joy...' })
+    pages.push({ text: 'And the magical adventure continued with wonder, love, and joy...', scene: 'A beautiful magical scene with the main character smiling happily.' })
   }
 
   return {
     title,
     pages: pages.slice(0, 10),
+    characterDNA,
+    storyWorldDNA,
   }
 }
 
+// Create default Character DNA from prompt
+function createDefaultCharacterDNA(prompt: string): CharacterDNA {
+  const characterInfo = extractCharacterInfo(prompt)
 
-// Dynamically extract character name from prompt
-function extractCharacterName(prompt: string): string {
-  // Pattern 1: "[Name] the [creature]" - e.g., "Rosie the Cup", "Annie the Ant"
-  const namedPattern = /\b([A-Z][a-z]+)\s+the\s+([A-Za-z]+)/i
-  const namedMatch = prompt.match(namedPattern)
-  if (namedMatch) {
-    return namedMatch[2].toLowerCase() // Return the creature type
+  return {
+    name: characterInfo.name,
+    type: characterInfo.type as any,
+    physical_form: `Small, cute, rounded ${characterInfo.creature} body with soft proportions`,
+    material_or_texture: characterInfo.texture,
+    color_palette: characterInfo.colors,
+    facial_features: 'Big round sparkly eyes with large pupils, tiny cute nose, rosy pink cheeks, warm friendly smile',
+    accessories: 'none',
+    personality_visuals: 'Bounces slightly when happy, ears/body droop when sad, eyes sparkle when curious',
+    movement_style: characterInfo.movement,
+    unique_identifiers: `A lovable ${characterInfo.creature} with an especially warm and friendly expression`
   }
-
-  // Pattern 2: "a/an/the [adjective]? [creature]"
-  const creaturePattern = /\b(?:a|an|the)\s+(?:little|tiny|big|small|friendly|cute|brave|magical|young)?\s*([a-z]+)\b/i
-  const creatureMatch = prompt.match(creaturePattern)
-  if (creatureMatch) {
-    const creature = creatureMatch[1].toLowerCase()
-    const skipWords = ['story', 'adventure', 'tale', 'book', 'day', 'time', 'place', 'way', 'thing']
-    if (!skipWords.includes(creature) && creature.length > 2) {
-      return creature
-    }
-  }
-
-  return 'our hero'
 }
 
-// Dynamically extract character type from text - no hardcoded list needed
-function extractCharacterType(pageText: string, originalPrompt: string): string {
-  const combinedText = `${originalPrompt} ${pageText}`
+// Extract character info from prompt for DNA
+function extractCharacterInfo(prompt: string): { name: string; type: string; creature: string; texture: string; colors: string[]; movement: string } {
+  const lowerPrompt = prompt.toLowerCase()
 
-  // Pattern 1: "[Name] the [creature]" - highest priority (handles "Annie the Ant")
-  const namedPattern = /\b([A-Z][a-z]+)\s+the\s+([A-Za-z]+)/
-  const namedMatch = combinedText.match(namedPattern)
-  if (namedMatch) {
-    return namedMatch[2].toLowerCase()
+  // Check for named character pattern
+  const namedMatch = prompt.match(/\b([A-Z][a-z]+)\s+the\s+([A-Za-z]+)/i)
+  const name = namedMatch ? namedMatch[1] : 'Little Friend'
+  const creature = namedMatch ? namedMatch[2].toLowerCase() : extractCreatureType(prompt)
+
+  // Determine type and attributes based on creature
+  let type = 'animal'
+  let texture = 'soft fluffy fur'
+  let colors = ['warm brown', 'cream', 'pink']
+  let movement = 'waddles and hops playfully'
+
+  if (['ant', 'bee', 'bug', 'butterfly', 'ladybug', 'caterpillar'].some(c => lowerPrompt.includes(c))) {
+    type = 'creature'
+    texture = 'smooth shiny shell or soft fuzzy body'
+    colors = ['bright red', 'sunny yellow', 'black spots']
+    movement = 'scurries and flutters with tiny legs/wings'
+  } else if (['cup', 'spoon', 'book', 'toy', 'ball', 'lamp'].some(c => lowerPrompt.includes(c))) {
+    type = 'object'
+    texture = 'smooth ceramic or soft plush material'
+    colors = ['cheerful blue', 'warm cream', 'golden yellow']
+    movement = 'bounces and wobbles with personality'
+  } else if (['dragon', 'unicorn', 'fairy', 'mermaid', 'wizard'].some(c => lowerPrompt.includes(c))) {
+    type = 'creature'
+    texture = 'soft scales or magical sparkly skin'
+    colors = ['magical purple', 'shimmery pink', 'golden sparkles']
+    movement = 'floats and glides gracefully'
+  } else if (['cat', 'kitten'].some(c => lowerPrompt.includes(c))) {
+    texture = 'soft fluffy fur'
+    colors = ['orange tabby', 'cream white', 'pink nose']
+    movement = 'pounces and prances gracefully'
+  } else if (['dog', 'puppy'].some(c => lowerPrompt.includes(c))) {
+    texture = 'soft fluffy fur'
+    colors = ['golden brown', 'cream white', 'black nose']
+    movement = 'bounds and wags tail happily'
+  } else if (['bear', 'beaver'].some(c => lowerPrompt.includes(c))) {
+    texture = 'soft fluffy brown fur'
+    colors = ['warm brown', 'tan belly', 'dark brown nose']
+    movement = 'waddles and lumbers gently'
+  } else if (['bunny', 'rabbit'].some(c => lowerPrompt.includes(c))) {
+    texture = 'soft fluffy fur'
+    colors = ['fluffy white', 'soft pink', 'cotton tail']
+    movement = 'hops and bounces joyfully'
+  } else if (['bird', 'owl', 'duck'].some(c => lowerPrompt.includes(c))) {
+    texture = 'soft colorful feathers'
+    colors = ['sky blue', 'sunny yellow', 'orange beak']
+    movement = 'flutters and hops lightly'
+  } else if (['elephant', 'hippo', 'rhino'].some(c => lowerPrompt.includes(c))) {
+    texture = 'smooth soft gray skin'
+    colors = ['gentle gray', 'soft pink', 'warm cream']
+    movement = 'stomps gently and sways'
+  } else if (['princess', 'prince', 'girl', 'boy', 'child'].some(c => lowerPrompt.includes(c))) {
+    type = 'human'
+    texture = 'soft rosy skin'
+    colors = ['rosy pink', 'golden hair', 'blue dress']
+    movement = 'skips and twirls gracefully'
   }
 
-  // Pattern 2: "a/an [adjective]? [Creature] named [Name]" - e.g., "a massive Rhinoceros named Romy"
-  const creatureNamedPattern = /\b(?:a|an)\s+(?:\w+\s+)?([A-Z][a-z]+)\s+named\s+[A-Z][a-z]+/
-  const creatureNamedMatch = combinedText.match(creatureNamedPattern)
-  if (creatureNamedMatch) {
-    return creatureNamedMatch[1].toLowerCase()
-  }
-
-  // Pattern 3: "[Creature] named [Name]" - e.g., "Rhinoceros named Romy"
-  const simpleCreatureNamedPattern = /\b([A-Z][a-z]+)\s+named\s+[A-Z][a-z]+/
-  const simpleCreatureNamedMatch = combinedText.match(simpleCreatureNamedPattern)
-  if (simpleCreatureNamedMatch) {
-    const creature = simpleCreatureNamedMatch[1].toLowerCase()
-    const skipWords = ['friend', 'place', 'story', 'adventure', 'home', 'house', 'one', 'day']
-    if (!skipWords.includes(creature)) {
-      return creature
-    }
-  }
-
-  // Pattern 4: "a/an [adjective]? [creature]" from prompt
-  const creaturePattern = /\b(?:a|an)\s+(?:little|tiny|big|small|friendly|cute|brave|magical|young|hardworking|massive|gentle)?\s*([a-z]+)\b/i
-  const creatureMatch = originalPrompt.match(creaturePattern)
-  if (creatureMatch) {
-    const creature = creatureMatch[1].toLowerCase()
-    const skipWords = ['story', 'adventure', 'tale', 'book', 'day', 'time', 'place', 'way', 'thing', 'lot', 'bit']
-    if (!skipWords.includes(creature) && creature.length > 2) {
-      return creature
-    }
-  }
-
-  // Pattern 5: Look for "the [creatures]" (plural)
-  const pluralPattern = /\b(?:the|some|many)\s+([a-z]+s)\b/i
-  const pluralMatch = combinedText.match(pluralPattern)
-  if (pluralMatch) {
-    const creature = pluralMatch[1].toLowerCase()
-    const skipWords = ['stories', 'adventures', 'tales', 'books', 'days', 'times', 'places', 'ways', 'things', 'friends']
-    if (!skipWords.includes(creature) && creature.length > 3) {
-      return creature
-    }
-  }
-
-  // Check for famous characters as fallback
-  const famousCharacters: { [key: string]: string } = {
-    'spiderman': 'superhero',
-    'spider-man': 'superhero',
-    'batman': 'superhero',
-    'superman': 'superhero',
-    'donald duck': 'duck',
-    'mickey mouse': 'mouse',
-    'minnie mouse': 'mouse',
-    'winnie': 'bear',
-    'pooh': 'bear',
-    'elsa': 'princess',
-    'anna': 'princess',
-    'moana': 'princess',
-    'rapunzel': 'princess',
-    'cinderella': 'princess'
-  }
-
-  for (const [name, type] of Object.entries(famousCharacters)) {
-    if (combinedText.includes(name)) {
-      return type
-    }
-  }
-
-  return 'character'
+  return { name, type, creature, texture, colors, movement }
 }
+
+// Extract creature type from prompt
+function extractCreatureType(prompt: string): string {
+  const creatures = ['ant', 'bee', 'bear', 'beaver', 'bunny', 'rabbit', 'cat', 'dog', 'puppy', 'kitten', 'bird', 'owl', 'duck', 'elephant', 'lion', 'tiger', 'fox', 'mouse', 'squirrel', 'dragon', 'unicorn', 'fairy', 'frog', 'turtle', 'fish', 'butterfly', 'ladybug']
+
+  for (const creature of creatures) {
+    if (prompt.toLowerCase().includes(creature)) {
+      return creature
+    }
+  }
+  return 'little friend'
+}
+
+// Fallback story parser
+function parseStoryFallback(text: string, originalPrompt: string, characterDNA: CharacterDNA | null, storyWorldDNA: string) {
+  const char = characterDNA?.name || 'our hero'
+
+  const defaultPages = [
+    { text: `Once upon a time in a soft, dreamy land painted in gentle pastel colors, there lived a wonderful ${char} with the brightest eyes and kindest heart. Their home was filled with warmth and love, surrounded by flowering meadows in shades of lavender and peach. Every day was filled with wonder and excitement as ${char} explored the beautiful world around them. The sun always seemed to shine with a soft golden glow whenever ${char} was near.`, scene: `${char} standing in a beautiful pastel meadow, looking happy and curious, surrounded by flowers` },
+    { text: `Each morning, ${char} would wake up to the sweet songs of bluebirds and butterflies dancing outside the window. They loved to spend time with their best friends, playing gentle games and sharing stories. The days were peaceful and happy, filled with laughter and joy. ${char} felt grateful for all the beauty and friendship that surrounded them every single day.`, scene: `${char} waking up happily in a cozy bedroom, sunlight streaming through the window` },
+    { text: `One special morning, something unusual caught ${char}'s attention - a gentle shimmer in the air, like tiny sparkles of soft light. The sparkles seemed to be calling out, inviting ${char} to follow them on an adventure. ${char} felt curious and excited, wondering where this magical trail might lead. With a deep breath and a hopeful smile, ${char} decided to follow the gentle lights.`, scene: `${char} looking curiously at magical sparkles floating in the air, eyes wide with wonder` },
+    { text: `As ${char} followed the sparkles deeper into the enchanted forest, they discovered that something important was happening. A beautiful rainbow had lost its colors and had faded to pale gray. The forest creatures gathered around, looking worried and sad. ${char} felt their heart fill with determination - they knew they had to help bring back the rainbow's beautiful colors.`, scene: `${char} discovering a faded gray rainbow, looking determined to help, forest animals gathered around` },
+    { text: `${char} stood tall and brave, even though the task seemed big and challenging. They remembered all the kind things their friends had taught them about courage and helping others. Taking a deep breath, ${char} decided to search for the magic that could restore the rainbow's colors. They packed a small bag with supplies and set off with hope in their heart.`, scene: `${char} looking brave and determined, ready to embark on a quest, small bag packed` },
+    { text: `Along the winding path, ${char} tried to gather colors from flowers and butterflies, thinking they could paint the rainbow back to life. They collected petals of pink roses, yellow daisies, and blue forget-me-nots in a gentle basket. ${char} climbed up to where the rainbow touched the ground and carefully tried to sprinkle the colors onto it. The rainbow glowed softly for a moment, but the colors didn't quite stick.`, scene: `${char} collecting colorful flower petals, trying to restore the rainbow, hopeful expression` },
+    { text: `Sitting down to rest and think, ${char} felt a little discouraged but not defeated. A wise old owl landed nearby and spoke in a gentle voice: "True colors come from joy and love shared with friends." ${char} understood now - they needed to bring their friends together! This wasn't a challenge to face alone.`, scene: `${char} sitting and talking with a wise owl, having a moment of realization, soft lighting` },
+    { text: `${char} hurried back and gathered all their dear friends - the rabbits, the deer, the squirrels, and the birds. Each friend brought their own special gift: songs of joy, dances of happiness, stories of love, and acts of kindness. Together, they formed a circle beneath the faded rainbow and shared all the beautiful, warm feelings in their hearts.`, scene: `${char} surrounded by forest friends in a circle, all looking happy and hopeful together` },
+    { text: `Suddenly, like magic born from pure love and friendship, colors began to bloom across the rainbow! Soft pink, gentle yellow, peaceful blue, lovely green, and warm purple spread across the sky in the most beautiful arch anyone had ever seen. ${char} and all their friends cheered and danced with joy! They had done it together!`, scene: `${char} and friends celebrating as a beautiful colorful rainbow appears in the sky, everyone cheering` },
+    { text: `The whole forest celebrated with a wonderful party filled with music, dancing, and delicious treats. ${char} realized something very important: the most powerful magic in the world comes from friendship, kindness, and working together. As the sun set in beautiful pastel colors, ${char} hugged all their friends tightly, knowing that together, they could overcome anything. And they all lived happily ever after!`, scene: `${char} hugging friends at a celebration party, sunset with pastel colors, everyone happy` },
+  ]
+
+  return {
+    title: 'My Amazing Story',
+    pages: defaultPages,
+    characterDNA: characterDNA || createDefaultCharacterDNA(originalPrompt),
+    storyWorldDNA,
+  }
+}
+
+// Extract scene from text (fallback when SCENE not provided)
+function extractSceneFromText(pageText: string): string {
+  const sentences = pageText.split(/[.!?]+/).filter(s => s.trim().length > 10)
+  if (sentences.length === 0) return 'A magical scene with the main character'
+
+  const scene = sentences.slice(0, 2).join('. ').trim()
+  return scene.length > 200 ? scene.substring(0, 200) + '...' : scene
+}
+
