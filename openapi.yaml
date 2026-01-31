@@ -98,6 +98,160 @@ paths:
         '500':
           description: Server error
 
+  /api/get-printing-partner:
+    post:
+      operationId: getPrintingPartner
+      summary: Get printing partner based on location
+      description: Detects user location and returns the appropriate regional printing partner with pricing
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                pageCount:
+                  type: integer
+                  description: Number of pages in the story for pricing calculation
+                  example: 10
+                regionOverride:
+                  type: string
+                  enum: [UAE, NORTH_AMERICA, EUROPE]
+                  description: Optional region override to manually select a region
+      responses:
+        '200':
+          description: Printing partner information retrieved successfully
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  success:
+                    type: boolean
+                  region:
+                    type: string
+                    enum: [UAE, NORTH_AMERICA, EUROPE]
+                  partner:
+                    type: object
+                    properties:
+                      id:
+                        type: string
+                      name:
+                        type: string
+                      estimatedDeliveryDays:
+                        type: integer
+                      supportedFormats:
+                        type: array
+                        items:
+                          type: string
+                  pricing:
+                    type: object
+                    properties:
+                      subtotal:
+                        type: number
+                      currency:
+                        type: string
+                      estimatedDelivery:
+                        type: string
+        '500':
+          description: Server error
+
+  /api/submit-print-order:
+    post:
+      operationId: submitPrintOrder
+      summary: Submit a print order for a story
+      description: Creates a print order with the regional printing partner
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required:
+                - storyTitle
+                - storyAuthor
+                - pageCount
+                - shippingAddress
+                - customerEmail
+              properties:
+                storyTitle:
+                  type: string
+                  description: Title of the story
+                storyAuthor:
+                  type: string
+                  description: Author name
+                pageCount:
+                  type: integer
+                  description: Number of pages
+                pdfUrl:
+                  type: string
+                  description: URL to the PDF file
+                pdfBase64:
+                  type: string
+                  description: Base64 encoded PDF content
+                shippingAddress:
+                  type: object
+                  required:
+                    - name
+                    - addressLine1
+                    - city
+                    - postalCode
+                    - country
+                  properties:
+                    name:
+                      type: string
+                    addressLine1:
+                      type: string
+                    addressLine2:
+                      type: string
+                    city:
+                      type: string
+                    state:
+                      type: string
+                    postalCode:
+                      type: string
+                    country:
+                      type: string
+                customerEmail:
+                  type: string
+                  format: email
+                regionOverride:
+                  type: string
+                  enum: [UAE, NORTH_AMERICA, EUROPE]
+      responses:
+        '200':
+          description: Print order submitted successfully
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  success:
+                    type: boolean
+                  order:
+                    type: object
+                    properties:
+                      orderId:
+                        type: string
+                      partner:
+                        type: string
+                      total:
+                        type: number
+                      currency:
+                        type: string
+                      estimatedDelivery:
+                        type: string
+                      status:
+                        type: string
+                      trackingUrl:
+                        type: string
+                  message:
+                    type: string
+        '400':
+          description: Invalid request
+        '500':
+          description: Server error
+
 components:
   schemas:
     Story:

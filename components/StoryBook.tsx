@@ -1,9 +1,10 @@
 'use client'
 
 import { useState, useEffect } from 'react'
-import { ChevronLeft, ChevronRight, Download, RotateCcw, Volume2, VolumeX } from 'lucide-react'
+import { ChevronLeft, ChevronRight, Download, RotateCcw, Volume2, VolumeX, Printer } from 'lucide-react'
 import { Story } from '@/app/page'
 import Image from 'next/image'
+import PrintingModal from './PrintingModal'
 
 interface StoryBookProps {
   story: Story
@@ -15,6 +16,7 @@ export default function StoryBook({ story, onReset }: StoryBookProps) {
   const [isReading, setIsReading] = useState(false)
   const [speechSynthesis, setSpeechSynthesis] = useState<SpeechSynthesis | null>(null)
   const [voicesLoaded, setVoicesLoaded] = useState(false)
+  const [isPrintingModalOpen, setIsPrintingModalOpen] = useState(false)
 
   // Initialize speech synthesis on mount
   useEffect(() => {
@@ -312,6 +314,15 @@ export default function StoryBook({ story, onReset }: StoryBookProps) {
           Download Book
         </button>
 
+        {/* Print Book */}
+        <button
+          onClick={() => setIsPrintingModalOpen(true)}
+          className="px-6 py-3 bg-blue-500 hover:bg-blue-600 text-white rounded-full font-semibold flex items-center gap-2 transition-all transform hover:scale-105"
+        >
+          <Printer className="w-5 h-5" />
+          Print Book
+        </button>
+
         {/* Create New Story */}
         <button
           onClick={onReset}
@@ -321,6 +332,13 @@ export default function StoryBook({ story, onReset }: StoryBookProps) {
           New Story
         </button>
       </div>
+
+      {/* Printing Modal */}
+      <PrintingModal
+        story={story}
+        isOpen={isPrintingModalOpen}
+        onClose={() => setIsPrintingModalOpen(false)}
+      />
     </div>
   )
 }
