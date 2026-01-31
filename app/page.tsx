@@ -1,10 +1,11 @@
 'use client'
 
 import { useState } from 'react'
+import Link from 'next/link'
 import SpeechRecorder from '@/components/SpeechRecorder'
 import StoryBook from '@/components/StoryBook'
 import LoadingSpinner from '@/components/LoadingSpinner'
-import { BookOpen, Sparkles } from 'lucide-react'
+import { BookOpen, Sparkles, Library } from 'lucide-react'
 
 export type StoryPage = {
   text: string
@@ -108,8 +109,29 @@ export default function Home() {
         {/* Navigation */}
         <div className="flex justify-between items-center mb-8 bg-white rounded-2xl shadow-lg p-4">
           <div className="flex items-center gap-2">
-            <BookOpen className="w-8 h-8 text-purple-600" />
-            <span className="text-xl font-bold text-purple-800">Kids Story Creator</span>
+            <BookOpen className="w-8 h-8 text-blue-600" />
+            <span className="text-xl font-bold text-blue-800">Benny's Story Time</span>
+          </div>
+          <div className="flex gap-3">
+            <Link
+              href="/about"
+              className="px-4 py-2 text-blue-600 hover:text-blue-700 font-semibold"
+            >
+              About Us
+            </Link>
+            <Link
+              href="/pricing"
+              className="px-4 py-2 text-blue-600 hover:text-blue-700 font-semibold"
+            >
+              Pricing
+            </Link>
+            <Link
+              href="/library"
+              className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 font-semibold flex items-center gap-2"
+            >
+              <Library className="w-5 h-5" />
+              My Library
+            </Link>
           </div>
         </div>
 
@@ -117,13 +139,13 @@ export default function Home() {
         <div className="text-center mb-8">
           <div className="flex items-center justify-center gap-3 mb-4">
             <Sparkles className="w-12 h-12 text-pink-500" />
-            <h1 className="text-4xl md:text-5xl font-bold text-purple-800 font-kids">
+            <h1 className="text-4xl md:text-5xl font-bold text-blue-800 font-kids">
               Create Magical Stories
             </h1>
             <Sparkles className="w-12 h-12 text-pink-500" />
           </div>
-          <p className="text-lg text-gray-700">
-            Tell us your story ideas and watch them come to life!
+          <p className="text-lg text-blue-700">
+            Tell Benny your story ideas and watch them come to life!
           </p>
         </div>
 

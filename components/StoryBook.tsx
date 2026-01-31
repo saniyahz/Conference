@@ -1,7 +1,7 @@
 'use client'
 
 import { useState, useEffect } from 'react'
-import { ChevronLeft, ChevronRight, Download, RotateCcw, Volume2, VolumeX, Printer } from 'lucide-react'
+import { ChevronLeft, ChevronRight, Download, RotateCcw, Volume2, VolumeX, Printer, Play, Pause, Loader2 } from 'lucide-react'
 import { Story } from '@/app/page'
 import Image from 'next/image'
 import PrintingModal from './PrintingModal'
@@ -14,34 +14,25 @@ interface StoryBookProps {
 export default function StoryBook({ story, onReset }: StoryBookProps) {
   const [currentPage, setCurrentPage] = useState(0)
   const [isReading, setIsReading] = useState(false)
-  const [speechSynthesis, setSpeechSynthesis] = useState<SpeechSynthesis | null>(null)
-  const [voicesLoaded, setVoicesLoaded] = useState(false)
+  const [isAutoPlaying, setIsAutoPlaying] = useState(false)
+  const [isLoadingAudio, setIsLoadingAudio] = useState(false)
+  const [currentAudio, setCurrentAudio] = useState<HTMLAudioElement | null>(null)
+  const [selectedVoice, setSelectedVoice] = useState<string>('mama-beaver')
   const [isPrintingModalOpen, setIsPrintingModalOpen] = useState(false)
 
-  // Initialize speech synthesis on mount
+  // AI voices from Replicate
+  const aiVoices = [
+    { id: 'mama-beaver', name: 'Mama Beaver', description: "A warm, friendly, gentle female voice perfect for children's stories, speaking slowly and clearly with expression and enthusiasm" },
+    { id: 'papa-bear', name: 'Papa Bear', description: "A deep, calm, reassuring male voice ideal for bedtime stories, speaking with gentle warmth and steady pacing" },
+    { id: 'grandma-owl', name: 'Grandma Owl', description: "A sweet, elderly female voice with a tender, loving quality, ideal for soothing bedtime reading" },
+    { id: 'storyteller-fox', name: 'Storyteller Fox', description: "An energetic, expressive voice with dramatic flair, perfect for exciting adventures and bringing characters to life" },
+  ]
+
+  // Stop reading when page changes (unless auto-playing)
   useEffect(() => {
-    if (typeof window !== 'undefined' && window.speechSynthesis) {
-      setSpeechSynthesis(window.speechSynthesis)
-
-      // Wait for voices to load
-      const loadVoices = () => {
-        const voices = window.speechSynthesis.getVoices()
-        if (voices.length > 0) {
-          setVoicesLoaded(true)
-        }
-      }
-
-      // Voices might be loaded already
-      loadVoices()
-
-      // Or they might load later
-      window.speechSynthesis.onvoiceschanged = loadVoices
+    if (!isAutoPlaying) {
+      stopReading()
     }
-  }, [])
-
-  // Stop reading when page changes
-  useEffect(() => {
-    stopReading()
   }, [currentPage])
 
   // Cleanup on unmount
@@ -51,106 +42,101 @@ export default function StoryBook({ story, onReset }: StoryBookProps) {
     }
   }, [])
 
-  const readAloud = () => {
-    if (!speechSynthesis) {
-      alert('Text-to-speech is not supported in your browser. Please try using Chrome, Edge, or Safari.')
-      return
-    }
-
-    // If already reading, stop
-    if (isReading) {
-      stopReading()
-      return
-    }
+  const speakText = async (text: string) => {
+    setIsLoadingAudio(true)
+    setIsReading(false)
 
     try {
-      // Cancel any ongoing speech first
-      speechSynthesis.cancel()
+      // Get voice description
+      const voice = aiVoices.find(v => v.id === selectedVoice)
 
-      // Small delay to ensure previous utterance is fully cancelled
-      setTimeout(() => {
-        const text = story.pages[currentPage].text
-        const utterance = new SpeechSynthesisUtterance(text)
+      // Call API to generate speech
+      const response = await fetch('/api/generate-speech', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          text,
+          voice: voice?.description
+        }),
+      })
 
-        // Get available voices
-        const voices = speechSynthesis.getVoices()
+      if (!response.ok) {
+        throw new Error('Failed to generate speech')
+      }
 
-        // Prefer female English voices for children's stories
-        const preferredVoice = voices.find(voice =>
-          voice.lang.startsWith('en') &&
-          (voice.name.toLowerCase().includes('female') ||
-           voice.name.includes('Samantha') ||
-           voice.name.includes('Karen') ||
-           voice.name.includes('Victoria') ||
-           voice.name.includes('Google UK English Female') ||
-           voice.name.includes('Microsoft Zira'))
-        ) || voices.find(voice => voice.lang.startsWith('en')) || voices[0]
+      const { audioUrl } = await response.json()
 
-        if (preferredVoice) {
-          utterance.voice = preferredVoice
+      // Create and play audio
+      const audio = new Audio(audioUrl)
+
+      audio.onended = () => {
+        setIsReading(false)
+        setCurrentAudio(null)
+
+        // Auto-advance to next page if auto-playing
+        if (isAutoPlaying && currentPage < story.pages.length - 1) {
+          setCurrentPage(currentPage + 1)
+        } else if (isAutoPlaying) {
+          // Finished all pages
+          setIsAutoPlaying(false)
         }
+      }
 
-        // Configure voice settings for storytelling
-        utterance.rate = 0.85 // Slower for kids to follow along
-        utterance.pitch = 1.1 // Slightly higher pitch for storytelling
-        utterance.volume = 1
-        utterance.lang = 'en-US'
+      audio.onerror = () => {
+        setIsReading(false)
+        setCurrentAudio(null)
+        setIsAutoPlaying(false)
+        alert('Failed to play audio. Please try again.')
+      }
 
-        // Set up event handlers
-        utterance.onstart = () => {
-          setIsReading(true)
-        }
-
-        utterance.onend = () => {
-          setIsReading(false)
-        }
-
-        utterance.onerror = (event) => {
-          setIsReading(false)
-
-          // Only show alert for real errors, not cancellations
-          if (event.error !== 'canceled' && event.error !== 'interrupted') {
-            // Try again once automatically
-            speechSynthesis.cancel()
-            setTimeout(() => {
-              speechSynthesis.speak(utterance)
-            }, 500)
-          }
-        }
-
-        // Start speaking
-        speechSynthesis.speak(utterance)
-
-        // Workaround for Chrome bug where speech stops after 15 seconds
-        // Resume every 14 seconds to keep it going
-        const resumeInterval = setInterval(() => {
-          if (speechSynthesis.speaking && !speechSynthesis.paused) {
-            speechSynthesis.pause()
-            speechSynthesis.resume()
-          } else {
-            clearInterval(resumeInterval)
-          }
-        }, 14000)
-
-        // Store interval to clean up later
-        utterance.onend = () => {
-          clearInterval(resumeInterval)
-          setIsReading(false)
-        }
-      }, 100)
+      setCurrentAudio(audio)
+      await audio.play()
+      setIsReading(true)
+      setIsLoadingAudio(false)
     } catch (error) {
-      console.error('❌ Error in readAloud:', error)
-      setIsReading(false)
-      alert('Text-to-speech is not working. Please try using Chrome or Edge browser for best results.')
+      console.error('Error generating speech:', error)
+      setIsLoadingAudio(false)
+      setIsAutoPlaying(false)
+      alert('Failed to generate voice. Please try again.')
     }
   }
 
   const stopReading = () => {
-    if (speechSynthesis) {
-      speechSynthesis.cancel()
-      setIsReading(false)
+    if (currentAudio) {
+      currentAudio.pause()
+      currentAudio.currentTime = 0
+      setCurrentAudio(null)
+    }
+    setIsReading(false)
+    setIsLoadingAudio(false)
+    setIsAutoPlaying(false)
+  }
+
+  const toggleSpeak = () => {
+    if (isReading || isLoadingAudio) {
+      stopReading()
+    } else {
+      speakText(story.pages[currentPage].text)
     }
   }
+
+  const toggleAutoPlay = async () => {
+    if (isAutoPlaying) {
+      stopReading()
+      setIsAutoPlaying(false)
+    } else {
+      setIsAutoPlaying(true)
+      // Start reading current page
+      await speakText(story.pages[currentPage].text)
+    }
+  }
+
+  // Auto-play next page when it changes
+  useEffect(() => {
+    if (isAutoPlaying && !isReading && !isLoadingAudio) {
+      speakText(story.pages[currentPage].text)
+    }
+  }, [currentPage, isAutoPlaying])
 
   const nextPage = () => {
     if (currentPage < story.pages.length - 1) {
@@ -206,6 +192,58 @@ export default function StoryBook({ story, onReset }: StoryBookProps) {
             ✨ Enhanced by AI ✨
           </p>
         </div>
+      </div>
+
+      {/* AI Voice Narrator Controls */}
+      <div className="bg-gradient-to-r from-blue-50 to-purple-50 p-6 rounded-xl border-2 border-purple-200">
+        <div className="flex flex-col md:flex-row items-center justify-center gap-4">
+          {/* Voice Selector */}
+          <div className="flex items-center gap-3">
+            <Volume2 className="w-6 h-6 text-purple-600" />
+            <label htmlFor="voice-select" className="font-bold text-gray-800">
+              Choose Narrator:
+            </label>
+            <select
+              id="voice-select"
+              value={selectedVoice}
+              onChange={(e) => setSelectedVoice(e.target.value)}
+              disabled={isReading || isLoadingAudio}
+              className="px-4 py-2 border-2 border-purple-300 rounded-lg bg-white focus:border-purple-500 focus:outline-none font-semibold text-gray-700 cursor-pointer hover:border-purple-400 transition-all disabled:opacity-50 disabled:cursor-not-allowed"
+            >
+              {aiVoices.map((voice) => (
+                <option key={voice.id} value={voice.id}>
+                  {voice.name}
+                </option>
+              ))}
+            </select>
+          </div>
+
+          {/* Auto-Play Button */}
+          <button
+            onClick={toggleAutoPlay}
+            disabled={isLoadingAudio}
+            className={`px-6 py-2 rounded-full font-semibold flex items-center gap-2 transition-all transform hover:scale-105 ${
+              isAutoPlaying
+                ? 'bg-red-500 hover:bg-red-600 text-white'
+                : 'bg-green-500 hover:bg-green-600 text-white'
+            }`}
+          >
+            {isAutoPlaying ? (
+              <>
+                <Pause className="w-5 h-5" />
+                Stop Auto-Play
+              </>
+            ) : (
+              <>
+                <Play className="w-5 h-5" />
+                Auto-Play Story
+              </>
+            )}
+          </button>
+        </div>
+        <p className="text-center text-xs text-gray-600 mt-2 italic">
+          ✨ High-quality AI narration ✨
+        </p>
       </div>
 
 
@@ -273,14 +311,22 @@ export default function StoryBook({ story, onReset }: StoryBookProps) {
 
           {/* Read Aloud Button */}
           <button
-            onClick={readAloud}
+            onClick={toggleSpeak}
+            disabled={isLoadingAudio}
             className={`px-6 py-3 rounded-full font-semibold flex items-center gap-2 transition-all transform hover:scale-105 ${
               isReading
                 ? 'bg-red-500 hover:bg-red-600 text-white'
+                : isLoadingAudio
+                ? 'bg-gray-400 text-white cursor-wait'
                 : 'bg-blue-500 hover:bg-blue-600 text-white'
             }`}
           >
-            {isReading ? (
+            {isLoadingAudio ? (
+              <>
+                <Loader2 className="w-5 h-5 animate-spin" />
+                Loading Voice...
+              </>
+            ) : isReading ? (
               <>
                 <VolumeX className="w-5 h-5" />
                 Stop Reading
@@ -288,7 +334,7 @@ export default function StoryBook({ story, onReset }: StoryBookProps) {
             ) : (
               <>
                 <Volume2 className="w-5 h-5" />
-                Read Aloud
+                Read Aloud (AI)
               </>
             )}
           </button>
