@@ -20,7 +20,30 @@ interface CharacterDNA {
 }
 
 // Negative prompt to avoid scary/inconsistent images
-const NEGATIVE_PROMPT = `photorealistic, hyper-realistic, dark themes, scary, sharp edges, dramatic lighting, adult features, extra limbs, extra characters, inconsistent clothing, realistic textures, 3D render, anime style, text in image, logos, watermarks, small eyes, angry expression, creepy, horror, realistic eyes`
+const NEGATIVE_PROMPT = `photorealistic, realistic, dark, scary, extra characters, extra animals, crowded scene, 3D render, anime style, text in image, logos, watermarks, sharp edges, dramatic lighting, adult features, extra limbs, inconsistent clothing, realistic textures, small eyes, angry expression, creepy, horror, realistic eyes`
+
+// Base image prompt template (constant across all pages)
+const BASE_IMAGE_PROMPT = `Children's illustrated storybook image.
+
+This image must ONLY depict the characters and elements explicitly listed below.
+Do NOT add any extra characters, animals, or decorative elements.
+
+ART STYLE:
+Children's picture book illustration,
+soft watercolor or pastel texture,
+rounded shapes,
+gentle lighting,
+simple composition,
+no realism,
+no sharp edges.
+
+STRICT RULES:
+- Do NOT invent new characters
+- Do NOT add background animals or filler elements
+- Do NOT change character colors, shapes, or materials
+- No text, logos, or watermarks
+- Keep everything child-safe and friendly
+- Characters must have big round friendly eyes`
 
 export async function POST(request: NextRequest) {
   try {
@@ -177,6 +200,7 @@ SCENE: [Visual description for illustration]`
 }
 
 // Generate image prompts using Character DNA template
+// Formula: FINAL_IMAGE_PROMPT = BASE_IMAGE_PROMPT + PAGE_IMAGE_SCENE
 function generateImagePromptsWithDNA(story: any): string[] {
   const characterDNA = story.characterDNA
   const storyWorldDNA = story.storyWorldDNA
@@ -184,35 +208,45 @@ function generateImagePromptsWithDNA(story: any): string[] {
   const prompts = story.pages.map((page: any, index: number) => {
     const sceneDescription = page.scene || extractSceneFromText(page.text)
 
-    // Build the comprehensive image prompt with locked character DNA
-    return `Children's illustrated storybook image.
+    // Build the page-specific scene content
+    const pageImageScene = buildPageImageScene(characterDNA, storyWorldDNA, sceneDescription)
 
-CHARACTERS (locked, do not alter):
-${JSON.stringify(characterDNA, null, 2)}
-
-STORY WORLD:
-${storyWorldDNA}
-
-ART STYLE:
-Soft children's book illustration, watercolor or pastel texture, rounded shapes, gentle lighting, storybook proportions, expressive but simple faces, no realism, no sharp edges. Characters must have BIG ROUND FRIENDLY EYES with large pupils and sparkle highlights, rosy cheeks, warm gentle smile.
-
-SCENE:
-${sceneDescription}
-
-STRICT RULES:
-- Do NOT invent new characters
-- Do NOT change character materials or colors
-- Objects must remain objects
-- Animals must retain species traits
-- Match the scene exactly
-- Keep safe and child-friendly
-- Eyes must be large, round, friendly and NON-SCARY
-- No text, words, letters, or numbers in the image
-
-This illustration must match all previous pages in style and character appearance.`
+    // Combine: BASE_IMAGE_PROMPT + PAGE_IMAGE_SCENE
+    return BASE_IMAGE_PROMPT + "\n\n" + pageImageScene
   })
 
   return prompts
+}
+
+// Build the page-specific image scene description
+function buildPageImageScene(characterDNA: CharacterDNA, storyWorldDNA: string, sceneDescription: string): string {
+  // Format character details in a clean, readable way
+  const characterSection = formatCharacterForPrompt(characterDNA)
+
+  return `CHARACTERS (locked):
+${characterSection}
+
+ENVIRONMENT:
+${storyWorldDNA}
+
+SCENE ACTION:
+${sceneDescription}
+
+This illustration must match all previous pages in style and character appearance.`
+}
+
+// Format character DNA into clean prompt text
+function formatCharacterForPrompt(dna: CharacterDNA): string {
+  const colors = dna.color_palette.join(', ')
+
+  return `1. ${dna.name} – a friendly ${dna.type}
+   - Color: ${colors}
+   - Shape: ${dna.physical_form}
+   - Texture: ${dna.material_or_texture}
+   - Face: ${dna.facial_features}
+   - Accessories: ${dna.accessories}
+   - Movement: ${dna.movement_style}
+   - Unique features: ${dna.unique_identifiers}`
 }
 
 // Parse story response that includes Character DNA
