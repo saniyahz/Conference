@@ -42,10 +42,10 @@ async function generateImageWithRetry(
           }, null, 2))
           console.log(`===================================\n`)
 
-          // Use SDXL Lightning - 4x faster than regular SDXL!
-          // NOTE: guidance_scale must be > 0 to follow prompts!
+          // Use standard SDXL for better prompt adherence
+          // More steps = better quality and prompt following
           const output = await replicate.run(
-            "bytedance/sdxl-lightning-4step:5599ed30703defd1d160a25a63321b4dec97101d98b4674bcc56e41f62f35637",
+            "stability-ai/sdxl:39ed52f2a78e934b3ba6e2a89f5b1c712de7dfea535525255b1aa35c5565e08b",
             {
               input: {
                 prompt: cleanPrompt,
@@ -54,8 +54,10 @@ async function generateImageWithRetry(
                 height: 1024,
                 num_outputs: 1,
                 scheduler: "K_EULER",
-                num_inference_steps: 4,
-                guidance_scale: 7  // Higher = follows prompt more strictly
+                num_inference_steps: 30,  // More steps = better prompt adherence
+                guidance_scale: 7.5,      // Higher = follows prompt more strictly
+                refine: "expert_ensemble_refiner",
+                high_noise_frac: 0.8
               }
             }
           )
