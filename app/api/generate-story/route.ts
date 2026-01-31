@@ -264,6 +264,14 @@ function buildPageImageScene(characterDNA: CharacterDNA, storyWorldDNA: string, 
   // Get environment-specific restrictions for STRICT block
   const strictBlock = getStrictRestrictions(environment.type)
 
+  // Extract key elements from page text that MUST appear in image
+  const keyElements = extractKeySceneElements(pageText)
+
+  // Enrich scene description with key elements from text
+  const enrichedScene = keyElements.length > 0
+    ? `${sceneDescription}. Must include: ${keyElements.join(', ')}.`
+    : sceneDescription
+
   // Build prompt in EXACT format user specified
   return `${envStatement}
 
@@ -271,10 +279,101 @@ MAIN CHARACTER (must look identical in every image):
 ${characterBlock}
 
 SCENE:
-${sceneDescription}
+${enrichedScene}
 
 STRICT:
 ${strictBlock}`
+}
+
+// Extract key visual elements from page text that should appear in the image
+function extractKeySceneElements(pageText: string): string[] {
+  const elements: string[] = []
+  const lowerText = pageText.toLowerCase()
+
+  // Animals and creatures
+  const animals = [
+    'shark', 'sharks', 'dolphin', 'dolphins', 'whale', 'whales', 'fish', 'octopus',
+    'turtle', 'crab', 'jellyfish', 'starfish', 'seahorse', 'coral',
+    'bird', 'birds', 'owl', 'eagle', 'butterfly', 'butterflies', 'bee', 'bees',
+    'rabbit', 'bunny', 'fox', 'deer', 'bear', 'squirrel', 'mouse', 'frog',
+    'dragon', 'unicorn', 'fairy', 'fairies', 'mermaid',
+    'dog', 'cat', 'puppy', 'kitten', 'horse', 'pony'
+  ]
+
+  // Space objects
+  const spaceObjects = [
+    'planet', 'planets', 'moon', 'moons', 'star', 'stars', 'comet', 'asteroid',
+    'rocket', 'spaceship', 'satellite', 'galaxy', 'nebula', 'sun'
+  ]
+
+  // Nature elements
+  const nature = [
+    'rainbow', 'waterfall', 'mountain', 'mountains', 'river', 'lake', 'pond',
+    'flower', 'flowers', 'tree', 'trees', 'forest', 'garden', 'meadow',
+    'cloud', 'clouds', 'rain', 'snow', 'sunshine'
+  ]
+
+  // Objects
+  const objects = [
+    'treasure', 'chest', 'crown', 'wand', 'book', 'map', 'key', 'door',
+    'castle', 'tower', 'bridge', 'boat', 'ship', 'balloon', 'kite'
+  ]
+
+  // Actions/poses that affect the image
+  const actions: { [key: string]: string } = {
+    'swimming': 'swimming pose',
+    'flying': 'flying pose',
+    'jumping': 'jumping in the air',
+    'running': 'running',
+    'dancing': 'dancing',
+    'hugging': 'hugging',
+    'waving': 'waving hand',
+    'laughing': 'laughing expression',
+    'crying': 'tears on face',
+    'scared': 'scared expression',
+    'surprised': 'surprised expression',
+    'splash': 'water splashing'
+  }
+
+  // Check for animals
+  for (const animal of animals) {
+    if (lowerText.includes(animal)) {
+      // Add with article for better prompt
+      elements.push(animal.endsWith('s') ? animal : `a ${animal}`)
+    }
+  }
+
+  // Check for space objects
+  for (const obj of spaceObjects) {
+    if (lowerText.includes(obj)) {
+      elements.push(obj.endsWith('s') ? obj : `a ${obj}`)
+    }
+  }
+
+  // Check for nature
+  for (const item of nature) {
+    if (lowerText.includes(item)) {
+      elements.push(item)
+    }
+  }
+
+  // Check for objects
+  for (const obj of objects) {
+    if (lowerText.includes(obj)) {
+      elements.push(obj.endsWith('s') ? obj : `a ${obj}`)
+    }
+  }
+
+  // Check for actions
+  for (const [action, description] of Object.entries(actions)) {
+    if (lowerText.includes(action)) {
+      elements.push(description)
+    }
+  }
+
+  // Remove duplicates and limit to 5 most important
+  const unique = [...new Set(elements)]
+  return unique.slice(0, 5)
 }
 
 // Format character DNA into a clean block for the prompt
