@@ -3,7 +3,7 @@
   "version": "1.0.0",
   "description": "Interactive kids story app with speech input and AI-generated illustrations",
   "scripts": {
-    "dev": "next dev -H 0.0.0.0 -p 3000",
+    "dev": "next dev -H 0.0.0.0 -p 5000",
     "build": "next build",
     "start": "next start",
     "lint": "next lint"
