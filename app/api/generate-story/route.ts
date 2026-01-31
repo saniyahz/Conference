@@ -43,27 +43,8 @@ function generateNegativePrompt(pageText: string): string {
 }
 
 // Base image prompt template (constant across all pages)
-const BASE_IMAGE_PROMPT = `Children's illustrated storybook image.
-
-This image must ONLY depict the characters and elements explicitly listed below.
-Do NOT add any extra characters, animals, or decorative elements.
-
-ART STYLE:
-Children's picture book illustration,
-soft watercolor or pastel texture,
-rounded shapes,
-gentle lighting,
-simple composition,
-no realism,
-no sharp edges.
-
-STRICT RULES:
-- Do NOT invent new characters
-- Do NOT add background animals or filler elements
-- Do NOT change character colors, shapes, or materials
-- No text, logos, or watermarks
-- Keep everything child-safe and friendly
-- Characters must have big round friendly eyes`
+// Keep it SHORT - models have limited attention span
+const BASE_IMAGE_PROMPT = `Children's storybook illustration, soft watercolor style, gentle pastel colors, rounded shapes, simple composition, child-friendly, big expressive eyes.`
 
 export async function POST(request: NextRequest) {
   try {
@@ -246,6 +227,7 @@ function generateImagePromptsWithDNA(story: any): { prompts: string[]; negativeP
 }
 
 // Build the page-specific image scene description
+// CRITICAL: Environment must come FIRST - models pay attention to prompt start!
 function buildPageImageScene(characterDNA: CharacterDNA, storyWorldDNA: string, sceneDescription: string, pageText: string): string {
   // Format character details in a clean, readable way
   const characterSection = formatCharacterForPrompt(characterDNA)
@@ -256,22 +238,22 @@ function buildPageImageScene(characterDNA: CharacterDNA, storyWorldDNA: string, 
   // Generate ABSOLUTE RESTRICTIONS based on what the environment IS NOT
   const restrictions = generateEnvironmentRestrictions(environment.type)
 
-  return `CHARACTERS (locked):
-${characterSection}
-
-ENVIRONMENT:
+  // ENVIRONMENT FIRST - this is what the model sees first!
+  return `SETTING: ${environment.type.toUpperCase()} SCENE
 ${environment.description}
 
 SCENE ACTION:
 ${sceneDescription}
 
-ABSOLUTE RESTRICTIONS:
-${restrictions}
+CHARACTER IN THIS SCENE:
+${characterSection}
 
-This illustration must match all previous pages in style and character appearance.`
+DO NOT INCLUDE:
+${restrictions}`
 }
 
 // Extract environment type and description from page text
+// CRITICAL: Returns explicit, literal environment descriptions
 function extractEnvironmentFromText(pageText: string, fallbackWorld: string): { type: string; description: string } {
   const lowerText = pageText.toLowerCase()
 
@@ -280,8 +262,8 @@ function extractEnvironmentFromText(pageText: string, fallbackWorld: string): { 
       lowerText.includes('coral') || lowerText.includes('fish') || lowerText.includes('shark') ||
       lowerText.includes('whale') || lowerText.includes('dolphin') || lowerText.includes('swim')) {
     return {
-      type: 'underwater',
-      description: '- Underwater ocean scene\n- Blue water with soft light rays filtering down\n- Coral, sea plants, and bubbles\n- No land, no trees, no buildings, no sky'
+      type: 'underwater ocean',
+      description: 'Deep blue underwater ocean scene. Blue-green water everywhere. Light rays filtering from above. Coral reef, seaweed, bubbles, small fish swimming. This is UNDERWATER - no sky, no land, no trees, no grass, no buildings visible.'
     }
   }
 
@@ -290,8 +272,8 @@ function extractEnvironmentFromText(pageText: string, fallbackWorld: string): { 
       lowerText.includes('planet') || lowerText.includes('rocket') || lowerText.includes('galaxy') ||
       lowerText.includes('cosmic') || lowerText.includes('astronaut')) {
     return {
-      type: 'space',
-      description: '- Outer space scene\n- Dark navy/purple sky with twinkling stars\n- Planets or moon visible\n- No land, no trees, no water, no buildings'
+      type: 'outer space',
+      description: 'Dark outer space scene. Black/navy sky filled with twinkling stars. Moon or planets visible in background. This is OUTER SPACE - no trees, no grass, no water, no buildings, no earth scenery.'
     }
   }
 
@@ -300,7 +282,7 @@ function extractEnvironmentFromText(pageText: string, fallbackWorld: string): { 
       lowerText.includes('above the') || lowerText.includes('bird')) {
     return {
       type: 'sky',
-      description: '- Sky scene with fluffy clouds\n- Bright blue sky or sunset colors\n- Birds or flying creatures\n- No ground details, aerial perspective'
+      description: 'High in the sky scene. Blue sky with white fluffy clouds. Aerial view, flying perspective. Minimal ground visible far below.'
     }
   }
 
@@ -309,7 +291,7 @@ function extractEnvironmentFromText(pageText: string, fallbackWorld: string): { 
       lowerText.includes('kitchen') || lowerText.includes('bedroom') || lowerText.includes('inside')) {
     return {
       type: 'indoor',
-      description: '- Cozy indoor scene\n- Warm lighting from windows\n- Furniture and home elements\n- No outdoor scenery visible'
+      description: 'Cozy indoor room scene. Warm lighting, furniture visible. Inside a house or building.'
     }
   }
 
@@ -317,14 +299,14 @@ function extractEnvironmentFromText(pageText: string, fallbackWorld: string): { 
   if (lowerText.includes('forest') || lowerText.includes('tree') || lowerText.includes('meadow') ||
       lowerText.includes('garden') || lowerText.includes('flower') || lowerText.includes('grass')) {
     return {
-      type: 'forest',
-      description: '- Friendly forest or meadow scene\n- Soft green trees and colorful flowers\n- Warm sunlight filtering through\n- Gentle, peaceful nature setting'
+      type: 'forest meadow',
+      description: 'Peaceful forest meadow scene. Green trees, colorful flowers, soft grass. Warm sunlight, nature setting.'
     }
   }
 
   // Default - use story world DNA but mark as generic
   return {
-    type: 'generic',
+    type: 'magical world',
     description: fallbackWorld
   }
 }
