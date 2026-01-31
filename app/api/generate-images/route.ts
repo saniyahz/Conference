@@ -12,19 +12,23 @@ const sleep = (ms: number) => new Promise(resolve => setTimeout(resolve, ms))
 async function generateImageWithRetry(
   replicate: Replicate,
   prompt: string,
+  customNegativePrompt: string | undefined,
   imageIndex: number,
   imagePromptsLength: number,
   maxRetries = 2
 ): Promise<string> {
   for (let attempt = 1; attempt <= maxRetries; attempt++) {
     try {
-          // Enhanced prompt for Disney/Pixar style
-          const cleanPrompt = `${prompt}, masterpiece, best quality, highly detailed`
+          // Use the prompt as-is - it's already structured properly
+          const cleanPrompt = prompt
 
-          // Strong negative prompt - no text AND no scary elements
-          const negativePrompt = `text, words, letters, writing, caption, label, watermark, signature, logo, typography, font, numbers, scary, creepy, horror, dark, evil, ugly, deformed, bad anatomy, bad proportions, gross, disturbing, nightmare, frightening, realistic, photorealistic`
+          // Use passed negative prompt OR fallback to default
+          // MUST include environment-blocking terms to prevent forest/castle defaults
+          const negativePrompt = customNegativePrompt ||
+            `forest, trees, grass, castle, human child, people, land animals, houses, realistic, 3D render, anime, text in image, text, words, letters, writing, caption, label, watermark, signature, logo, typography, font, numbers, scary, creepy, horror, dark, evil, ugly, deformed, bad anatomy, bad proportions, photorealistic`
 
           console.log(`Image ${imageIndex + 1}: Attempt ${attempt}/${maxRetries}`)
+          console.log(`Prompt preview: ${prompt.substring(0, 200)}...`)
 
           // Use SDXL Lightning - 4x faster than regular SDXL!
           const output = await replicate.run(
@@ -110,7 +114,7 @@ async function generateImageWithRetry(
 
 export async function POST(request: NextRequest) {
   try {
-    const { imagePrompts } = await request.json()
+    const { imagePrompts, negativePrompts } = await request.json()
 
     if (!imagePrompts || !Array.isArray(imagePrompts)) {
       return NextResponse.json(
@@ -132,10 +136,12 @@ export async function POST(request: NextRequest) {
 
     for (let i = 0; i < imagePrompts.length; i++) {
       const prompt = imagePrompts[i]
+      // Use page-specific negative prompt if available, otherwise undefined (will use default)
+      const negativePrompt = negativePrompts && negativePrompts[i] ? negativePrompts[i] : undefined
       console.log(`Generating image ${i + 1}/${imagePrompts.length}...`)
 
       try {
-        const imageUrl = await generateImageWithRetry(replicate, prompt, i, imagePrompts.length)
+        const imageUrl = await generateImageWithRetry(replicate, prompt, negativePrompt, i, imagePrompts.length)
         imageUrls.push(imageUrl)
         console.log(`Image ${i + 1} done: ${imageUrl ? 'success' : 'failed'}`)
       } catch (error) {

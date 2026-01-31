@@ -63,7 +63,10 @@ export default function Home() {
       const imagesResponse = await fetch('/api/generate-images', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ imagePrompts: storyData.imagePrompts }),
+        body: JSON.stringify({
+          imagePrompts: storyData.imagePrompts,
+          negativePrompts: storyData.negativePrompts  // Page-specific negative prompts
+        }),
       })
 
       if (!imagesResponse.ok) {

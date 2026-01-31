@@ -19,8 +19,28 @@ interface CharacterDNA {
   unique_identifiers: string
 }
 
-// Negative prompt to avoid scary/inconsistent images
-const NEGATIVE_PROMPT = `photorealistic, realistic, dark, scary, extra characters, extra animals, crowded scene, 3D render, anime style, text in image, logos, watermarks, sharp edges, dramatic lighting, adult features, extra limbs, inconsistent clothing, realistic textures, small eyes, angry expression, creepy, horror, realistic eyes`
+// Base negative prompt to avoid scary/inconsistent images
+const BASE_NEGATIVE_PROMPT = `photorealistic, realistic, dark, scary, extra characters, extra animals, crowded scene, 3D render, anime style, text in image, logos, watermarks, sharp edges, dramatic lighting, adult features, extra limbs, inconsistent clothing, realistic textures, small eyes, angry expression, creepy, horror, realistic eyes`
+
+// Generate environment-specific negative prompt
+function generateNegativePrompt(pageText: string): string {
+  const lowerText = pageText.toLowerCase()
+
+  // For underwater scenes - block land elements
+  if (lowerText.includes('ocean') || lowerText.includes('underwater') || lowerText.includes('sea') ||
+      lowerText.includes('shark') || lowerText.includes('fish') || lowerText.includes('coral')) {
+    return `${BASE_NEGATIVE_PROMPT}, forest, trees, grass, castle, human child, people, land animals, rabbits, bears, cats, dogs, houses, buildings, sky, clouds, land`
+  }
+
+  // For space scenes - block earth elements
+  if (lowerText.includes('space') || lowerText.includes('star') || lowerText.includes('moon') ||
+      lowerText.includes('planet') || lowerText.includes('rocket') || lowerText.includes('cosmic')) {
+    return `${BASE_NEGATIVE_PROMPT}, forest, trees, grass, ocean, water, houses, buildings, earth scenery, ground, land animals`
+  }
+
+  // Default - still block common defaults that don't match
+  return `${BASE_NEGATIVE_PROMPT}, extra background elements`
+}
 
 // Base image prompt template (constant across all pages)
 const BASE_IMAGE_PROMPT = `Children's illustrated storybook image.
@@ -156,7 +176,7 @@ SCENE: [Visual description for illustration]`
     const story = parseStoryWithDNA(storyText, prompt)
 
     // Generate image prompts using Character DNA template
-    const imagePrompts = generateImagePromptsWithDNA(story)
+    const { prompts: imagePrompts, negativePrompts } = generateImagePromptsWithDNA(story)
 
     return NextResponse.json({
       story: {
@@ -167,7 +187,7 @@ SCENE: [Visual description for illustration]`
         storyWorldDNA: story.storyWorldDNA,
       },
       imagePrompts,
-      negativePrompt: NEGATIVE_PROMPT,
+      negativePrompts, // Now page-specific!
     })
   } catch (error: any) {
     console.error('Error generating story:', error)
@@ -201,38 +221,160 @@ SCENE: [Visual description for illustration]`
 
 // Generate image prompts using Character DNA template
 // Formula: FINAL_IMAGE_PROMPT = BASE_IMAGE_PROMPT + PAGE_IMAGE_SCENE
-function generateImagePromptsWithDNA(story: any): string[] {
+function generateImagePromptsWithDNA(story: any): { prompts: string[]; negativePrompts: string[] } {
   const characterDNA = story.characterDNA
   const storyWorldDNA = story.storyWorldDNA
 
-  const prompts = story.pages.map((page: any, index: number) => {
-    const sceneDescription = page.scene || extractSceneFromText(page.text)
+  const prompts: string[] = []
+  const negativePrompts: string[] = []
 
-    // Build the page-specific scene content
-    const pageImageScene = buildPageImageScene(characterDNA, storyWorldDNA, sceneDescription)
+  story.pages.forEach((page: any, index: number) => {
+    const pageText = page.text || ''
+    const sceneDescription = page.scene || extractSceneFromText(pageText)
+
+    // Build the page-specific scene content WITH environment detection
+    const pageImageScene = buildPageImageScene(characterDNA, storyWorldDNA, sceneDescription, pageText)
 
     // Combine: BASE_IMAGE_PROMPT + PAGE_IMAGE_SCENE
-    return BASE_IMAGE_PROMPT + "\n\n" + pageImageScene
+    prompts.push(BASE_IMAGE_PROMPT + "\n\n" + pageImageScene)
+
+    // Generate environment-specific negative prompt for this page
+    negativePrompts.push(generateNegativePrompt(pageText))
   })
 
-  return prompts
+  return { prompts, negativePrompts }
 }
 
 // Build the page-specific image scene description
-function buildPageImageScene(characterDNA: CharacterDNA, storyWorldDNA: string, sceneDescription: string): string {
+function buildPageImageScene(characterDNA: CharacterDNA, storyWorldDNA: string, sceneDescription: string, pageText: string): string {
   // Format character details in a clean, readable way
   const characterSection = formatCharacterForPrompt(characterDNA)
+
+  // Extract the ACTUAL environment from the page text
+  const environment = extractEnvironmentFromText(pageText, storyWorldDNA)
+
+  // Generate ABSOLUTE RESTRICTIONS based on what the environment IS NOT
+  const restrictions = generateEnvironmentRestrictions(environment.type)
 
   return `CHARACTERS (locked):
 ${characterSection}
 
 ENVIRONMENT:
-${storyWorldDNA}
+${environment.description}
 
 SCENE ACTION:
 ${sceneDescription}
 
+ABSOLUTE RESTRICTIONS:
+${restrictions}
+
 This illustration must match all previous pages in style and character appearance.`
+}
+
+// Extract environment type and description from page text
+function extractEnvironmentFromText(pageText: string, fallbackWorld: string): { type: string; description: string } {
+  const lowerText = pageText.toLowerCase()
+
+  // Check for underwater/ocean environment
+  if (lowerText.includes('ocean') || lowerText.includes('underwater') || lowerText.includes('sea') ||
+      lowerText.includes('coral') || lowerText.includes('fish') || lowerText.includes('shark') ||
+      lowerText.includes('whale') || lowerText.includes('dolphin') || lowerText.includes('swim')) {
+    return {
+      type: 'underwater',
+      description: '- Underwater ocean scene\n- Blue water with soft light rays filtering down\n- Coral, sea plants, and bubbles\n- No land, no trees, no buildings, no sky'
+    }
+  }
+
+  // Check for space environment
+  if (lowerText.includes('space') || lowerText.includes('star') || lowerText.includes('moon') ||
+      lowerText.includes('planet') || lowerText.includes('rocket') || lowerText.includes('galaxy') ||
+      lowerText.includes('cosmic') || lowerText.includes('astronaut')) {
+    return {
+      type: 'space',
+      description: '- Outer space scene\n- Dark navy/purple sky with twinkling stars\n- Planets or moon visible\n- No land, no trees, no water, no buildings'
+    }
+  }
+
+  // Check for sky/cloud environment
+  if (lowerText.includes('cloud') || lowerText.includes('sky') || lowerText.includes('flying') ||
+      lowerText.includes('above the') || lowerText.includes('bird')) {
+    return {
+      type: 'sky',
+      description: '- Sky scene with fluffy clouds\n- Bright blue sky or sunset colors\n- Birds or flying creatures\n- No ground details, aerial perspective'
+    }
+  }
+
+  // Check for indoor environment
+  if (lowerText.includes('house') || lowerText.includes('home') || lowerText.includes('room') ||
+      lowerText.includes('kitchen') || lowerText.includes('bedroom') || lowerText.includes('inside')) {
+    return {
+      type: 'indoor',
+      description: '- Cozy indoor scene\n- Warm lighting from windows\n- Furniture and home elements\n- No outdoor scenery visible'
+    }
+  }
+
+  // Check for forest/meadow environment (default for many stories)
+  if (lowerText.includes('forest') || lowerText.includes('tree') || lowerText.includes('meadow') ||
+      lowerText.includes('garden') || lowerText.includes('flower') || lowerText.includes('grass')) {
+    return {
+      type: 'forest',
+      description: '- Friendly forest or meadow scene\n- Soft green trees and colorful flowers\n- Warm sunlight filtering through\n- Gentle, peaceful nature setting'
+    }
+  }
+
+  // Default - use story world DNA but mark as generic
+  return {
+    type: 'generic',
+    description: fallbackWorld
+  }
+}
+
+// Generate restrictions based on what environment type we DON'T want
+function generateEnvironmentRestrictions(envType: string): string {
+  const baseRestrictions = '- No extra characters not listed above\n- No random animals in background'
+
+  switch (envType) {
+    case 'underwater':
+      return `${baseRestrictions}
+- No humans
+- No land animals (cats, dogs, rabbits, bears)
+- No forests or trees
+- No grass or land
+- No castles or buildings
+- No sky (we are underwater)`
+
+    case 'space':
+      return `${baseRestrictions}
+- No humans unless specified
+- No land animals
+- No forests or trees
+- No water or ocean
+- No grass or ground scenery
+- No earthly buildings`
+
+    case 'sky':
+      return `${baseRestrictions}
+- No ground-level details
+- No buildings unless flying past
+- Minimal land visible (aerial view)`
+
+    case 'indoor':
+      return `${baseRestrictions}
+- No outdoor scenery through windows unless specified
+- No wild animals
+- No forests or nature scenes`
+
+    case 'forest':
+      return `${baseRestrictions}
+- No ocean or underwater elements
+- No space elements
+- No buildings unless specified`
+
+    default:
+      return `${baseRestrictions}
+- Match the environment described in the text exactly
+- Do not add unrelated scenery`
+  }
 }
 
 // Format character DNA into clean prompt text
