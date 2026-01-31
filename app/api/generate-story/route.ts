@@ -159,6 +159,17 @@ SCENE: [Visual description for illustration]`
     // Generate image prompts using Character DNA template
     const { prompts: imagePrompts, negativePrompts } = generateImagePromptsWithDNA(story)
 
+    // DEBUG: Log first image prompt to verify environment detection
+    console.log(`\n========== STORY GENERATED ==========`)
+    console.log(`Title: ${story.title}`)
+    console.log(`\n--- PAGE 1 TEXT ---`)
+    console.log(story.pages[0]?.text?.substring(0, 200))
+    console.log(`\n--- PAGE 1 IMAGE PROMPT ---`)
+    console.log(imagePrompts[0])
+    console.log(`\n--- PAGE 1 NEGATIVE PROMPT ---`)
+    console.log(negativePrompts[0])
+    console.log(`=====================================\n`)
+
     return NextResponse.json({
       story: {
         title: story.title,

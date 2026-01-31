@@ -27,8 +27,20 @@ async function generateImageWithRetry(
           const negativePrompt = customNegativePrompt ||
             `forest, trees, grass, castle, human child, people, land animals, houses, realistic, 3D render, anime, text in image, text, words, letters, writing, caption, label, watermark, signature, logo, typography, font, numbers, scary, creepy, horror, dark, evil, ugly, deformed, bad anatomy, bad proportions, photorealistic`
 
-          console.log(`Image ${imageIndex + 1}: Attempt ${attempt}/${maxRetries}`)
-          console.log(`Prompt preview: ${prompt.substring(0, 200)}...`)
+          console.log(`\n========== IMAGE ${imageIndex + 1} DEBUG ==========`)
+          console.log(`Attempt ${attempt}/${maxRetries}`)
+          console.log(`\n--- FULL PROMPT ---`)
+          console.log(cleanPrompt)
+          console.log(`\n--- NEGATIVE PROMPT ---`)
+          console.log(negativePrompt)
+          console.log(`\n--- REPLICATE INPUT ---`)
+          console.log(JSON.stringify({
+            prompt: cleanPrompt.substring(0, 500) + '...',
+            negative_prompt: negativePrompt.substring(0, 200) + '...',
+            guidance_scale: 2,
+            num_inference_steps: 4
+          }, null, 2))
+          console.log(`===================================\n`)
 
           // Use SDXL Lightning - 4x faster than regular SDXL!
           // NOTE: guidance_scale must be > 0 to follow prompts!
