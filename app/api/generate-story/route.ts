@@ -5,6 +5,19 @@ const replicate = new Replicate({
   auth: process.env.REPLICATE_API_TOKEN,
 })
 
+// Add CORS headers for ChatGPT GPT actions
+function getCorsHeaders() {
+  return {
+    'Access-Control-Allow-Origin': '*',
+    'Access-Control-Allow-Methods': 'POST, OPTIONS',
+    'Access-Control-Allow-Headers': 'Content-Type, Authorization',
+  }
+}
+
+export async function OPTIONS() {
+  return NextResponse.json({}, { headers: getCorsHeaders() })
+}
+
 export async function POST(request: NextRequest) {
   try {
     const { prompt } = await request.json()
@@ -91,7 +104,7 @@ PAGE 10:
         pages: story.pages,
       },
       imagePrompts,
-    })
+    }, { headers: getCorsHeaders() })
   } catch (error: any) {
     console.error('Error generating story:', error)
 
@@ -111,13 +124,13 @@ PAGE 10:
           error: 'This story idea contains content that isn\'t appropriate for a children\'s story app. Please try a different, kid-friendly idea! Think of fun adventures with animals, magical creatures, or everyday heroes.',
           isContentError: true
         },
-        { status: 400 }
+        { status: 400, headers: getCorsHeaders() }
       )
     }
 
     return NextResponse.json(
       { error: 'Failed to generate story. Please try again.' },
-      { status: 500 }
+      { status: 500, headers: getCorsHeaders() }
     )
   }
 }

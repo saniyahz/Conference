@@ -8,6 +8,19 @@ const replicate = new Replicate({
 // Helper function to sleep/delay
 const sleep = (ms: number) => new Promise(resolve => setTimeout(resolve, ms))
 
+// Add CORS headers for ChatGPT GPT actions
+function getCorsHeaders() {
+  return {
+    'Access-Control-Allow-Origin': '*',
+    'Access-Control-Allow-Methods': 'POST, OPTIONS',
+    'Access-Control-Allow-Headers': 'Content-Type, Authorization',
+  }
+}
+
+export async function OPTIONS() {
+  return NextResponse.json({}, { headers: getCorsHeaders() })
+}
+
 // Helper function to generate a single image with retry logic
 async function generateImageWithRetry(
   replicate: Replicate,
@@ -105,7 +118,7 @@ export async function POST(request: NextRequest) {
     if (!imagePrompts || !Array.isArray(imagePrompts)) {
       return NextResponse.json(
         { error: 'Invalid image prompts provided' },
-        { status: 400 }
+        { status: 400, headers: getCorsHeaders() }
       )
     }
 
@@ -113,7 +126,7 @@ export async function POST(request: NextRequest) {
     if (!process.env.REPLICATE_API_TOKEN) {
       return NextResponse.json(
         { error: 'Replicate API token not configured' },
-        { status: 500 }
+        { status: 500, headers: getCorsHeaders() }
       )
     }
 
@@ -133,12 +146,12 @@ export async function POST(request: NextRequest) {
       }
     }
 
-    return NextResponse.json({ imageUrls })
+    return NextResponse.json({ imageUrls }, { headers: getCorsHeaders() })
   } catch (error) {
     console.error('Error in image generation:', error)
     return NextResponse.json(
       { error: 'Failed to generate images' },
-      { status: 500 }
+      { status: 500, headers: getCorsHeaders() }
     )
   }
 }

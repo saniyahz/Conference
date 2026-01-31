@@ -1,0 +1,120 @@
+openapi: 3.0.0
+info:
+  title: Kids Story Creator API
+  description: API for generating AI-powered children's stories with illustrations
+  version: 1.0.0
+servers:
+  - url: https://your-app-domain.vercel.app
+    description: Production server (replace with your actual deployment URL)
+
+paths:
+  /api/generate-story:
+    post:
+      operationId: generateStory
+      summary: Generate a 10-page children's story from a prompt
+      description: Uses AI to create a unique, age-appropriate story based on the child's idea
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required:
+                - prompt
+              properties:
+                prompt:
+                  type: string
+                  description: The child's story idea or topic
+                  example: "A brave little dragon who learns to fly"
+      responses:
+        '200':
+          description: Story generated successfully
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  story:
+                    type: object
+                    properties:
+                      title:
+                        type: string
+                      author:
+                        type: string
+                      pages:
+                        type: array
+                        items:
+                          type: object
+                          properties:
+                            pageNumber:
+                              type: integer
+                            text:
+                              type: string
+                            imageUrl:
+                              type: string
+                  imagePrompts:
+                    type: array
+                    items:
+                      type: string
+        '400':
+          description: Invalid request
+        '500':
+          description: Server error
+
+  /api/generate-images:
+    post:
+      operationId: generateImages
+      summary: Generate illustrations for story pages
+      description: Creates consistent AI-generated images for each page of the story
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required:
+                - imagePrompts
+              properties:
+                imagePrompts:
+                  type: array
+                  items:
+                    type: string
+                  description: Array of image generation prompts for each page
+      responses:
+        '200':
+          description: Images generated successfully
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  imageUrls:
+                    type: array
+                    items:
+                      type: string
+                    description: URLs of generated images
+        '400':
+          description: Invalid request
+        '500':
+          description: Server error
+
+components:
+  schemas:
+    Story:
+      type: object
+      properties:
+        title:
+          type: string
+        author:
+          type: string
+        pages:
+          type: array
+          items:
+            type: object
+            properties:
+              pageNumber:
+                type: integer
+              text:
+                type: string
+              imageUrl:
+                type: string
