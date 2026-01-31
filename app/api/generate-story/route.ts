@@ -165,22 +165,75 @@ function generateImagePrompts(story: any, originalPrompt: string): string[] {
   const allText = story.pages.map((p: any) => p.text).join(' ')
   const characters = extractAllCharacters(allText, originalPrompt)
 
-  // Simple, clear prompts that match the actual page content
+  // Create a consistent character appearance description used across ALL pages
+  const characterAppearance = createConsistentCharacterAppearance(characters, originalPrompt)
+
+  // Improved prompts with explicit friendly features and consistency
   const prompts = story.pages.map((page: any, index: number) => {
     const pageText = page.text || ''
 
     // Get the key scene from this specific page
     const sceneDescription = extractSceneDescription(pageText)
 
-    // Build prompt with ALL characters and the actual scene
-    const charactersPart = characters.length > 0
-      ? characters.join(' and ')
-      : 'the main character'
+    // Build prompt with consistent character appearance and child-safe style
+    return `Cute children's book watercolor illustration. ${characterAppearance}. Scene: ${sceneDescription}.
 
-    return `Children's book illustration showing ${charactersPart}. Scene: ${sceneDescription}. Disney Pixar 3D animation style, cute, friendly, colorful, warm lighting, storybook art. No text, no words, no letters.`
+Style requirements: Soft 2D hand-drawn watercolor style, pastel colors, gentle rounded shapes. Characters must have BIG ROUND FRIENDLY EYES with large pupils and sparkle highlights, soft gentle smiling expressions, rosy cheeks, small cute nose. Use warm soft lighting, dreamy atmosphere, storybook feel.
+
+IMPORTANT: Eyes must be large, round, friendly and NON-SCARY. No realistic eyes, no small eyes, no angry expressions, no dark shadows on face. Keep everything soft, warm, and child-friendly.
+
+No text, no words, no letters, no numbers in the image.`
   })
 
   return prompts
+}
+
+// Create a consistent character description to use across all pages
+function createConsistentCharacterAppearance(characters: string[], originalPrompt: string): string {
+  if (characters.length === 0) {
+    return 'A cute friendly main character with big round sparkly eyes, rosy cheeks, and a warm gentle smile'
+  }
+
+  // Build detailed, friendly descriptions for each character
+  const characterDescriptions = characters.map(char => {
+    const lowerChar = char.toLowerCase()
+
+    // Add friendly features to each character type
+    if (lowerChar.includes('ant') || lowerChar.includes('bug') || lowerChar.includes('bee')) {
+      return `${char} (adorable tiny character with oversized round sparkly eyes, tiny smile, wearing a cute little outfit)`
+    } else if (lowerChar.includes('bear') || lowerChar.includes('beaver') || lowerChar.includes('bunny') || lowerChar.includes('rabbit')) {
+      return `${char} (fluffy and cuddly with big round button eyes, pink nose, soft fur, happy expression)`
+    } else if (lowerChar.includes('cat') || lowerChar.includes('kitten')) {
+      return `${char} (soft fluffy kitten with huge round sparkly eyes, tiny pink nose, whiskers, sweet expression)`
+    } else if (lowerChar.includes('dog') || lowerChar.includes('puppy')) {
+      return `${char} (adorable puppy with big shiny round eyes, floppy ears, wagging tail, friendly smile)`
+    } else if (lowerChar.includes('bird') || lowerChar.includes('owl') || lowerChar.includes('duck')) {
+      return `${char} (cute feathered friend with big round friendly eyes, small beak, colorful soft feathers)`
+    } else if (lowerChar.includes('dragon') || lowerChar.includes('dinosaur')) {
+      return `${char} (baby-like and adorable with huge round innocent eyes, tiny wings/spines, chubby body, friendly smile)`
+    } else if (lowerChar.includes('fish') || lowerChar.includes('sea') || lowerChar.includes('ocean')) {
+      return `${char} (cute aquatic friend with big sparkly round eyes, friendly fins, happy expression)`
+    } else if (lowerChar.includes('mouse') || lowerChar.includes('squirrel') || lowerChar.includes('hamster')) {
+      return `${char} (tiny adorable creature with oversized round shiny eyes, tiny paws, fluffy tail, sweet smile)`
+    } else if (lowerChar.includes('princess') || lowerChar.includes('prince') || lowerChar.includes('girl') || lowerChar.includes('boy')) {
+      return `${char} (cute cartoon child with big round sparkly eyes, rosy cheeks, friendly smile, soft features)`
+    } else if (lowerChar.includes('unicorn') || lowerChar.includes('pony') || lowerChar.includes('horse')) {
+      return `${char} (magical and cute with huge round gentle eyes, flowing soft mane, sparkles, sweet expression)`
+    } else if (lowerChar.includes('elephant') || lowerChar.includes('hippo') || lowerChar.includes('rhino')) {
+      return `${char} (gentle giant baby with enormous round friendly eyes, soft gray/pink skin, happy smile)`
+    } else if (lowerChar.includes('lion') || lowerChar.includes('tiger') || lowerChar.includes('fox')) {
+      return `${char} (cute cub-like with big round curious eyes, soft fluffy fur, friendly expression)`
+    } else if (lowerChar.includes('frog') || lowerChar.includes('turtle')) {
+      return `${char} (adorable with huge bulging friendly round eyes, green skin, cute smile)`
+    } else if (lowerChar.includes('superhero') || lowerChar.includes('spiderman') || lowerChar.includes('batman')) {
+      return `${char} (cute kid-friendly cartoon version with big round friendly eyes visible, colorful costume, heroic but gentle pose)`
+    } else {
+      // Generic friendly description for any character
+      return `${char} (adorable cartoon version with big round sparkly friendly eyes, rosy cheeks, soft rounded features, warm gentle smile)`
+    }
+  })
+
+  return characterDescriptions.join(' and ')
 }
 
 // Extract ALL characters mentioned (supports multiple characters like "Spiderman and Donald Duck")
