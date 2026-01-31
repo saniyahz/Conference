@@ -105,30 +105,30 @@ export default function Home() {
   }
 
   return (
-    <main className="min-h-screen p-4 md:p-8 bg-gradient-to-br from-sky-50 via-cyan-50 to-teal-50">
+    <main className="min-h-screen p-4 md:p-8 bg-gradient-to-br from-teal-50 via-yellow-50 to-orange-50">
       <div className="max-w-6xl mx-auto">
-        {/* Navigation */}
-        <div className="flex justify-between items-center mb-8 bg-white/80 backdrop-blur-sm border-2 border-sky-200 rounded-2xl shadow-lg p-4">
+        {/* Navigation - Bright kid-friendly colors */}
+        <div className="flex justify-between items-center mb-8 bg-white/90 backdrop-blur-sm border-2 border-teal-200 rounded-2xl shadow-lg p-4">
           <div className="flex items-center gap-2">
             <span className="text-3xl">🦫</span>
-            <span className="text-xl font-bold text-sky-700">Benny's Story Time</span>
+            <span className="text-xl font-bold text-teal-700">Benny's Story Time</span>
           </div>
           <div className="flex gap-3">
             <Link
               href="/about"
-              className="px-4 py-2 text-sky-600 hover:text-sky-800 font-semibold"
+              className="px-4 py-2 text-teal-600 hover:text-teal-800 font-semibold"
             >
               About Us
             </Link>
             <Link
               href="/pricing"
-              className="px-4 py-2 text-sky-600 hover:text-sky-800 font-semibold"
+              className="px-4 py-2 text-teal-600 hover:text-teal-800 font-semibold"
             >
               Pricing
             </Link>
             <Link
               href="/dashboard"
-              className="px-4 py-2 bg-sky-500 text-white rounded-lg hover:bg-sky-600 font-semibold flex items-center gap-2"
+              className="px-4 py-2 bg-teal-500 text-white rounded-lg hover:bg-teal-600 font-semibold flex items-center gap-2"
             >
               <BookOpen className="w-5 h-5" />
               My Library
@@ -136,22 +136,22 @@ export default function Home() {
           </div>
         </div>
 
-        {/* Header */}
+        {/* Header - Cheerful and colorful */}
         <div className="text-center mb-8">
           <div className="flex items-center justify-center gap-3 mb-4">
-            <Sparkles className="w-10 h-10 text-sky-500" />
-            <h1 className="text-4xl md:text-5xl font-bold text-sky-700 font-kids">
+            <Sparkles className="w-10 h-10 text-yellow-500" />
+            <h1 className="text-4xl md:text-5xl font-bold bg-gradient-to-r from-teal-600 via-green-500 to-yellow-500 bg-clip-text text-transparent font-kids">
               Create Magical Stories
             </h1>
-            <Sparkles className="w-10 h-10 text-sky-500" />
+            <Sparkles className="w-10 h-10 text-orange-500" />
           </div>
-          <p className="text-lg text-sky-600">
+          <p className="text-lg text-teal-700">
             Tell Benny your story ideas and watch them come to life!
           </p>
         </div>
 
-        {/* Main Content */}
-        <div className="bg-white/90 backdrop-blur-sm border-2 border-sky-100 rounded-3xl shadow-2xl p-6 md:p-10">
+        {/* Main Content - Warm and inviting */}
+        <div className="bg-white/95 backdrop-blur-sm border-2 border-teal-100 rounded-3xl shadow-2xl p-6 md:p-10">
           {step === 'record' && (
             <SpeechRecorder onComplete={handleTranscriptionComplete} />
           )}

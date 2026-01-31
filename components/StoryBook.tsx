@@ -303,8 +303,8 @@ export default function StoryBook({ story, onReset }: StoryBookProps) {
   return (
     <div className="space-y-6">
       {/* Voice Selector & Auto-Play */}
-      <div className="flex flex-wrap items-center justify-center gap-4 bg-gradient-to-r from-sky-50 to-cyan-50 rounded-xl p-4 border-2 border-sky-200">
-        <label className="font-semibold text-sky-800">Choose Narrator:</label>
+      <div className="flex flex-wrap items-center justify-center gap-4 bg-gradient-to-r from-teal-50 to-green-50 rounded-xl p-4 border-2 border-teal-200">
+        <label className="font-semibold text-teal-800">Choose Narrator:</label>
         <select
           value={selectedVoice.id}
           onChange={(e) => {
@@ -312,13 +312,13 @@ export default function StoryBook({ story, onReset }: StoryBookProps) {
             if (voice) setSelectedVoice(voice)
           }}
           disabled={autoPlayMode}
-          className="px-4 py-2 rounded-lg border-2 border-sky-300 bg-white text-sky-800 font-medium focus:border-sky-500 focus:outline-none disabled:opacity-50"
+          className="px-4 py-2 rounded-lg border-2 border-teal-300 bg-white text-teal-800 font-medium focus:border-teal-500 focus:outline-none disabled:opacity-50"
         >
           {VOICE_OPTIONS.map(voice => (
             <option key={voice.id} value={voice.id}>{voice.name}</option>
           ))}
         </select>
-        <span className="text-xs text-sky-600 italic">{selectedVoice.description}</span>
+        <span className="text-xs text-teal-600 italic">{selectedVoice.description}</span>
 
         {/* Auto-Play Button */}
         <button
@@ -354,12 +354,12 @@ export default function StoryBook({ story, onReset }: StoryBookProps) {
       )}
 
       {/* Title */}
-      <div className="text-center border-b-2 border-sky-200 pb-4">
-        <h1 className="text-3xl md:text-4xl font-bold text-sky-700 font-kids">
+      <div className="text-center border-b-2 border-teal-200 pb-4">
+        <h1 className="text-3xl md:text-4xl font-bold text-teal-700 font-kids">
           {story.title}
         </h1>
         <div className="mt-3 space-y-1">
-          <p className="text-lg text-sky-600 font-semibold">
+          <p className="text-lg text-teal-600 font-semibold">
             Written by: {story.author || 'Young Author'}
           </p>
         </div>
@@ -368,14 +368,14 @@ export default function StoryBook({ story, onReset }: StoryBookProps) {
       {/* Book Pages */}
       <div className="relative bg-white rounded-2xl shadow-2xl overflow-hidden border-2 border-gray-200" style={{ minHeight: '600px' }}>
         {/* Page Number */}
-        <div className="absolute top-4 right-4 bg-sky-600 text-white px-4 py-2 rounded-full font-semibold z-10">
+        <div className="absolute top-4 right-4 bg-teal-600 text-white px-4 py-2 rounded-full font-semibold z-10">
           {currentPage + 1}/{story.pages.length}
         </div>
 
         {/* Side-by-side Page Content */}
         <div className="grid md:grid-cols-2 h-full">
           {/* Left Side - Image */}
-          <div className="relative min-h-[400px] md:min-h-[600px] bg-gradient-to-br from-sky-50 to-cyan-50">
+          <div className="relative min-h-[400px] md:min-h-[600px] bg-gradient-to-br from-teal-50 to-green-50">
             {story.pages[currentPage].imageUrl ? (
               <Image
                 src={story.pages[currentPage].imageUrl}
@@ -398,7 +398,7 @@ export default function StoryBook({ story, onReset }: StoryBookProps) {
               <h2 className="text-sm font-semibold text-gray-500 uppercase tracking-wide mb-2">
                 {story.author || 'Young Author'}
               </h2>
-              <div className="h-px bg-sky-200 w-16"></div>
+              <div className="h-px bg-teal-200 w-16"></div>
             </div>
 
             <div className="flex-1 flex items-center">
@@ -408,7 +408,7 @@ export default function StoryBook({ story, onReset }: StoryBookProps) {
             </div>
 
             <div className="mt-6 text-center">
-              <div className="inline-block h-px bg-sky-200 w-24"></div>
+              <div className="inline-block h-px bg-teal-200 w-24"></div>
               <div className="text-sm text-gray-400 mt-2">{currentPage + 1}</div>
             </div>
           </div>
@@ -419,7 +419,7 @@ export default function StoryBook({ story, onReset }: StoryBookProps) {
           <button
             onClick={previousPage}
             disabled={currentPage === 0}
-            className="p-3 bg-sky-600 text-white rounded-full hover:bg-sky-700 disabled:bg-gray-300 disabled:cursor-not-allowed transition-all transform hover:scale-110"
+            className="p-3 bg-teal-600 text-white rounded-full hover:bg-teal-700 disabled:bg-gray-300 disabled:cursor-not-allowed transition-all transform hover:scale-110"
           >
             <ChevronLeft className="w-6 h-6" />
           </button>
@@ -432,8 +432,8 @@ export default function StoryBook({ story, onReset }: StoryBookProps) {
               isReading
                 ? 'bg-red-500 hover:bg-red-600 text-white'
                 : isGeneratingVoice
-                ? 'bg-sky-500 text-white'
-                : 'bg-sky-500 hover:bg-sky-600 text-white'
+                ? 'bg-teal-500 text-white'
+                : 'bg-teal-500 hover:bg-teal-600 text-white'
             }`}
           >
             {isGeneratingVoice ? (
@@ -457,7 +457,7 @@ export default function StoryBook({ story, onReset }: StoryBookProps) {
           <button
             onClick={nextPage}
             disabled={currentPage === story.pages.length - 1}
-            className="p-3 bg-sky-600 text-white rounded-full hover:bg-sky-700 disabled:bg-gray-300 disabled:cursor-not-allowed transition-all transform hover:scale-110"
+            className="p-3 bg-teal-600 text-white rounded-full hover:bg-teal-700 disabled:bg-gray-300 disabled:cursor-not-allowed transition-all transform hover:scale-110"
           >
             <ChevronRight className="w-6 h-6" />
           </button>
@@ -478,7 +478,7 @@ export default function StoryBook({ story, onReset }: StoryBookProps) {
         {/* Create New Story */}
         <button
           onClick={onReset}
-          className="px-6 py-3 bg-sky-600 hover:bg-sky-700 text-white rounded-full font-semibold flex items-center gap-2 transition-all transform hover:scale-105"
+          className="px-6 py-3 bg-teal-600 hover:bg-teal-700 text-white rounded-full font-semibold flex items-center gap-2 transition-all transform hover:scale-105"
         >
           <RotateCcw className="w-5 h-5" />
           New Story

@@ -241,7 +241,7 @@ export default function SpeechRecorder({ onComplete }: SpeechRecorderProps) {
   return (
     <div className="space-y-6">
       <div className="text-center">
-        <h2 className="text-3xl font-bold text-sky-700 mb-2">
+        <h2 className="text-3xl font-bold text-teal-700 mb-2">
           What story shall we create today?
         </h2>
         <p className="text-gray-600 text-lg mb-6">
@@ -251,8 +251,8 @@ export default function SpeechRecorder({ onComplete }: SpeechRecorderProps) {
 
       {/* Show typing option if voice isn't working */}
       {showTypeOption && !transcription && !isRecording && (
-        <div className="bg-sky-50 border-2 border-sky-300 rounded-xl p-4 text-center">
-          <p className="text-sky-800 font-semibold mb-2">
+        <div className="bg-teal-50 border-2 border-teal-300 rounded-xl p-4 text-center">
+          <p className="text-teal-800 font-semibold mb-2">
             Having trouble? You can also type your story!
           </p>
           <div className="flex gap-3 justify-center">
@@ -267,7 +267,7 @@ export default function SpeechRecorder({ onComplete }: SpeechRecorderProps) {
                 setShowTypeOption(false)
                 setTranscription('')
               }}
-              className="px-4 py-2 bg-sky-500 text-white rounded-lg hover:bg-sky-600 font-semibold flex items-center gap-2"
+              className="px-4 py-2 bg-teal-500 text-white rounded-lg hover:bg-teal-600 font-semibold flex items-center gap-2"
             >
               <Keyboard className="w-5 h-5" />
               Type Instead
@@ -298,7 +298,7 @@ export default function SpeechRecorder({ onComplete }: SpeechRecorderProps) {
                 ? 'bg-red-500 hover:bg-red-600 animate-pulse scale-110'
                 : isProcessing
                   ? 'bg-gray-400 cursor-wait'
-                  : 'bg-sky-500 hover:bg-sky-600 hover:scale-110'
+                  : 'bg-teal-500 hover:bg-teal-600 hover:scale-110'
               }`}
             aria-label={isRecording ? "Stop recording" : "Start recording"}
           >
@@ -362,8 +362,8 @@ export default function SpeechRecorder({ onComplete }: SpeechRecorderProps) {
 
       {/* Tips - shown when not recording */}
       {!isRecording && !transcription && (
-        <div className="bg-gradient-to-r from-sky-50 to-cyan-50 border-2 border-sky-200 rounded-xl p-4 max-w-md mx-auto text-center">
-          <p className="text-sky-700 font-semibold">
+        <div className="bg-gradient-to-r from-teal-50 to-green-50 border-2 border-teal-200 rounded-xl p-4 max-w-md mx-auto text-center">
+          <p className="text-teal-700 font-semibold">
             Tell me about an adventure you'd like to read about!
           </p>
         </div>
@@ -371,9 +371,9 @@ export default function SpeechRecorder({ onComplete }: SpeechRecorderProps) {
 
       {/* Transcription Display & Manual Input */}
       <div className="mt-6">
-        <div className="bg-sky-50 p-6 rounded-xl border-2 border-sky-200">
+        <div className="bg-teal-50 p-6 rounded-xl border-2 border-teal-200">
           <div className="flex justify-between items-center mb-2">
-            <h3 className="font-semibold text-sky-800">Your Story Ideas:</h3>
+            <h3 className="font-semibold text-teal-800">Your Story Ideas:</h3>
             {transcription && (
               <button
                 onClick={clearTranscription}
@@ -387,7 +387,7 @@ export default function SpeechRecorder({ onComplete }: SpeechRecorderProps) {
 
           {/* Editable textarea */}
           <textarea
-            className="w-full p-4 border-2 border-sky-300 rounded-xl focus:border-sky-500 focus:outline-none text-lg min-h-[120px] resize-none"
+            className="w-full p-4 border-2 border-teal-300 rounded-xl focus:border-teal-500 focus:outline-none text-lg min-h-[120px] resize-none"
             placeholder="Your story ideas will appear here... You can also type directly!
 
 Example: A brave little bunny who goes on an adventure to find a magical rainbow..."
@@ -401,8 +401,8 @@ Example: A brave little bunny who goes on an adventure to find a magical rainbow
 
         {/* Author Name Input */}
         {transcription && (
-          <div className="mt-6 bg-cyan-50 p-6 rounded-xl border-2 border-cyan-200">
-            <label htmlFor="authorName" className="block text-sm font-semibold text-cyan-800 mb-2">
+          <div className="mt-6 bg-yellow-50 p-6 rounded-xl border-2 border-yellow-200">
+            <label htmlFor="authorName" className="block text-sm font-semibold text-yellow-800 mb-2">
               Your Name (Story Author):
             </label>
             <input
@@ -411,7 +411,7 @@ Example: A brave little bunny who goes on an adventure to find a magical rainbow
               value={authorName}
               onChange={(e) => setAuthorName(e.target.value)}
               placeholder="Enter your name here..."
-              className="w-full px-4 py-3 border-2 border-cyan-300 rounded-lg focus:border-cyan-500 focus:outline-none text-gray-700"
+              className="w-full px-4 py-3 border-2 border-yellow-300 rounded-lg focus:border-yellow-500 focus:outline-none text-gray-700"
               maxLength={50}
             />
             <p className="text-xs text-gray-500 mt-2">This will appear as the author on your story book!</p>

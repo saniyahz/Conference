@@ -29,13 +29,13 @@ export default function BeaverMascot({
     <div className="flex flex-col items-center">
       {/* Speech Bubble */}
       <div className="relative mb-2">
-        <div className="bg-white border-3 border-sky-400 rounded-2xl px-4 py-2 shadow-lg relative">
-          <p className="text-sm font-bold text-sky-700 whitespace-nowrap">
+        <div className="bg-white border-3 border-teal-400 rounded-2xl px-4 py-2 shadow-lg relative">
+          <p className="text-sm font-bold text-teal-700 whitespace-nowrap">
             {isProcessing ? "Hmm, let me think..." : isRecording ? "I'm listening!" : greeting}
           </p>
           {/* Speech bubble tail pointing down-left to beaver */}
           <div className="absolute -bottom-2 left-4">
-            <div className="w-0 h-0 border-l-[8px] border-r-[8px] border-t-[10px] border-l-transparent border-r-transparent border-t-sky-400"></div>
+            <div className="w-0 h-0 border-l-[8px] border-r-[8px] border-t-[10px] border-l-transparent border-r-transparent border-t-teal-400"></div>
           </div>
         </div>
       </div>
@@ -106,7 +106,7 @@ export default function BeaverMascot({
       </div>
 
       {/* Name badge */}
-      <div className="mt-1 bg-sky-500 text-white px-3 py-0.5 rounded-full font-bold text-xs shadow-md">
+      <div className="mt-1 bg-teal-500 text-white px-3 py-0.5 rounded-full font-bold text-xs shadow-md">
         Benny
       </div>
     </div>

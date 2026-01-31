@@ -148,8 +148,8 @@ export default function DashboardPage() {
 
   if (status === 'loading' || isLoading) {
     return (
-      <div className="min-h-screen flex items-center justify-center bg-gradient-to-br from-sky-50 via-cyan-50 to-teal-50">
-        <Loader2 className="w-12 h-12 text-sky-600 animate-spin" />
+      <div className="min-h-screen flex items-center justify-center bg-gradient-to-br from-teal-50 via-yellow-50 to-orange-50">
+        <Loader2 className="w-12 h-12 text-teal-600 animate-spin" />
       </div>
     )
   }
@@ -178,22 +178,22 @@ export default function DashboardPage() {
     : Math.max(0, limits.maxLibrarySize - stories.filter(s => s.isSaved).length)
 
   return (
-    <div className="min-h-screen p-4 md:p-8 bg-gradient-to-br from-sky-50 via-cyan-50 to-teal-50">
+    <div className="min-h-screen p-4 md:p-8 bg-gradient-to-br from-teal-50 via-yellow-50 to-orange-50">
       <div className="max-w-7xl mx-auto">
         {/* Header */}
-        <div className="bg-white rounded-2xl shadow-xl p-6 mb-8 border-2 border-sky-200">
+        <div className="bg-white rounded-2xl shadow-xl p-6 mb-8 border-2 border-teal-200">
           <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-4">
             <div>
               <Link href="/" className="flex items-center gap-2 mb-2">
                 <span className="text-3xl">🦫</span>
-                <h1 className="text-3xl font-bold text-sky-700">My Story Library</h1>
+                <h1 className="text-3xl font-bold text-teal-700">My Story Library</h1>
               </Link>
               <p className="text-gray-600">Welcome back, {session.user.name || session.user.email}!</p>
             </div>
             <div className="flex gap-3">
               <Link
                 href="/pricing"
-                className="px-4 py-2 border-2 border-sky-500 text-sky-600 rounded-lg hover:bg-sky-50 font-semibold flex items-center gap-2"
+                className="px-4 py-2 border-2 border-teal-500 text-teal-600 rounded-lg hover:bg-teal-50 font-semibold flex items-center gap-2"
               >
                 <CreditCard className="w-5 h-5" />
                 {planType === 'free' ? 'Upgrade' : 'Manage Plan'}
@@ -212,7 +212,7 @@ export default function DashboardPage() {
         {/* Subscription & Usage Info */}
         <div className="grid md:grid-cols-2 gap-6 mb-8">
           {/* Current Plan */}
-          <div className="bg-gradient-to-br from-sky-500 to-cyan-600 text-white rounded-2xl shadow-xl p-6">
+          <div className="bg-gradient-to-br from-teal-500 to-green-600 text-white rounded-2xl shadow-xl p-6">
             <div className="flex items-center gap-2 mb-4">
               <Sparkles className="w-6 h-6 text-yellow-300" />
               <h2 className="text-xl font-bold">{planInfo.name} Plan</h2>
@@ -225,7 +225,7 @@ export default function DashboardPage() {
             {planType === 'free' && (
               <Link
                 href="/pricing"
-                className="mt-4 block w-full text-center bg-white text-sky-600 py-2 rounded-lg font-semibold hover:bg-gray-100"
+                className="mt-4 block w-full text-center bg-white text-teal-600 py-2 rounded-lg font-semibold hover:bg-gray-100"
               >
                 Upgrade for Unlimited Stories
               </Link>
@@ -233,15 +233,15 @@ export default function DashboardPage() {
           </div>
 
           {/* Usage Stats */}
-          <div className="bg-white rounded-2xl shadow-xl p-6 border-2 border-sky-100">
+          <div className="bg-white rounded-2xl shadow-xl p-6 border-2 border-teal-100">
             <div className="flex items-center gap-2 mb-4">
-              <Library className="w-6 h-6 text-sky-600" />
+              <Library className="w-6 h-6 text-teal-600" />
               <h2 className="text-xl font-bold text-gray-800">This Month's Usage</h2>
             </div>
             <div className="grid grid-cols-2 gap-4">
-              <div className="bg-sky-50 rounded-lg p-3">
+              <div className="bg-teal-50 rounded-lg p-3">
                 <p className="text-sm text-gray-600">Stories</p>
-                <p className="text-lg font-bold text-sky-700">
+                <p className="text-lg font-bold text-teal-700">
                   {usage?.storiesCreatedThisMonth || 0} / {limits.storiesPerMonth === -1 ? '∞' : limits.storiesPerMonth}
                 </p>
               </div>
@@ -271,7 +271,7 @@ export default function DashboardPage() {
         <div className="flex gap-4 mb-8">
           <Link
             href="/"
-            className="flex-1 bg-sky-500 text-white p-6 rounded-2xl shadow-xl hover:bg-sky-600 transition-all flex items-center justify-center gap-3"
+            className="flex-1 bg-teal-500 text-white p-6 rounded-2xl shadow-xl hover:bg-teal-600 transition-all flex items-center justify-center gap-3"
           >
             <Plus className="w-6 h-6" />
             <span className="font-semibold text-lg">Create New Story</span>
@@ -279,8 +279,8 @@ export default function DashboardPage() {
         </div>
 
         {/* Saved Stories */}
-        <div className="bg-white rounded-2xl shadow-xl p-6 border-2 border-sky-100">
-          <h2 className="text-2xl font-bold text-sky-700 mb-6">My Saved Stories</h2>
+        <div className="bg-white rounded-2xl shadow-xl p-6 border-2 border-teal-100">
+          <h2 className="text-2xl font-bold text-teal-700 mb-6">My Saved Stories</h2>
 
           {stories.length === 0 ? (
             <div className="text-center py-12">
@@ -288,7 +288,7 @@ export default function DashboardPage() {
               <p className="text-gray-600 text-lg mb-4">No saved stories yet</p>
               <Link
                 href="/"
-                className="inline-block px-6 py-3 bg-sky-500 text-white rounded-lg hover:bg-sky-600 font-semibold"
+                className="inline-block px-6 py-3 bg-teal-500 text-white rounded-lg hover:bg-teal-600 font-semibold"
               >
                 Create Your First Story
               </Link>
@@ -301,11 +301,11 @@ export default function DashboardPage() {
                 return (
                   <div
                     key={story.id}
-                    className="bg-gradient-to-br from-sky-50 to-cyan-50 rounded-xl shadow-lg overflow-hidden border-2 border-sky-200"
+                    className="bg-gradient-to-br from-teal-50 to-green-50 rounded-xl shadow-lg overflow-hidden border-2 border-teal-200"
                   >
                     {/* Cover Image */}
                     {firstPageImage && (
-                      <div className="h-40 bg-sky-100 overflow-hidden">
+                      <div className="h-40 bg-teal-100 overflow-hidden">
                         <img
                           src={firstPageImage}
                           alt={story.title}
@@ -315,7 +315,7 @@ export default function DashboardPage() {
                     )}
 
                     <div className="p-4">
-                      <h3 className="text-xl font-bold text-sky-700 mb-1">{story.title}</h3>
+                      <h3 className="text-xl font-bold text-teal-700 mb-1">{story.title}</h3>
                       {story.author && (
                         <p className="text-sm text-gray-600 mb-2">by {story.author}</p>
                       )}
