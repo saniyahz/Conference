@@ -55,7 +55,7 @@ async function generateImageWithRetry(
                 num_outputs: 1,
                 scheduler: "K_EULER",
                 num_inference_steps: 4,
-                guidance_scale: 2  // CRITICAL: Was 0, which ignored prompts!
+                guidance_scale: 7  // Higher = follows prompt more strictly
               }
             }
           )

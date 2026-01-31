@@ -19,32 +19,36 @@ interface CharacterDNA {
   unique_identifiers: string
 }
 
-// Base negative prompt to avoid scary/inconsistent images
-const BASE_NEGATIVE_PROMPT = `photorealistic, realistic, dark, scary, extra characters, extra animals, crowded scene, 3D render, anime style, text in image, logos, watermarks, sharp edges, dramatic lighting, adult features, extra limbs, inconsistent clothing, realistic textures, small eyes, angry expression, creepy, horror, realistic eyes`
-
-// Generate environment-specific negative prompt
+// Generate environment-specific negative prompt - simple and direct
 function generateNegativePrompt(pageText: string): string {
   const lowerText = pageText.toLowerCase()
 
-  // For underwater scenes - block land elements
+  // Base items to always block
+  const baseNegative = 'text, watermark, logo, photorealistic, 3d render, anime, scary, dark'
+
+  // For underwater scenes - block ALL land elements
   if (lowerText.includes('ocean') || lowerText.includes('underwater') || lowerText.includes('sea') ||
       lowerText.includes('shark') || lowerText.includes('fish') || lowerText.includes('coral')) {
-    return `${BASE_NEGATIVE_PROMPT}, forest, trees, grass, castle, human child, people, land animals, rabbits, bears, cats, dogs, houses, buildings, sky, clouds, land`
+    return `forest, trees, grass, flowers, dogs, cats, farm animals, houses, castles, villages, mountains, daytime sky, ${baseNegative}`
   }
 
-  // For space scenes - block earth elements
+  // For space scenes - block ALL earth elements
   if (lowerText.includes('space') || lowerText.includes('star') || lowerText.includes('moon') ||
       lowerText.includes('planet') || lowerText.includes('rocket') || lowerText.includes('cosmic')) {
-    return `${BASE_NEGATIVE_PROMPT}, forest, trees, grass, ocean, water, houses, buildings, earth scenery, ground, land animals`
+    return `forest, trees, grass, flowers, dogs, cats, farm animals, houses, castles, villages, mountains, ocean, water, ${baseNegative}`
   }
 
-  // Default - still block common defaults that don't match
-  return `${BASE_NEGATIVE_PROMPT}, extra background elements`
+  // For sky scenes
+  if (lowerText.includes('cloud') || lowerText.includes('sky') || lowerText.includes('flying')) {
+    return `indoor, houses, buildings, underwater, ocean, ${baseNegative}`
+  }
+
+  // Default
+  return baseNegative
 }
 
-// Base image prompt template (constant across all pages)
-// Keep it SHORT - models have limited attention span
-const BASE_IMAGE_PROMPT = `Children's storybook illustration, soft watercolor style, gentle pastel colors, rounded shapes, simple composition, child-friendly, big expressive eyes.`
+// Base image prompt - keep it simple, environment comes after this
+const BASE_IMAGE_PROMPT = `Children's picture book illustration, soft watercolor style.`
 
 export async function POST(request: NextRequest) {
   try {
@@ -238,29 +242,43 @@ function generateImagePromptsWithDNA(story: any): { prompts: string[]; negativeP
 }
 
 // Build the page-specific image scene description
-// CRITICAL: Environment must come FIRST - models pay attention to prompt start!
+// CRITICAL: Environment statement must come FIRST, simple and direct
 function buildPageImageScene(characterDNA: CharacterDNA, storyWorldDNA: string, sceneDescription: string, pageText: string): string {
-  // Format character details in a clean, readable way
-  const characterSection = formatCharacterForPrompt(characterDNA)
-
   // Extract the ACTUAL environment from the page text
   const environment = extractEnvironmentFromText(pageText, storyWorldDNA)
 
-  // Generate ABSOLUTE RESTRICTIONS based on what the environment IS NOT
-  const restrictions = generateEnvironmentRestrictions(environment.type)
+  // Simple, direct environment statement FIRST
+  const envStatement = getEnvironmentStatement(environment.type)
 
-  // ENVIRONMENT FIRST - this is what the model sees first!
-  return `SETTING: ${environment.type.toUpperCase()} SCENE
-${environment.description}
+  // Simple character description
+  const charDesc = `${characterDNA.name}, a cute ${characterDNA.type} with ${characterDNA.facial_features}`
 
-SCENE ACTION:
-${sceneDescription}
+  // Build simple, direct prompt
+  return `${envStatement}
 
-CHARACTER IN THIS SCENE:
-${characterSection}
+Scene: ${sceneDescription}
 
-DO NOT INCLUDE:
-${restrictions}`
+Character: ${charDesc}
+
+Style: rounded shapes, big expressive eyes, gentle lighting, child-friendly`
+}
+
+// Get simple, direct environment statement
+function getEnvironmentStatement(envType: string): string {
+  switch (envType) {
+    case 'underwater ocean':
+      return 'This scene takes place underwater in the ocean, not on land. Blue water everywhere, coral and fish visible.'
+    case 'outer space':
+      return 'This scene takes place in outer space, not on land. Dark starry sky, planets or moon visible, no trees or grass.'
+    case 'sky':
+      return 'This scene takes place high in the sky among clouds, aerial view.'
+    case 'indoor':
+      return 'This scene takes place inside a cozy room, indoor setting.'
+    case 'forest meadow':
+      return 'This scene takes place in a peaceful forest meadow with trees and flowers.'
+    default:
+      return 'This scene takes place in a magical storybook world.'
+  }
 }
 
 // Extract environment type and description from page text
