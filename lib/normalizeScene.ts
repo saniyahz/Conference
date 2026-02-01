@@ -56,9 +56,10 @@ export function normalizeScene(
 }
 
 function detectEnvironment(text: string): string {
-  // Space scenes
+  // Space scenes - CHECK FIRST, includes cosmos and rocket
   if (text.includes('space') || text.includes('star') || text.includes('galaxy') ||
-      text.includes('cosmic') || text.includes('astronaut')) {
+      text.includes('cosmic') || text.includes('cosmos') || text.includes('astronaut') ||
+      text.includes('rocket') || text.includes('spaceship') || text.includes('planet')) {
     return 'outer space';
   }
 

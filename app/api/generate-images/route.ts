@@ -43,8 +43,7 @@ async function generateImageWithRetry(
           }, null, 2))
           console.log(`===================================\n`)
 
-          // Use standard SDXL for better prompt adherence
-          // HIGH guidance_scale (12) forces strict prompt following
+          // Use standard SDXL - balanced settings for speed + quality
           const output = await replicate.run(
             "stability-ai/sdxl:39ed52f2a78e934b3ba6e2a89f5b1c712de7dfea535525255b1aa35c5565e08b",
             {
@@ -54,9 +53,9 @@ async function generateImageWithRetry(
                 width: 1024,
                 height: 1024,
                 num_outputs: 1,
-                scheduler: "DPMSolverMultistep",
-                num_inference_steps: 30,
-                guidance_scale: 12,       // Very high = strict prompt following
+                scheduler: "K_EULER",
+                num_inference_steps: 20,   // Faster, still good
+                guidance_scale: 8,         // Balanced prompt following
                 seed: seed,
               }
             }
