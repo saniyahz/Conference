@@ -88,7 +88,11 @@ function extractSpecies(physicalForm: string): string {
     'dog', 'puppy', 'cat', 'kitten', 'rabbit', 'bunny', 'bear', 'fox',
     'owl', 'bird', 'elephant', 'lion', 'tiger', 'mouse', 'squirrel',
     'deer', 'wolf', 'penguin', 'duck', 'frog', 'turtle', 'fish',
-    'dolphin', 'whale', 'shark', 'butterfly', 'bee', 'dragon', 'unicorn'
+    'dolphin', 'whale', 'shark', 'butterfly', 'bee', 'dragon', 'unicorn',
+    'porcupine', 'hedgehog', 'raccoon', 'monkey', 'panda', 'koala', 'giraffe',
+    'zebra', 'hippo', 'horse', 'pony', 'pig', 'cow', 'sheep', 'goat',
+    'chicken', 'rooster', 'hamster', 'parrot', 'otter', 'seal', 'moose',
+    'reindeer', 'beaver'
   ];
 
   for (const animal of animals) {

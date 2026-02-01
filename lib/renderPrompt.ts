@@ -52,14 +52,20 @@ function extractSceneFromText(text: string, fallbackSetting: string): string {
   if (text.includes('mars') || text.includes('red planet')) {
     return 'Mars surface with red rocks and dusty terrain';
   }
-  if (text.includes('through space') || text.includes('through the stars') || text.includes('flying through')) {
+  if (text.includes('soared through') || text.includes('through the galaxy') || text.includes('through space') || text.includes('through the stars') || text.includes('flying through')) {
     return 'Rocket ship flying through colorful outer space with stars and planets';
   }
-  if (text.includes('outer space') || text.includes('in space') || text.includes('into space')) {
+  if (text.includes('outer space') || text.includes('in space') || text.includes('into space') || text.includes('galaxy')) {
     return 'Outer space with colorful nebulas, stars, and planets';
   }
 
   // NATURE
+  if (text.includes('waterfall')) {
+    return 'Magical waterfall in lush forest with sparkling water';
+  }
+  if (text.includes('stream') || text.includes('river') || text.includes('creek')) {
+    return 'Peaceful stream in nature with rocks and greenery';
+  }
   if (text.includes('forest') || text.includes('woods') || text.includes('trees')) {
     return 'Magical forest with tall trees and dappled sunlight';
   }
@@ -76,12 +82,23 @@ function extractSceneFromText(text: string, fallbackSetting: string): string {
     return 'Mountain landscape with scenic views';
   }
 
+  // CAVES & UNDERGROUND (check BEFORE "cozy" since "cozy cave" exists)
+  if (text.includes('cave') || text.includes('cavern') || text.includes('crevice') || text.includes('chasm')) {
+    if (text.includes('moon') || text.includes('lunar')) {
+      return 'Dark moon cave with rocky walls and glowing crystals';
+    }
+    return 'Magical cave with rocky walls and soft glowing light';
+  }
+
   // INDOOR
-  if (text.includes('home') || text.includes('house') || text.includes('bedroom') || text.includes('cozy')) {
+  if (text.includes('home') || text.includes('house') || text.includes('bedroom')) {
     return 'Cozy home interior with warm lighting';
   }
   if (text.includes('castle') || text.includes('palace') || text.includes('throne')) {
     return 'Magical castle interior';
+  }
+  if (text.includes('cozy') && !text.includes('cave')) {
+    return 'Cozy interior with warm lighting';
   }
 
   // VEHICLES
@@ -125,37 +142,73 @@ function extractSupportingFromText(text: string, mainCharName: string): string {
   const found: string[] = [];
   const mainLower = mainCharName.toLowerCase();
 
-  // Animal characters
+  // Animal characters - supporting cast
   const animalMap: Record<string, string> = {
-    'rabbit': 'cute rabbits',
-    'rabbits': 'cute rabbits',
-    'bunny': 'cute bunnies',
-    'bunnies': 'cute bunnies',
-    'squirrel': 'friendly squirrels',
-    'squirrels': 'friendly squirrels',
-    'owl': 'wise owl',
-    'owls': 'wise owls',
-    'bird': 'colorful birds',
-    'birds': 'colorful birds',
-    'butterfly': 'beautiful butterflies',
-    'butterflies': 'beautiful butterflies',
-    'deer': 'gentle deer',
-    'fox': 'friendly fox',
-    'bear': 'friendly bear',
-    'mouse': 'tiny mouse',
-    'mice': 'tiny mice',
-    'fish': 'colorful fish',
-    'dolphin': 'playful dolphins',
-    'dolphins': 'playful dolphins',
-    'turtle': 'gentle turtle',
-    'frog': 'happy frog',
-    'alien': 'friendly aliens',
-    'aliens': 'friendly aliens',
-    'robot': 'friendly robot',
-    'dragon': 'friendly dragon',
-    'unicorn': 'magical unicorn',
-    'fairy': 'tiny fairies',
-    'fairies': 'tiny fairies',
+    // Common pets
+    'dog': 'cute cartoon dog',
+    'puppy': 'cute cartoon puppy',
+    'cat': 'cute cartoon cat',
+    'kitten': 'cute cartoon kitten',
+    // Forest animals
+    'rabbit': 'cute cartoon rabbit',
+    'rabbits': 'cute cartoon rabbits',
+    'bunny': 'cute cartoon bunny',
+    'bunnies': 'cute cartoon bunnies',
+    'squirrel': 'friendly cartoon squirrel',
+    'squirrels': 'friendly cartoon squirrels',
+    'owl': 'wise cartoon owl',
+    'owls': 'wise cartoon owls',
+    'deer': 'gentle cartoon deer',
+    'fox': 'friendly cartoon fox',
+    'bear': 'friendly cartoon bear',
+    'wolf': 'friendly cartoon wolf',
+    'mouse': 'tiny cartoon mouse',
+    'mice': 'tiny cartoon mice',
+    'raccoon': 'cute cartoon raccoon',
+    'hedgehog': 'cute cartoon hedgehog',
+    'porcupine': 'cute cartoon porcupine',
+    'beaver': 'friendly cartoon beaver',
+    // Birds
+    'bird': 'colorful cartoon birds',
+    'birds': 'colorful cartoon birds',
+    'butterfly': 'beautiful cartoon butterflies',
+    'butterflies': 'beautiful cartoon butterflies',
+    'parrot': 'colorful cartoon parrot',
+    // Sea animals
+    'fish': 'colorful cartoon fish',
+    'dolphin': 'playful cartoon dolphin',
+    'dolphins': 'playful cartoon dolphins',
+    'turtle': 'gentle cartoon turtle',
+    'whale': 'friendly cartoon whale',
+    'seal': 'cute cartoon seal',
+    'otter': 'playful cartoon otter',
+    // Pond animals
+    'frog': 'happy cartoon frog',
+    'duck': 'cute cartoon duck',
+    // Fantasy
+    'alien': 'friendly cartoon aliens',
+    'aliens': 'friendly cartoon aliens',
+    'robot': 'friendly cartoon robot',
+    'dragon': 'friendly cartoon dragon',
+    'unicorn': 'magical cartoon unicorn',
+    'fairy': 'tiny cartoon fairies',
+    'fairies': 'tiny cartoon fairies',
+    // Farm animals
+    'pig': 'cute cartoon pig',
+    'horse': 'friendly cartoon horse',
+    'pony': 'cute cartoon pony',
+    'cow': 'friendly cartoon cow',
+    'sheep': 'fluffy cartoon sheep',
+    'chicken': 'cute cartoon chicken',
+    // Exotic
+    'monkey': 'playful cartoon monkey',
+    'panda': 'cute cartoon panda',
+    'koala': 'cuddly cartoon koala',
+    'giraffe': 'friendly cartoon giraffe',
+    'elephant': 'gentle cartoon elephant',
+    'lion': 'friendly cartoon lion',
+    'tiger': 'friendly cartoon tiger',
+    'penguin': 'cute cartoon penguin',
   };
 
   for (const [keyword, description] of Object.entries(animalMap)) {

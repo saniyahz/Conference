@@ -118,9 +118,14 @@ CRITICAL: Every page must end with a COMPLETE sentence. Never cut off mid-senten
     } else {
       // Fallback: detect if it's an animal from the original prompt
       const lowerPrompt = prompt.toLowerCase()
-      const animalKeywords = ['dog', 'puppy', 'cat', 'kitten', 'rabbit', 'bunny', 'bear', 'fox',
+      const animalKeywords = [
+        'dog', 'puppy', 'cat', 'kitten', 'rabbit', 'bunny', 'bear', 'fox',
         'owl', 'bird', 'elephant', 'lion', 'tiger', 'mouse', 'squirrel', 'deer', 'wolf',
-        'penguin', 'duck', 'frog', 'turtle', 'beaver']
+        'penguin', 'duck', 'frog', 'turtle', 'beaver', 'porcupine', 'hedgehog', 'raccoon',
+        'monkey', 'panda', 'koala', 'giraffe', 'zebra', 'hippo', 'horse', 'pony', 'pig',
+        'cow', 'sheep', 'goat', 'chicken', 'rooster', 'hamster', 'guinea pig', 'parrot',
+        'otter', 'seal', 'walrus', 'moose', 'elk', 'caribou', 'reindeer', 'antelope'
+      ]
       const detectedAnimal = animalKeywords.find(animal => lowerPrompt.includes(animal))
 
       if (detectedAnimal) {
@@ -320,9 +325,14 @@ function createDefaultDNA(prompt: string): CharacterDNA {
   const lowerPrompt = prompt.toLowerCase()
 
   // Detect if this is an animal story
-  const animalKeywords = ['dog', 'puppy', 'cat', 'kitten', 'rabbit', 'bunny', 'bear', 'fox',
+  const animalKeywords = [
+    'dog', 'puppy', 'cat', 'kitten', 'rabbit', 'bunny', 'bear', 'fox',
     'owl', 'bird', 'elephant', 'lion', 'tiger', 'mouse', 'squirrel', 'deer', 'wolf',
-    'penguin', 'duck', 'frog', 'turtle', 'fish', 'dolphin', 'whale', 'beaver']
+    'penguin', 'duck', 'frog', 'turtle', 'fish', 'dolphin', 'whale', 'beaver',
+    'porcupine', 'hedgehog', 'raccoon', 'monkey', 'panda', 'koala', 'giraffe',
+    'zebra', 'hippo', 'horse', 'pony', 'pig', 'cow', 'sheep', 'goat',
+    'chicken', 'rooster', 'hamster', 'parrot', 'otter', 'seal', 'moose', 'reindeer'
+  ]
 
   const detectedAnimal = animalKeywords.find(animal => lowerPrompt.includes(animal))
 
