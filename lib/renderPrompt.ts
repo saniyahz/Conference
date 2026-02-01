@@ -121,12 +121,12 @@ function buildMustShow(card: PageSceneCard): string {
 
 /**
  * Build SHORT character description
- * Format: Name, age, appearance, action
+ * Handles both humans and animals
  */
 function buildShortCharacter(bible: CharacterBible, action: string): string {
   const name = bible.name;
-  const skin = bible.appearance.skin_tone;
-  const hair = bible.appearance.hair;
+  const isAnimal = bible.character_type === 'animal';
+  const isCreature = bible.character_type === 'creature';
 
   // Extract just the action
   let actionShort = action
@@ -138,6 +138,23 @@ function buildShortCharacter(bible: CharacterBible, action: string): string {
     actionShort = 'looking happy';
   }
 
+  // ANIMAL: "Smiley, a friendly dog with golden fur, wearing astronaut helmet"
+  if (isAnimal) {
+    const species = bible.species || 'animal';
+    const fur = bible.appearance.skin_tone; // For animals, this is fur color
+    const outfit = bible.signature_outfit ? `, wearing ${bible.signature_outfit}` : '';
+    return `${name}, a cute friendly ${species} with ${fur}${outfit}, ${actionShort}.`;
+  }
+
+  // CREATURE: "Sparkle, a magical unicorn with rainbow mane"
+  if (isCreature) {
+    const appearance = bible.appearance.hair || bible.appearance.skin_tone;
+    return `${name}, a magical creature with ${appearance}, ${actionShort}.`;
+  }
+
+  // HUMAN: "Ava, 6 years old, brown skin, curly hair"
+  const skin = bible.appearance.skin_tone;
+  const hair = bible.appearance.hair;
   return `${name}, 6 years old, ${skin}, ${hair}, ${actionShort}.`;
 }
 

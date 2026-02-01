@@ -8,11 +8,13 @@
 export type CharacterBible = {
   character_id: string;
   name: string;
+  character_type: 'human' | 'animal' | 'object' | 'creature' | 'other';
+  species?: string;  // For animals: "dog", "cat", "rabbit", etc.
   age: string;
   appearance: {
-    skin_tone: string;
+    skin_tone: string;  // or fur color for animals
     eyes: string;
-    hair: string;
+    hair: string;       // or fur description for animals
     face_features: string;
   };
   signature_outfit: string;

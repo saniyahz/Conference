@@ -23,18 +23,25 @@ export interface CharacterDNA {
  */
 export function createCharacterBible(dna: CharacterDNA): CharacterBible {
   const characterId = dna.name.toLowerCase().replace(/\s+/g, '_');
+  const isAnimal = dna.type === 'animal';
+  const isCreature = dna.type === 'creature';
+
+  // Extract species for animals (dog, cat, rabbit, etc.)
+  const species = isAnimal ? extractSpecies(dna.physical_form) : undefined;
 
   return {
     character_id: characterId,
     name: dna.name,
-    age: dna.age || "6 years old",
+    character_type: dna.type,
+    species: species,  // "dog", "cat", "rabbit", etc.
+    age: isAnimal ? "friendly" : (dna.age || "6 years old"),
     appearance: {
-      skin_tone: extractSkinTone(dna.color_palette),
+      skin_tone: isAnimal ? extractFurColor(dna.color_palette, dna.material_or_texture) : extractSkinTone(dna.color_palette),
       eyes: extractEyes(dna.facial_features),
-      hair: extractHair(dna.physical_form, dna.color_palette),
+      hair: isAnimal ? extractFurDescription(dna.physical_form, dna.material_or_texture) : extractHair(dna.physical_form, dna.color_palette),
       face_features: extractFaceFeatures(dna.facial_features),
     },
-    signature_outfit: extractOutfit(dna.accessories),
+    signature_outfit: isAnimal ? (dna.accessories !== 'none' ? dna.accessories : '') : extractOutfit(dna.accessories),
     personality: extractPersonality(dna.personality_visuals),
     art_style: {
       medium: "soft watercolor",
@@ -43,11 +50,54 @@ export function createCharacterBible(dna: CharacterDNA): CharacterBible {
       line_detail: "clean, whimsical",
     },
     consistency_rules: [
-      `${dna.name} must look identical across all pages (same face, hair, age, outfit).`,
-      "Do not change outfit unless the story explicitly changes it.",
+      `${dna.name} must look identical across all pages.`,
+      "Do not change appearance unless the story explicitly changes it.",
       "Maintain the same art style and mood throughout the book.",
     ],
   };
+}
+
+// Extract fur color for animals
+function extractFurColor(colorPalette: string[], texture: string): string {
+  const colors = colorPalette.join(' ').toLowerCase();
+  if (colors.includes('golden') || colors.includes('yellow')) return 'golden fur';
+  if (colors.includes('brown')) return 'brown fur';
+  if (colors.includes('white')) return 'white fur';
+  if (colors.includes('black')) return 'black fur';
+  if (colors.includes('orange')) return 'orange fur';
+  if (colors.includes('gray') || colors.includes('grey')) return 'gray fur';
+  return 'soft fur';
+}
+
+// Extract fur description for animals
+function extractFurDescription(physicalForm: string, texture: string): string {
+  const form = physicalForm.toLowerCase();
+  const tex = texture.toLowerCase();
+
+  if (tex.includes('fluffy') || form.includes('fluffy')) return 'fluffy soft fur';
+  if (tex.includes('smooth')) return 'smooth shiny coat';
+  if (tex.includes('curly')) return 'curly soft fur';
+  return 'soft fur';
+}
+
+// Extract species from physical form (dog, cat, rabbit, etc.)
+function extractSpecies(physicalForm: string): string {
+  const form = physicalForm.toLowerCase();
+
+  const animals = [
+    'dog', 'puppy', 'cat', 'kitten', 'rabbit', 'bunny', 'bear', 'fox',
+    'owl', 'bird', 'elephant', 'lion', 'tiger', 'mouse', 'squirrel',
+    'deer', 'wolf', 'penguin', 'duck', 'frog', 'turtle', 'fish',
+    'dolphin', 'whale', 'shark', 'butterfly', 'bee', 'dragon', 'unicorn'
+  ];
+
+  for (const animal of animals) {
+    if (form.includes(animal)) {
+      return animal;
+    }
+  }
+
+  return 'animal'; // fallback
 }
 
 /**
@@ -55,21 +105,26 @@ export function createCharacterBible(dna: CharacterDNA): CharacterBible {
  */
 export function createSimpleBible(
   name: string,
-  skinTone: string = "warm brown",
-  hairColor: string = "black",
-  hairStyle: string = "curly"
+  characterType: 'human' | 'animal' | 'object' | 'creature' | 'other' = 'human',
+  species?: string,  // For animals: "dog", "cat", etc.
+  furOrSkin: string = "warm brown",
+  hairOrFur: string = "black curly hair"
 ): CharacterBible {
+  const isAnimal = characterType === 'animal';
+
   return {
     character_id: name.toLowerCase().replace(/\s+/g, '_'),
     name,
-    age: "6 years old",
+    character_type: characterType,
+    species: isAnimal ? (species || 'animal') : undefined,
+    age: isAnimal ? "friendly" : "6 years old",
     appearance: {
-      skin_tone: skinTone,
-      eyes: "big expressive brown eyes",
-      hair: `${hairColor} ${hairStyle} hair`,
-      face_features: "soft rounded cheeks, friendly smile",
+      skin_tone: isAnimal ? `${furOrSkin} fur` : `${furOrSkin} skin`,
+      eyes: "big expressive eyes",
+      hair: hairOrFur,
+      face_features: "friendly smile, cute face",
     },
-    signature_outfit: "colorful casual clothes",
+    signature_outfit: isAnimal ? "" : "colorful casual clothes",
     personality: ["curious", "joyful", "brave"],
     art_style: {
       medium: "soft watercolor",
@@ -78,8 +133,8 @@ export function createSimpleBible(
       line_detail: "clean, whimsical",
     },
     consistency_rules: [
-      `${name} must look identical across all pages (same face, hair, age, outfit).`,
-      "Do not change outfit unless the story explicitly changes it.",
+      `${name} must look identical across all pages.`,
+      "Do not change appearance unless the story explicitly changes it.",
       "Maintain the same art style and mood throughout the book.",
     ],
   };

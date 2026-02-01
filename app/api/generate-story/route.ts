@@ -112,9 +112,29 @@ CRITICAL: Every page must end with a COMPLETE sentence. Never cut off mid-senten
     const parsedStory = parseStoryResponse(storyText, prompt)
 
     // Create Character Bible (ONCE for entire book)
-    const characterBible = parsedStory.characterDNA
-      ? createCharacterBible(parsedStory.characterDNA)
-      : createSimpleBible(extractNameFromPrompt(prompt))
+    let characterBible;
+    if (parsedStory.characterDNA) {
+      characterBible = createCharacterBible(parsedStory.characterDNA)
+    } else {
+      // Fallback: detect if it's an animal from the original prompt
+      const lowerPrompt = prompt.toLowerCase()
+      const animalKeywords = ['dog', 'puppy', 'cat', 'kitten', 'rabbit', 'bunny', 'bear', 'fox',
+        'owl', 'bird', 'elephant', 'lion', 'tiger', 'mouse', 'squirrel', 'deer', 'wolf',
+        'penguin', 'duck', 'frog', 'turtle', 'beaver']
+      const detectedAnimal = animalKeywords.find(animal => lowerPrompt.includes(animal))
+
+      if (detectedAnimal) {
+        characterBible = createSimpleBible(
+          extractNameFromPrompt(prompt),
+          'animal',
+          detectedAnimal,  // species
+          'golden',        // fur color
+          'soft fluffy fur'
+        )
+      } else {
+        characterBible = createSimpleBible(extractNameFromPrompt(prompt))
+      }
+    }
 
     console.log('\n========== CHARACTER BIBLE ==========')
     console.log(JSON.stringify(characterBible, null, 2))
@@ -293,7 +313,32 @@ function parseStoryResponse(text: string, originalPrompt: string): ParsedStory {
 
 function createDefaultDNA(prompt: string): CharacterDNA {
   const name = extractNameFromPrompt(prompt)
+  const lowerPrompt = prompt.toLowerCase()
 
+  // Detect if this is an animal story
+  const animalKeywords = ['dog', 'puppy', 'cat', 'kitten', 'rabbit', 'bunny', 'bear', 'fox',
+    'owl', 'bird', 'elephant', 'lion', 'tiger', 'mouse', 'squirrel', 'deer', 'wolf',
+    'penguin', 'duck', 'frog', 'turtle', 'fish', 'dolphin', 'whale', 'beaver']
+
+  const detectedAnimal = animalKeywords.find(animal => lowerPrompt.includes(animal))
+
+  if (detectedAnimal) {
+    // ANIMAL character
+    return {
+      name,
+      type: 'animal',
+      physical_form: `friendly ${detectedAnimal} with soft fur`,
+      material_or_texture: 'soft fluffy fur',
+      color_palette: ['golden', 'brown', 'cream'],
+      facial_features: 'Big expressive eyes, cute nose, friendly smile',
+      accessories: 'none',
+      personality_visuals: 'Wags tail when happy, ears perk up when curious',
+      movement_style: 'Bounds and trots playfully',
+      unique_identifiers: `A lovable ${detectedAnimal} with an especially warm expression`,
+    }
+  }
+
+  // HUMAN character (default)
   return {
     name,
     type: 'human',
