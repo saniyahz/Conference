@@ -51,6 +51,8 @@ function getShortEnvironment(setting: string): string {
       return 'Mysterious cave scene with glowing light.';
     case 'forest meadow':
       return 'Forest meadow with green trees and flowers.';
+    case 'desert':
+      return 'Desert scene with sandy dunes and warm orange sky.';
     default:
       return 'Magical storybook scene.';
   }

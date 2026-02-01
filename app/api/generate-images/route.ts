@@ -160,9 +160,12 @@ export async function POST(request: NextRequest) {
       console.log(`Generating image ${i + 1}/${imagePrompts.length}...`)
 
       try {
-        const imageUrl = await generateImageWithRetry(replicate, prompt, negativePrompt, i, imagePrompts.length, storySeed)
+        // Vary seed per page to avoid identical images
+        // Add page index to base seed for variety while maintaining style consistency
+        const pageSeed = storySeed + (i * 1000)
+        const imageUrl = await generateImageWithRetry(replicate, prompt, negativePrompt, i, imagePrompts.length, pageSeed)
         imageUrls.push(imageUrl)
-        console.log(`Image ${i + 1} done: ${imageUrl ? 'success' : 'failed'}`)
+        console.log(`Image ${i + 1} done (seed: ${pageSeed}): ${imageUrl ? 'success' : 'failed'}`)
       } catch (error) {
         console.error(`Image ${i + 1} error:`, error)
         imageUrls.push('') // Push empty string for failed images
