@@ -55,8 +55,10 @@ function generateNegativePrompt(pageText: string): string {
   return `${baseNegative}, forest, trees, grass, flowers, dogs, cats, farm animals, houses, castles, villages, mountains, daytime sky`
 }
 
-// Base image prompt - exact format user specified
-const BASE_IMAGE_PROMPT = `Children's picture book illustration, soft watercolor texture, rounded shapes, gentle lighting.`
+// Base image prompt - includes scene vs portrait instruction
+const BASE_IMAGE_PROMPT = `Children's picture book illustration, soft watercolor style.
+
+This is a story scene illustration, not a character portrait.`
 
 export async function POST(request: NextRequest) {
   try {
@@ -250,130 +252,232 @@ function generateImagePromptsWithDNA(story: any): { prompts: string[]; negativeP
 }
 
 // Build the page-specific image scene description
-// EXACT FORMAT: Environment statement, MAIN CHARACTER block, SCENE block, STRICT block
+// PRODUCTION-GRADE: Counts, positions, camera framing, completeness rule
 function buildPageImageScene(characterDNA: CharacterDNA, storyWorldDNA: string, sceneDescription: string, pageText: string): string {
   // Extract the ACTUAL environment from the page text
   const environment = extractEnvironmentFromText(pageText, storyWorldDNA)
 
-  // Simple, direct environment statement FIRST
-  const envStatement = getEnvironmentStatement(environment.type)
+  // Extract characters/elements with counts and positions
+  const sceneElements = extractSceneElementsWithCounts(pageText)
 
-  // Format character DNA as a block
-  const characterBlock = formatCharacterBlock(characterDNA)
+  // Determine camera framing based on scene complexity
+  const cameraFraming = determineCameraFraming(sceneElements)
 
-  // Get environment-specific restrictions for STRICT block
-  const strictBlock = getStrictRestrictions(environment.type)
+  // Extract character emotion from text
+  const emotion = extractEmotion(pageText)
 
-  // Extract key elements from page text that MUST appear in image
-  const keyElements = extractKeySceneElements(pageText)
+  // Build the production-grade prompt
+  let prompt = `SCENE TYPE: ${environment.type}
 
-  // Enrich scene description with key elements from text
-  const enrichedScene = keyElements.length > 0
-    ? `${sceneDescription}. Must include: ${keyElements.join(', ')}.`
-    : sceneDescription
+MAIN CHARACTER:
+- ${characterDNA.name} in the center of the image
+- ${emotion}
+- ${characterDNA.facial_features}`
 
-  // Build prompt in EXACT format user specified
-  return `${envStatement}
+  // Add other characters if present
+  if (sceneElements.characters.length > 0) {
+    prompt += `
 
-MAIN CHARACTER (must look identical in every image):
-${characterBlock}
+OTHER CHARACTERS (exact counts):
+${sceneElements.characters.map(c => `- ${c.count} ${c.name}`).join('\n')}`
+  }
+
+  // Add positions
+  if (sceneElements.characters.length > 0 || sceneElements.objects.length > 0) {
+    prompt += `
+
+POSITIONS:
+${generatePositions(characterDNA.name, sceneElements)}`
+  }
+
+  // Add scene environment and action
+  prompt += `
 
 SCENE:
-${enrichedScene}
+${environment.type === 'underwater ocean' ? 'Ocean water with bubbles and motion.' : ''}
+${environment.type === 'outer space' ? 'Dark starry space with planets visible.' : ''}
+${environment.type === 'forest meadow' ? 'Green meadow with trees and flowers.' : ''}
+${sceneDescription}
+
+CAMERA:
+- ${cameraFraming}
+- Shows ${characterDNA.name} plus all surrounding elements
+
+VISUAL COMPLETENESS RULE:
+All characters and elements listed above must be clearly visible in the image.
+Do not omit or minimize any listed element.
 
 STRICT:
-${strictBlock}`
+${getStrictRestrictions(environment.type)}`
+
+  return prompt
 }
 
-// Extract key visual elements from page text that should appear in the image
-function extractKeySceneElements(pageText: string): string[] {
-  const elements: string[] = []
+// Extract scene elements WITH COUNTS for production-grade prompts
+interface SceneElement {
+  name: string
+  count: number
+  type: 'character' | 'object' | 'nature'
+}
+
+interface SceneElements {
+  characters: SceneElement[]
+  objects: SceneElement[]
+  nature: SceneElement[]
+  action: string | null
+}
+
+function extractSceneElementsWithCounts(pageText: string): SceneElements {
   const lowerText = pageText.toLowerCase()
+  const result: SceneElements = { characters: [], objects: [], nature: [], action: null }
 
-  // Animals and creatures
-  const animals = [
-    'shark', 'sharks', 'dolphin', 'dolphins', 'whale', 'whales', 'fish', 'octopus',
-    'turtle', 'crab', 'jellyfish', 'starfish', 'seahorse', 'coral',
-    'bird', 'birds', 'owl', 'eagle', 'butterfly', 'butterflies', 'bee', 'bees',
-    'rabbit', 'bunny', 'fox', 'deer', 'bear', 'squirrel', 'mouse', 'frog',
-    'dragon', 'unicorn', 'fairy', 'fairies', 'mermaid',
-    'dog', 'cat', 'puppy', 'kitten', 'horse', 'pony'
+  // Character definitions with singular/plural forms
+  const characters: { singular: string; plural: string; friendly: boolean }[] = [
+    { singular: 'shark', plural: 'sharks', friendly: true },
+    { singular: 'dolphin', plural: 'dolphins', friendly: true },
+    { singular: 'whale', plural: 'whales', friendly: true },
+    { singular: 'fish', plural: 'fish', friendly: true },
+    { singular: 'octopus', plural: 'octopuses', friendly: true },
+    { singular: 'turtle', plural: 'turtles', friendly: true },
+    { singular: 'crab', plural: 'crabs', friendly: true },
+    { singular: 'jellyfish', plural: 'jellyfish', friendly: true },
+    { singular: 'seahorse', plural: 'seahorses', friendly: true },
+    { singular: 'mermaid', plural: 'mermaids', friendly: true },
+    { singular: 'bird', plural: 'birds', friendly: true },
+    { singular: 'owl', plural: 'owls', friendly: true },
+    { singular: 'butterfly', plural: 'butterflies', friendly: true },
+    { singular: 'bee', plural: 'bees', friendly: true },
+    { singular: 'rabbit', plural: 'rabbits', friendly: true },
+    { singular: 'bunny', plural: 'bunnies', friendly: true },
+    { singular: 'fox', plural: 'foxes', friendly: true },
+    { singular: 'deer', plural: 'deer', friendly: true },
+    { singular: 'bear', plural: 'bears', friendly: true },
+    { singular: 'squirrel', plural: 'squirrels', friendly: true },
+    { singular: 'dragon', plural: 'dragons', friendly: true },
+    { singular: 'unicorn', plural: 'unicorns', friendly: true },
+    { singular: 'fairy', plural: 'fairies', friendly: true },
+    { singular: 'dog', plural: 'dogs', friendly: true },
+    { singular: 'cat', plural: 'cats', friendly: true },
+    { singular: 'puppy', plural: 'puppies', friendly: true },
+    { singular: 'kitten', plural: 'kittens', friendly: true },
   ]
 
-  // Space objects
-  const spaceObjects = [
-    'planet', 'planets', 'moon', 'moons', 'star', 'stars', 'comet', 'asteroid',
-    'rocket', 'spaceship', 'satellite', 'galaxy', 'nebula', 'sun'
-  ]
-
-  // Nature elements
-  const nature = [
-    'rainbow', 'waterfall', 'mountain', 'mountains', 'river', 'lake', 'pond',
-    'flower', 'flowers', 'tree', 'trees', 'forest', 'garden', 'meadow',
-    'cloud', 'clouds', 'rain', 'snow', 'sunshine'
-  ]
+  // Check for characters with counts
+  for (const char of characters) {
+    if (lowerText.includes(char.plural)) {
+      // Plural found - default to 2-3
+      result.characters.push({
+        name: `friendly ${char.plural}`,
+        count: 2,
+        type: 'character'
+      })
+    } else if (lowerText.includes(char.singular)) {
+      // Singular found
+      result.characters.push({
+        name: `friendly ${char.singular}`,
+        count: 1,
+        type: 'character'
+      })
+    }
+  }
 
   // Objects
-  const objects = [
-    'treasure', 'chest', 'crown', 'wand', 'book', 'map', 'key', 'door',
-    'castle', 'tower', 'bridge', 'boat', 'ship', 'balloon', 'kite'
-  ]
-
-  // Actions/poses that affect the image
-  const actions: { [key: string]: string } = {
-    'swimming': 'swimming pose',
-    'flying': 'flying pose',
-    'jumping': 'jumping in the air',
-    'running': 'running',
-    'dancing': 'dancing',
-    'hugging': 'hugging',
-    'waving': 'waving hand',
-    'laughing': 'laughing expression',
-    'crying': 'tears on face',
-    'scared': 'scared expression',
-    'surprised': 'surprised expression',
-    'splash': 'water splashing'
-  }
-
-  // Check for animals
-  for (const animal of animals) {
-    if (lowerText.includes(animal)) {
-      // Add with article for better prompt
-      elements.push(animal.endsWith('s') ? animal : `a ${animal}`)
-    }
-  }
-
-  // Check for space objects
-  for (const obj of spaceObjects) {
+  const objectList = ['rocket', 'spaceship', 'treasure', 'chest', 'crown', 'wand', 'book', 'map', 'castle', 'tower', 'boat', 'ship', 'balloon']
+  for (const obj of objectList) {
     if (lowerText.includes(obj)) {
-      elements.push(obj.endsWith('s') ? obj : `a ${obj}`)
+      result.objects.push({ name: obj, count: 1, type: 'object' })
     }
   }
 
-  // Check for nature
-  for (const item of nature) {
-    if (lowerText.includes(item)) {
-      elements.push(item)
+  // Nature elements
+  const natureList = ['rainbow', 'waterfall', 'mountain', 'river', 'lake', 'flower', 'tree', 'cloud', 'star', 'moon', 'planet', 'sun']
+  for (const item of natureList) {
+    if (lowerText.includes(item + 's')) {
+      result.nature.push({ name: item + 's', count: 3, type: 'nature' })
+    } else if (lowerText.includes(item)) {
+      result.nature.push({ name: item, count: 1, type: 'nature' })
     }
   }
 
-  // Check for objects
-  for (const obj of objects) {
-    if (lowerText.includes(obj)) {
-      elements.push(obj.endsWith('s') ? obj : `a ${obj}`)
-    }
-  }
-
-  // Check for actions
-  for (const [action, description] of Object.entries(actions)) {
+  // Extract action
+  const actions = ['swimming', 'flying', 'jumping', 'running', 'dancing', 'hugging', 'waving', 'splash', 'floating', 'climbing']
+  for (const action of actions) {
     if (lowerText.includes(action)) {
-      elements.push(description)
+      result.action = action
+      break
     }
   }
 
-  // Remove duplicates and limit to 5 most important
-  const unique = [...new Set(elements)]
-  return unique.slice(0, 5)
+  return result
+}
+
+// Determine camera framing based on scene complexity
+function determineCameraFraming(elements: SceneElements): string {
+  const totalElements = elements.characters.length + elements.objects.length
+
+  if (totalElements >= 3) {
+    return 'Wide shot showing full scene'
+  } else if (totalElements >= 1) {
+    return 'Medium-wide shot showing main character plus surrounding elements'
+  } else {
+    return 'Medium shot focused on main character with environment visible'
+  }
+}
+
+// Extract emotion from page text
+function extractEmotion(pageText: string): string {
+  const lowerText = pageText.toLowerCase()
+
+  if (lowerText.includes('excited') || lowerText.includes('thrilled') || lowerText.includes('joy')) {
+    return 'Looking excited and happy, big smile'
+  }
+  if (lowerText.includes('scared') || lowerText.includes('afraid') || lowerText.includes('fear')) {
+    return 'Looking slightly nervous but brave'
+  }
+  if (lowerText.includes('curious') || lowerText.includes('wonder')) {
+    return 'Looking curious with wide eyes'
+  }
+  if (lowerText.includes('sad') || lowerText.includes('cry')) {
+    return 'Looking sad with gentle expression'
+  }
+  if (lowerText.includes('surprised') || lowerText.includes('amazed')) {
+    return 'Looking surprised with mouth slightly open'
+  }
+  if (lowerText.includes('brave') || lowerText.includes('determined')) {
+    return 'Looking determined and confident'
+  }
+  if (lowerText.includes('happy') || lowerText.includes('laugh')) {
+    return 'Looking happy and joyful'
+  }
+
+  return 'Looking friendly and engaged'
+}
+
+// Generate position descriptions for elements
+function generatePositions(mainCharName: string, elements: SceneElements): string {
+  const positions: string[] = []
+
+  positions.push(`- ${mainCharName} in the center of the image`)
+
+  if (elements.characters.length === 1) {
+    positions.push(`- ${elements.characters[0].name} clearly visible beside ${mainCharName}`)
+  } else if (elements.characters.length === 2) {
+    positions.push(`- ${elements.characters[0].name} on the left side`)
+    positions.push(`- ${elements.characters[1].name} on the right side`)
+  } else if (elements.characters.length > 2) {
+    positions.push(`- Characters arranged around ${mainCharName} in a loose circle`)
+    positions.push(`- All characters clearly visible, not hidden or cut off`)
+  }
+
+  if (elements.objects.length > 0) {
+    positions.push(`- ${elements.objects.map(o => o.name).join(', ')} visible in the scene`)
+  }
+
+  if (elements.nature.length > 0) {
+    positions.push(`- Background includes: ${elements.nature.map(n => n.name).join(', ')}`)
+  }
+
+  return positions.join('\n')
 }
 
 // Format character DNA into a clean block for the prompt
