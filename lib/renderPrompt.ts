@@ -3,86 +3,224 @@ import { CharacterBible, PageSceneCard } from "./visual-types";
 /**
  * UNIVERSAL PROMPT TEMPLATE
  * Disney/Pixar animated style
+ * Extracts scene and characters DIRECTLY from page text
  */
 export function renderPrompt(bible: CharacterBible, card: PageSceneCard, pageText?: string): string {
-  // 1. SCENE
-  const scene = card.setting;
+  const text = pageText || '';
+  const lowerText = text.toLowerCase();
 
-  // 2. MUST SHOW
-  const mustShow = buildMustShow(card);
+  // 1. SCENE - Extract directly from page text
+  const scene = extractSceneFromText(lowerText, card.setting);
 
-  // 3. CHARACTER - detect from page text if bible doesn't have animal type
-  const character = buildCharacterDescription(bible, pageText);
+  // 2. MAIN CHARACTER - from bible
+  const mainChar = buildMainCharacter(bible);
 
-  // 4. STYLE - Disney/Pixar animated style
-  const style = "Disney Pixar style, 3D animated, cute expressive characters, vibrant colors, warm lighting.";
+  // 3. SUPPORTING CHARACTERS - extract from page text
+  const supporting = extractSupportingFromText(lowerText, bible.name);
 
-  const prompt = `${scene}.${mustShow} ${character} ${style}`;
+  // 4. KEY OBJECTS - extract from page text
+  const objects = extractObjectsFromText(lowerText);
+
+  // 5. STYLE - Disney/Pixar animated style (short!)
+  const style = "Disney Pixar 3D animated, cute, vibrant colors.";
+
+  // Build prompt - SDXL only uses first ~77 tokens, keep it SHORT
+  let prompt = `${scene}. ${mainChar}`;
+  if (supporting) prompt += ` ${supporting}`;
+  if (objects) prompt += ` ${objects}`;
+  prompt += ` ${style}`;
 
   console.log(`[PROMPT] Page ${card.page_number}: ${prompt}`);
   return prompt;
 }
 
 /**
- * Build character description - also checks page text for animal mentions
+ * Extract scene/setting directly from page text
+ * Looks for location keywords and builds appropriate scene description
  */
-function buildCharacterDescription(bible: CharacterBible, pageText?: string): string {
+function extractSceneFromText(text: string, fallbackSetting: string): string {
+  // SPACE / CELESTIAL
+  if (text.includes('moon surface') || text.includes('on the moon') || text.includes('lunar surface')) {
+    return 'Moon surface with craters, Earth visible in black starry sky';
+  }
+  if (text.includes('exploring the moon') || text.includes('walked on the moon') || text.includes('stepped on the moon')) {
+    return 'Moon surface with craters and rocks, starry space background';
+  }
+  if (text.includes('landed on the moon') || text.includes('arriving at the moon')) {
+    return 'Rocket ship landed on moon surface with craters';
+  }
+  if (text.includes('mars') || text.includes('red planet')) {
+    return 'Mars surface with red rocks and dusty terrain';
+  }
+  if (text.includes('through space') || text.includes('through the stars') || text.includes('flying through')) {
+    return 'Rocket ship flying through colorful outer space with stars and planets';
+  }
+  if (text.includes('outer space') || text.includes('in space') || text.includes('into space')) {
+    return 'Outer space with colorful nebulas, stars, and planets';
+  }
+
+  // NATURE
+  if (text.includes('forest') || text.includes('woods') || text.includes('trees')) {
+    return 'Magical forest with tall trees and dappled sunlight';
+  }
+  if (text.includes('meadow') || text.includes('field of flowers') || text.includes('garden')) {
+    return 'Beautiful meadow with colorful flowers';
+  }
+  if (text.includes('ocean') || text.includes('sea') || text.includes('underwater')) {
+    return 'Underwater ocean scene with coral and fish';
+  }
+  if (text.includes('beach') || text.includes('shore') || text.includes('sand')) {
+    return 'Sunny beach with sand and gentle waves';
+  }
+  if (text.includes('mountain') || text.includes('hill') || text.includes('cliff')) {
+    return 'Mountain landscape with scenic views';
+  }
+
+  // INDOOR
+  if (text.includes('home') || text.includes('house') || text.includes('bedroom') || text.includes('cozy')) {
+    return 'Cozy home interior with warm lighting';
+  }
+  if (text.includes('castle') || text.includes('palace') || text.includes('throne')) {
+    return 'Magical castle interior';
+  }
+
+  // VEHICLES
+  if (text.includes('rocket') || text.includes('spaceship')) {
+    if (text.includes('inside') || text.includes('cockpit')) {
+      return 'Inside a rocket ship cockpit with controls and windows showing space';
+    }
+    return 'Rocket ship in colorful outer space';
+  }
+
+  // WEATHER/TIME
+  if (text.includes('sunset') || text.includes('evening')) {
+    return fallbackSetting + ' at golden sunset';
+  }
+  if (text.includes('night') || text.includes('starry')) {
+    return fallbackSetting + ' under starry night sky';
+  }
+
+  return fallbackSetting;
+}
+
+/**
+ * Build main character description from bible
+ */
+function buildMainCharacter(bible: CharacterBible): string {
   const name = bible.name;
 
-  // First check if bible says it's an animal
   if (bible.character_type === 'animal' && bible.species) {
     const fur = bible.appearance.skin_tone || 'soft fur';
-    const outfit = bible.signature_outfit ? `, wearing ${bible.signature_outfit}` : '';
-    return `${name}, a cute cartoon ${bible.species} with ${fur}${outfit}.`;
+    return `${name} the cute cartoon ${bible.species} with ${fur}, big expressive eyes`;
   }
 
-  // If bible doesn't say animal, check page text for animal words
-  if (pageText) {
-    const lowerText = pageText.toLowerCase();
-    const animals = ['dog', 'puppy', 'cat', 'kitten', 'rabbit', 'bunny', 'bear', 'fox', 'owl', 'bird', 'elephant', 'lion', 'mouse'];
-
-    for (const animal of animals) {
-      // Look for patterns like "Name was a dog" or "Name the dog"
-      const wasPattern = new RegExp(`${name.toLowerCase()}\\s+(?:was|is)\\s+(?:a|an)\\s+(?:\\w+\\s+)?${animal}`, 'i');
-      const thePattern = new RegExp(`${name.toLowerCase()}\\s+the\\s+${animal}`, 'i');
-
-      if (wasPattern.test(lowerText) || thePattern.test(lowerText) || lowerText.includes(`${name.toLowerCase()}, the ${animal}`)) {
-        return `${name}, a cute cartoon ${animal} with expressive eyes, friendly face.`;
-      }
-    }
-
-    // Also check if name is mentioned alongside animal word in same sentence
-    for (const animal of animals) {
-      if (lowerText.includes(name.toLowerCase()) && lowerText.includes(animal)) {
-        // Check if they're in the same sentence
-        const sentences = lowerText.split(/[.!?]/);
-        for (const sentence of sentences) {
-          if (sentence.includes(name.toLowerCase()) && sentence.includes(animal)) {
-            return `${name}, a cute cartoon ${animal} with expressive eyes, friendly face.`;
-          }
-        }
-      }
-    }
-  }
-
-  // Default to human - Disney style (no extreme skin tones)
-  return `${name}, a cute cartoon child with warm friendly features, big expressive eyes.`;
+  // Human character
+  return `${name}, cute cartoon child with friendly face, big expressive eyes`;
 }
 
 /**
- * Build "Must show:" clause
+ * Extract supporting characters from page text
  */
-function buildMustShow(card: PageSceneCard): string {
-  const items = card.key_objects.slice(0, 3);
-  if (items.length === 0) return '';
-  return ` Must show: ${items.join(', ')}.`;
+function extractSupportingFromText(text: string, mainCharName: string): string {
+  const found: string[] = [];
+  const mainLower = mainCharName.toLowerCase();
+
+  // Animal characters
+  const animalMap: Record<string, string> = {
+    'rabbit': 'cute rabbits',
+    'rabbits': 'cute rabbits',
+    'bunny': 'cute bunnies',
+    'bunnies': 'cute bunnies',
+    'squirrel': 'friendly squirrels',
+    'squirrels': 'friendly squirrels',
+    'owl': 'wise owl',
+    'owls': 'wise owls',
+    'bird': 'colorful birds',
+    'birds': 'colorful birds',
+    'butterfly': 'beautiful butterflies',
+    'butterflies': 'beautiful butterflies',
+    'deer': 'gentle deer',
+    'fox': 'friendly fox',
+    'bear': 'friendly bear',
+    'mouse': 'tiny mouse',
+    'mice': 'tiny mice',
+    'fish': 'colorful fish',
+    'dolphin': 'playful dolphins',
+    'dolphins': 'playful dolphins',
+    'turtle': 'gentle turtle',
+    'frog': 'happy frog',
+    'alien': 'friendly aliens',
+    'aliens': 'friendly aliens',
+    'robot': 'friendly robot',
+    'dragon': 'friendly dragon',
+    'unicorn': 'magical unicorn',
+    'fairy': 'tiny fairies',
+    'fairies': 'tiny fairies',
+  };
+
+  for (const [keyword, description] of Object.entries(animalMap)) {
+    // Don't include if it's the main character
+    if (mainLower.includes(keyword)) continue;
+    if (text.includes(keyword)) {
+      found.push(description);
+    }
+  }
+
+  // People
+  if (text.includes('friend') && !found.includes('friends')) found.push('friends');
+  if (text.includes('family') || text.includes('parent') || text.includes('mother') || text.includes('father')) {
+    found.push('family members');
+  }
+
+  if (found.length === 0) return '';
+  return `Also showing: ${[...new Set(found)].slice(0, 3).join(', ')}.`;
 }
 
 /**
- * Negative prompt - no realistic, add human if animal story
+ * Extract key objects from page text
+ */
+function extractObjectsFromText(text: string): string {
+  const found: string[] = [];
+
+  const objectMap: Record<string, string> = {
+    'rocket': 'rocket ship',
+    'spaceship': 'spaceship',
+    'telescope': 'telescope',
+    'star': 'twinkling stars',
+    'planet': 'colorful planets',
+    'moon': 'glowing moon',
+    'treasure': 'treasure chest',
+    'crown': 'golden crown',
+    'wand': 'magic wand',
+    'rainbow': 'rainbow',
+    'balloon': 'colorful balloons',
+    'cake': 'birthday cake',
+    'present': 'wrapped presents',
+    'book': 'magical book',
+    'map': 'treasure map',
+  };
+
+  for (const [keyword, description] of Object.entries(objectMap)) {
+    if (text.includes(keyword)) {
+      found.push(description);
+    }
+  }
+
+  if (found.length === 0) return '';
+  return `With ${[...new Set(found)].slice(0, 2).join(' and ')}.`;
+}
+
+
+/**
+ * Negative prompt - excludes humans for animal stories, realistic style always
  */
 export function renderNegativePrompt(card: PageSceneCard, isAnimal?: boolean): string {
-  const base = "text, watermark, logo, photorealistic, realistic, photograph, human, person";
+  let base = "text, watermark, logo, photorealistic, realistic, photograph";
+
+  // Always exclude humans for animal-only stories
+  if (isAnimal) {
+    base += ", human, person, boy, girl, child, man, woman";
+  }
 
   if (card.forbidden_elements && card.forbidden_elements.length > 0) {
     return `${base}, ${card.forbidden_elements.slice(0, 5).join(', ')}`;
