@@ -160,7 +160,9 @@ CRITICAL: Every page must end with a COMPLETE sentence. Never cut off mid-senten
     const seeds: number[] = []
 
     sceneCards.forEach((card, index) => {
-      const prompt = renderPrompt(characterBible, card)
+      // Pass page text so renderPrompt can detect animals from story
+      const pageText = parsedStory.pages[index]?.text || ''
+      const prompt = renderPrompt(characterBible, card, pageText)
       const negativePrompt = renderNegativePrompt(card)
       const seed = generatePageSeedByNumber(card.page_number, baseSeed)
 

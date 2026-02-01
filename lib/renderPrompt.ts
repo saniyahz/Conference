@@ -2,26 +2,21 @@ import { CharacterBible, PageSceneCard } from "./visual-types";
 
 /**
  * UNIVERSAL PROMPT TEMPLATE
- *
- * Format (under 50 words):
- * [SCENE]. [CHARACTER]. [STYLE].
- *
- * No hardcoded keywords - just uses what's in the Bible and Scene Card.
+ * Disney/Pixar animated style
  */
-export function renderPrompt(bible: CharacterBible, card: PageSceneCard): string {
-  // 1. SCENE - directly from the scene card setting
+export function renderPrompt(bible: CharacterBible, card: PageSceneCard, pageText?: string): string {
+  // 1. SCENE
   const scene = card.setting;
 
-  // 2. MUST SHOW - key objects/characters that must appear
+  // 2. MUST SHOW
   const mustShow = buildMustShow(card);
 
-  // 3. CHARACTER - built from the Bible (works for human, animal, creature, anything)
-  const character = buildCharacterDescription(bible);
+  // 3. CHARACTER - detect from page text if bible doesn't have animal type
+  const character = buildCharacterDescription(bible, pageText);
 
-  // 4. STYLE
-  const style = "Soft watercolor children's book illustration.";
+  // 4. STYLE - Disney/Pixar animated style
+  const style = "Disney Pixar style, 3D animated, cute expressive characters, vibrant colors, warm lighting.";
 
-  // Combine
   const prompt = `${scene}.${mustShow} ${character} ${style}`;
 
   console.log(`[PROMPT] Page ${card.page_number}: ${prompt}`);
@@ -29,50 +24,66 @@ export function renderPrompt(bible: CharacterBible, card: PageSceneCard): string
 }
 
 /**
- * Build character description from Bible - GENERIC for any character type
+ * Build character description - also checks page text for animal mentions
  */
-function buildCharacterDescription(bible: CharacterBible): string {
+function buildCharacterDescription(bible: CharacterBible, pageText?: string): string {
   const name = bible.name;
-  const type = bible.character_type;
 
-  // For animals: "Smiley, a friendly dog with golden fur"
-  if (type === 'animal' && bible.species) {
-    const fur = bible.appearance.skin_tone;
+  // First check if bible says it's an animal
+  if (bible.character_type === 'animal' && bible.species) {
+    const fur = bible.appearance.skin_tone || 'soft fur';
     const outfit = bible.signature_outfit ? `, wearing ${bible.signature_outfit}` : '';
-    return `${name}, a friendly ${bible.species} with ${fur}${outfit}.`;
+    return `${name}, a cute cartoon ${bible.species} with ${fur}${outfit}.`;
   }
 
-  // For creatures: "Sparkle, a magical unicorn"
-  if (type === 'creature') {
-    return `${name}, a magical ${bible.species || 'creature'}.`;
+  // If bible doesn't say animal, check page text for animal words
+  if (pageText) {
+    const lowerText = pageText.toLowerCase();
+    const animals = ['dog', 'puppy', 'cat', 'kitten', 'rabbit', 'bunny', 'bear', 'fox', 'owl', 'bird', 'elephant', 'lion', 'mouse'];
+
+    for (const animal of animals) {
+      // Look for patterns like "Name was a dog" or "Name the dog"
+      const wasPattern = new RegExp(`${name.toLowerCase()}\\s+(?:was|is)\\s+(?:a|an)\\s+(?:\\w+\\s+)?${animal}`, 'i');
+      const thePattern = new RegExp(`${name.toLowerCase()}\\s+the\\s+${animal}`, 'i');
+
+      if (wasPattern.test(lowerText) || thePattern.test(lowerText) || lowerText.includes(`${name.toLowerCase()}, the ${animal}`)) {
+        return `${name}, a cute cartoon ${animal} with expressive eyes, friendly face.`;
+      }
+    }
+
+    // Also check if name is mentioned alongside animal word in same sentence
+    for (const animal of animals) {
+      if (lowerText.includes(name.toLowerCase()) && lowerText.includes(animal)) {
+        // Check if they're in the same sentence
+        const sentences = lowerText.split(/[.!?]/);
+        for (const sentence of sentences) {
+          if (sentence.includes(name.toLowerCase()) && sentence.includes(animal)) {
+            return `${name}, a cute cartoon ${animal} with expressive eyes, friendly face.`;
+          }
+        }
+      }
+    }
   }
 
-  // For humans: "Ava, a 6 year old child with brown skin, curly hair"
-  const skin = bible.appearance.skin_tone;
-  const hair = bible.appearance.hair;
-  return `${name}, a young child with ${skin}, ${hair}.`;
+  // Default to human - Disney style (no extreme skin tones)
+  return `${name}, a cute cartoon child with warm friendly features, big expressive eyes.`;
 }
 
 /**
- * Build "Must show:" clause from key objects
+ * Build "Must show:" clause
  */
 function buildMustShow(card: PageSceneCard): string {
   const items = card.key_objects.slice(0, 3);
-
-  if (items.length === 0) {
-    return '';
-  }
-
+  if (items.length === 0) return '';
   return ` Must show: ${items.join(', ')}.`;
 }
 
 /**
- * Render negative prompt
+ * Negative prompt - no realistic, add human if animal story
  */
-export function renderNegativePrompt(card: PageSceneCard): string {
-  const base = "text, watermark, logo, frame, photorealistic, 3d render, anime, ugly, deformed";
+export function renderNegativePrompt(card: PageSceneCard, isAnimal?: boolean): string {
+  const base = "text, watermark, logo, photorealistic, realistic, photograph, human, person";
 
-  // Add forbidden elements from the scene card
   if (card.forbidden_elements && card.forbidden_elements.length > 0) {
     return `${base}, ${card.forbidden_elements.slice(0, 5).join(', ')}`;
   }
@@ -80,9 +91,6 @@ export function renderNegativePrompt(card: PageSceneCard): string {
   return base;
 }
 
-/**
- * Generate unique seed for a page
- */
 export function generatePageSeedByNumber(pageNumber: number, baseSeed: number): number {
   return baseSeed + (pageNumber * 77);
 }
