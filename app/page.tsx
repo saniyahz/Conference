@@ -65,7 +65,8 @@ export default function Home() {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           imagePrompts: storyData.imagePrompts,
-          negativePrompts: storyData.negativePrompts  // Page-specific negative prompts
+          negativePrompts: storyData.negativePrompts,
+          seed: storyData.seed  // Same seed for character consistency
         }),
       })
 

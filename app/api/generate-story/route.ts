@@ -1,5 +1,10 @@
 import { NextRequest, NextResponse } from 'next/server'
 import Replicate from 'replicate'
+import { createCharacterCanon } from '@/lib/createCharacterCanon'
+import { normalizeScene } from '@/lib/normalizeScene'
+import { validateScene } from '@/lib/visualChecklist'
+import { assembleImagePrompt, assembleNegativePrompt } from '@/lib/assembleImagePrompt'
+import { CharacterCanon } from '@/lib/visual-types'
 
 const replicate = new Replicate({
   auth: process.env.REPLICATE_API_TOKEN,
@@ -170,18 +175,22 @@ SCENE: [Visual description for illustration]`
     // Parse the story with Character DNA
     const story = parseStoryWithDNA(storyText, prompt)
 
-    // Generate image prompts using Character DNA template
-    const { prompts: imagePrompts, negativePrompts } = generateImagePromptsWithDNA(story)
+    // Generate image prompts using NEW ARCHITECTURE
+    const { prompts: imagePrompts, negativePrompts, canon } = generateImagePromptsWithDNA(story)
 
-    // DEBUG: Log first image prompt to verify environment detection
+    // Generate a consistent seed for this story
+    const storySeed = Math.floor(Math.random() * 1000000)
+
+    // DEBUG: Log first image prompt to verify new architecture
     console.log(`\n========== STORY GENERATED ==========`)
     console.log(`Title: ${story.title}`)
+    console.log(`Seed: ${storySeed}`)
+    console.log(`\n--- CHARACTER CANON ---`)
+    console.log(canon.description.substring(0, 300))
     console.log(`\n--- PAGE 1 TEXT ---`)
     console.log(story.pages[0]?.text?.substring(0, 200))
     console.log(`\n--- PAGE 1 IMAGE PROMPT ---`)
-    console.log(imagePrompts[0])
-    console.log(`\n--- PAGE 1 NEGATIVE PROMPT ---`)
-    console.log(negativePrompts[0])
+    console.log(imagePrompts[0]?.substring(0, 500))
     console.log(`=====================================\n`)
 
     return NextResponse.json({
@@ -193,7 +202,9 @@ SCENE: [Visual description for illustration]`
         storyWorldDNA: story.storyWorldDNA,
       },
       imagePrompts,
-      negativePrompts, // Now page-specific!
+      negativePrompts,
+      seed: storySeed, // Pass seed to image generation for consistency
+      canon: { id: canon.id, name: canon.name }, // Pass canon reference
     })
   } catch (error: any) {
     console.error('Error generating story:', error)
@@ -225,30 +236,59 @@ SCENE: [Visual description for illustration]`
   }
 }
 
-// Generate image prompts using Character DNA template
-// Formula: FINAL_IMAGE_PROMPT = BASE_IMAGE_PROMPT + PAGE_IMAGE_SCENE
-function generateImagePromptsWithDNA(story: any): { prompts: string[]; negativePrompts: string[] } {
+// Generate image prompts using NEW ARCHITECTURE
+// 1. Create Character Canon ONCE
+// 2. For each page: Normalize -> Validate -> Assemble
+function generateImagePromptsWithDNA(story: any): { prompts: string[]; negativePrompts: string[]; canon: CharacterCanon } {
   const characterDNA = story.characterDNA
-  const storyWorldDNA = story.storyWorldDNA
+
+  // CREATE CHARACTER CANON ONCE - used for ALL pages
+  const canon = createCharacterCanon(characterDNA)
+
+  console.log(`\n========== CHARACTER CANON ==========`)
+  console.log(canon.description)
+  console.log(`=====================================\n`)
 
   const prompts: string[] = []
   const negativePrompts: string[] = []
 
   story.pages.forEach((page: any, index: number) => {
     const pageText = page.text || ''
-    const sceneDescription = page.scene || extractSceneFromText(pageText)
 
-    // Build the page-specific scene content WITH environment detection
-    const pageImageScene = buildPageImageScene(characterDNA, storyWorldDNA, sceneDescription, pageText)
+    try {
+      // STEP 1: Normalize the scene (deterministic parsing)
+      const normalizedScene = normalizeScene(pageText, canon)
 
-    // Combine: BASE_IMAGE_PROMPT + PAGE_IMAGE_SCENE
-    prompts.push(BASE_IMAGE_PROMPT + "\n\n" + pageImageScene)
+      // STEP 2: Validate the scene
+      const validation = validateScene(normalizedScene)
+      if (!validation.valid) {
+        console.warn(`Page ${index + 1} validation warnings:`, validation.errors)
+      }
 
-    // Generate environment-specific negative prompt for this page
-    negativePrompts.push(generateNegativePrompt(pageText))
+      // STEP 3: Assemble the prompt
+      const prompt = assembleImagePrompt(normalizedScene, canon)
+      const negativePrompt = assembleNegativePrompt(normalizedScene)
+
+      prompts.push(prompt)
+      negativePrompts.push(negativePrompt)
+
+      console.log(`\n--- PAGE ${index + 1} PROMPT ---`)
+      console.log(prompt.substring(0, 500) + '...')
+
+    } catch (error) {
+      console.error(`Error processing page ${index + 1}:`, error)
+      // Fallback to simple prompt
+      const fallbackPrompt = `Children's picture book illustration, soft watercolor style.
+
+${canon.description}
+
+Scene from the story. Child-friendly, gentle colors.`
+      prompts.push(fallbackPrompt)
+      negativePrompts.push('portrait, close-up, photorealistic, 3d render, anime, text, logo, watermark')
+    }
   })
 
-  return { prompts, negativePrompts }
+  return { prompts, negativePrompts, canon }
 }
 
 // Build the page-specific image scene description
