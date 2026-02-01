@@ -124,13 +124,20 @@ function detectSetting(lowerText: string): string {
     return 'Outer space with stars, planets, and cosmic wonders';
   }
 
-  // 3. Mars surface
-  if (lowerText.includes('mars') || lowerText.includes('red planet')) {
+  // 3. Mars surface - ONLY when actually ON Mars (landed/arrived)
+  const onMarsKeywords = ['landed on mars', 'arrived on mars', 'reached mars', 'on mars',
+                          'mars surface', 'stepped onto mars', 'walking on mars'];
+  const isOnMars = (lowerText.includes('mars') || lowerText.includes('red planet')) &&
+                   onMarsKeywords.some(k => lowerText.includes(k));
+  if (isOnMars) {
     return 'Mars surface, red rocky terrain, pink-orange sky, distant red mountains';
   }
 
-  // 4. Moon surface (different from floating in space)
-  if (lowerText.includes('moon') && (lowerText.includes('landed') || lowerText.includes('surface') || lowerText.includes('walked'))) {
+  // 4. Moon surface - ONLY when actually ON the Moon (landed/arrived)
+  const onMoonKeywords = ['landed on', 'arrived on', 'reached the moon', 'on the moon',
+                          'moon surface', 'stepped onto', 'walking on the moon'];
+  const isOnMoon = lowerText.includes('moon') && onMoonKeywords.some(k => lowerText.includes(k));
+  if (isOnMoon) {
     return 'Moon surface with gray craters, Earth visible in the black starry sky';
   }
 

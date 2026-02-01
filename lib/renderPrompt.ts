@@ -1,119 +1,169 @@
 import { CharacterBible, PageSceneCard } from "./visual-types";
 
 /**
- * RENDER PROMPT - SCENE FIRST, KEEP SHORT
- * SDXL only pays attention to first ~77 tokens
- * Format: [SCENE] [CHARACTER] [STYLE]
- * Target: Under 75 words total
+ * RENDER PROMPT - ULTRA SHORT FORMAT
+ * SDXL pays most attention to early tokens
+ *
+ * Format:
+ * {{scene}}. Must show: {{required1}}, {{required2}}.
+ * {{character_short}}. soft watercolor children's book illustration.
+ *
+ * Target: 25-40 words total
  */
 export function renderPrompt(bible: CharacterBible, card: PageSceneCard): string {
-  // 1. SCENE FIRST - This is what SDXL will pay most attention to
+  // 1. SCENE - What environment
   const scene = buildShortScene(card);
 
-  // 2. CHARACTER - Brief description only
+  // 2. MUST SHOW - Required objects/elements (max 3)
+  const mustShow = buildMustShow(card);
+
+  // 3. CHARACTER - Name, age, appearance, action
   const character = buildShortCharacter(bible, card.main_action);
 
-  // 3. KEY OBJECTS - Only if present
-  const objects = card.key_objects.length > 0
-    ? `With ${card.key_objects.slice(0, 2).join(' and ')}.`
-    : '';
-
   // 4. STYLE - Always the same
-  const style = "Children's book illustration, soft watercolor, gentle colors.";
+  const style = "Soft watercolor children's book illustration.";
 
-  // Combine: SCENE + CHARACTER + OBJECTS + STYLE
-  const prompt = `${scene} ${character} ${objects} ${style}`.trim();
+  // Combine into ultra-short prompt
+  const prompt = `${scene}${mustShow} ${character} ${style}`.trim();
 
-  console.log(`[PROMPT] Page ${card.page_number}: ${prompt}`);
+  console.log(`[PROMPT] Page ${card.page_number} (${prompt.split(' ').length} words): ${prompt}`);
   return prompt;
 }
 
 /**
- * Build SHORT scene description - ENVIRONMENT IS KEY
- * This goes FIRST in the prompt
+ * Build SHORT scene description
  */
 function buildShortScene(card: PageSceneCard): string {
   const setting = card.setting.toLowerCase();
 
-  // SPACE scenes
+  // SPACE - inside ship
+  if (setting.includes('inside rocket') || setting.includes('cockpit')) {
+    return 'Inside a rocket cockpit in outer space, stars visible through window.';
+  }
+
+  // SPACE - flying
   if (setting.includes('outer space') || setting.includes('cosmos') || setting.includes('stars')) {
-    return 'Outer space scene, dark starry sky, colorful planets and twinkling stars visible.';
+    return 'Outer space scene, dark starry sky, colorful planets visible.';
   }
-  if (setting.includes('rocket') || setting.includes('spaceship')) {
-    if (setting.includes('inside') || card.main_action.includes('floating') || card.main_action.includes('seat')) {
-      return 'Inside a rocket ship cockpit in space, stars visible through window.';
-    }
-    return 'Rocket ship flying through outer space, stars and planets in background.';
+
+  // MARS
+  if (setting.includes('mars')) {
+    return 'Mars surface, red rocky terrain, pink-orange sky.';
   }
+
+  // MOON
   if (setting.includes('moon')) {
-    return 'Moon surface with gray craters, Earth visible in dark starry sky.';
-  }
-  if (setting.includes('mars') || setting.includes('red planet')) {
-    return 'Mars surface, red rocky terrain, pink sky, distant mountains.';
+    return 'Moon surface, gray craters, Earth visible in black sky.';
   }
 
-  // UNDERWATER scenes
+  // UNDERWATER
   if (setting.includes('underwater') || setting.includes('ocean') || setting.includes('coral')) {
-    return 'Underwater ocean scene, blue water, colorful coral reef, fish swimming, light rays from above.';
+    return 'Underwater ocean scene, blue water, coral reef, fish swimming.';
   }
 
-  // NATURE scenes
+  // FOREST
   if (setting.includes('forest') || setting.includes('trees')) {
-    return 'Lush green forest scene, tall trees, soft sunlight filtering through leaves, flowers.';
+    return 'Lush green forest, tall trees, soft sunlight filtering through.';
   }
+
+  // MEADOW
   if (setting.includes('meadow') || setting.includes('garden') || setting.includes('flower')) {
-    return 'Beautiful meadow with colorful wildflowers, green grass, sunny day.';
+    return 'Beautiful meadow with colorful wildflowers, sunny day.';
   }
+
+  // DESERT
   if (setting.includes('desert') || setting.includes('sand')) {
-    return 'Golden desert scene, rolling sand dunes, warm orange sky.';
+    return 'Golden desert, rolling sand dunes, warm orange sky.';
   }
 
-  // INDOOR scenes
-  if (setting.includes('home') || setting.includes('room') || setting.includes('house') || setting.includes('indoor')) {
-    return 'Cozy indoor room scene, warm lighting, comfortable furniture.';
+  // HOME/INDOOR
+  if (setting.includes('home') || setting.includes('room') || setting.includes('house')) {
+    return 'Cozy indoor room, warm lighting.';
   }
 
-  // SKY scenes
-  if (setting.includes('sky') || setting.includes('cloud') || setting.includes('flying')) {
-    return 'High in the sky among fluffy white clouds, blue sky, aerial view.';
+  // SKY
+  if (setting.includes('sky') || setting.includes('cloud')) {
+    return 'High in the sky, fluffy white clouds, blue sky.';
   }
 
-  // VILLAGE/TOWN
+  // VILLAGE
   if (setting.includes('village') || setting.includes('town')) {
-    return 'Peaceful village scene, cozy cottages, friendly atmosphere.';
+    return 'Peaceful village, cozy cottages.';
   }
 
   // Default
-  return 'Magical storybook scene, warm friendly atmosphere.';
+  return 'Magical storybook scene.';
+}
+
+/**
+ * Build "Must show:" clause from key objects and supporting characters
+ * Max 3 items to keep it short
+ */
+function buildMustShow(card: PageSceneCard): string {
+  const items: string[] = [];
+
+  // Add key objects (most important)
+  for (const obj of card.key_objects.slice(0, 2)) {
+    items.push(obj);
+  }
+
+  // Add supporting characters if room
+  if (items.length < 3 && card.supporting_characters.length > 0) {
+    items.push(card.supporting_characters[0]);
+  }
+
+  if (items.length === 0) {
+    return '';
+  }
+
+  return ` Must show: ${items.join(', ')}.`;
 }
 
 /**
  * Build SHORT character description
- * Just the essentials - skin, hair, action
+ * Format: Name, age, appearance, action
  */
 function buildShortCharacter(bible: CharacterBible, action: string): string {
+  const name = bible.name;
   const skin = bible.appearance.skin_tone;
   const hair = bible.appearance.hair;
 
-  // Extract just the action verb
-  const actionShort = action
-    .replace(bible.name, '')
+  // Extract just the action
+  let actionShort = action
+    .replace(new RegExp(bible.name, 'gi'), '')
     .replace(/^\s*(is\s+)?/, '')
-    .trim() || 'looking happy';
+    .trim();
 
-  return `Young child with ${skin}, ${hair}, ${actionShort}.`;
+  if (!actionShort || actionShort.length < 3) {
+    actionShort = 'looking happy';
+  }
+
+  return `${name}, 6 years old, ${skin}, ${hair}, ${actionShort}.`;
 }
 
 /**
- * Render negative prompt - include environment exclusions
+ * Render negative prompt
  */
 export function renderNegativePrompt(card: PageSceneCard): string {
-  const base = "photorealistic, 3d render, anime, text, logo, watermark, ugly, deformed";
+  const base = "text, watermark, logo, frame, photorealistic, 3d render, anime, ugly, deformed";
 
-  // Add forbidden elements
-  if (card.forbidden_elements.length > 0) {
-    const forbidden = card.forbidden_elements.slice(0, 5).join(", ");
-    return `${base}, ${forbidden}`;
+  // Add scene-specific forbidden elements
+  const setting = card.setting.toLowerCase();
+
+  if (setting.includes('space') || setting.includes('rocket') || setting.includes('mars') || setting.includes('moon')) {
+    return `${base}, forest, trees, grass, porch, house, door, land animals`;
+  }
+
+  if (setting.includes('underwater') || setting.includes('ocean')) {
+    return `${base}, forest, trees, grass, sky, land, buildings, porch, house`;
+  }
+
+  if (setting.includes('forest') || setting.includes('meadow')) {
+    return `${base}, space, planets, stars, underwater, ocean, fish`;
+  }
+
+  if (setting.includes('desert')) {
+    return `${base}, water, ocean, fish, forest, snow, space, planets`;
   }
 
   return base;
