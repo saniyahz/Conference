@@ -128,7 +128,7 @@ async function generateImageWithRetry(
 
 export async function POST(request: NextRequest) {
   try {
-    const { imagePrompts, negativePrompts, seed } = await request.json()
+    const { imagePrompts, negativePrompts, seed, seeds } = await request.json()
 
     if (!imagePrompts || !Array.isArray(imagePrompts)) {
       return NextResponse.json(
@@ -146,26 +146,31 @@ export async function POST(request: NextRequest) {
     }
 
     // Use provided seed or generate a random one for this story
-    // Same seed helps maintain character consistency across all images
     const storySeed = seed || Math.floor(Math.random() * 1000000)
-    console.log(`Using seed: ${storySeed} for character consistency`)
+    console.log(`Using base seed: ${storySeed}`)
 
     // Generate images ONE AT A TIME to avoid rate limits
     const imageUrls: string[] = []
+    const usedSeeds: number[] = []
 
     for (let i = 0; i < imagePrompts.length; i++) {
       const prompt = imagePrompts[i]
-      // Use page-specific negative prompt if available, otherwise undefined (will use default)
+      // Use page-specific negative prompt if available
       const negativePrompt = negativePrompts && negativePrompts[i] ? negativePrompts[i] : undefined
-      console.log(`Generating image ${i + 1}/${imagePrompts.length}...`)
+      console.log(`\n========== GENERATING IMAGE ${i + 1}/${imagePrompts.length} ==========`)
 
       try {
-        // Vary seed per page to avoid identical images
-        // Add page index to base seed for variety while maintaining style consistency
-        const pageSeed = storySeed + (i * 1000)
+        // ENGINE RULE B: Use unique seed per page
+        // If seeds array provided (from scene_id hash), use it; otherwise compute from base
+        const pageSeed = seeds && seeds[i] ? seeds[i] : storySeed + (i * 77)
+        usedSeeds.push(pageSeed)
+
+        console.log(`Page ${i + 1} seed: ${pageSeed}`)
+        console.log(`Setting: ${prompt.match(/Setting: (.+)/)?.[1]?.substring(0, 50) || 'N/A'}`)
+
         const imageUrl = await generateImageWithRetry(replicate, prompt, negativePrompt, i, imagePrompts.length, pageSeed)
         imageUrls.push(imageUrl)
-        console.log(`Image ${i + 1} done (seed: ${pageSeed}): ${imageUrl ? 'success' : 'failed'}`)
+        console.log(`Image ${i + 1} done: ${imageUrl ? 'SUCCESS' : 'FAILED'}`)
       } catch (error) {
         console.error(`Image ${i + 1} error:`, error)
         imageUrls.push('') // Push empty string for failed images
@@ -177,7 +182,13 @@ export async function POST(request: NextRequest) {
       }
     }
 
-    return NextResponse.json({ imageUrls, seed: storySeed })
+    const successCount = imageUrls.filter(url => url).length
+    console.log(`\n========== IMAGE GENERATION COMPLETE ==========`)
+    console.log(`Success: ${successCount}/${imagePrompts.length} images`)
+    console.log(`Seeds used: ${usedSeeds.join(', ')}`)
+    console.log(`==============================================\n`)
+
+    return NextResponse.json({ imageUrls, seed: storySeed, seeds: usedSeeds })
   } catch (error) {
     console.error('Error in image generation:', error)
     return NextResponse.json(
