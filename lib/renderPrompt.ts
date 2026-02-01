@@ -1,116 +1,63 @@
 import { CharacterBible, PageSceneCard } from "./visual-types";
 
 /**
- * RENDER PROMPT - ULTRA SHORT FORMAT
- * SDXL pays most attention to early tokens
+ * UNIVERSAL PROMPT TEMPLATE
  *
- * Format:
- * {{scene}}. Must show: {{required1}}, {{required2}}.
- * {{character_short}}. soft watercolor children's book illustration.
+ * Format (under 50 words):
+ * [SCENE]. [CHARACTER]. [STYLE].
  *
- * Target: 25-40 words total
+ * No hardcoded keywords - just uses what's in the Bible and Scene Card.
  */
 export function renderPrompt(bible: CharacterBible, card: PageSceneCard): string {
-  // 1. SCENE - What environment
-  const scene = buildShortScene(card);
+  // 1. SCENE - directly from the scene card setting
+  const scene = card.setting;
 
-  // 2. MUST SHOW - Required objects/elements (max 3)
+  // 2. MUST SHOW - key objects/characters that must appear
   const mustShow = buildMustShow(card);
 
-  // 3. CHARACTER - Name, age, appearance, action
-  const character = buildShortCharacter(bible, card.main_action);
+  // 3. CHARACTER - built from the Bible (works for human, animal, creature, anything)
+  const character = buildCharacterDescription(bible);
 
-  // 4. STYLE - Always the same
+  // 4. STYLE
   const style = "Soft watercolor children's book illustration.";
 
-  // Combine into ultra-short prompt
-  const prompt = `${scene}${mustShow} ${character} ${style}`.trim();
+  // Combine
+  const prompt = `${scene}.${mustShow} ${character} ${style}`;
 
-  console.log(`[PROMPT] Page ${card.page_number} (${prompt.split(' ').length} words): ${prompt}`);
+  console.log(`[PROMPT] Page ${card.page_number}: ${prompt}`);
   return prompt;
 }
 
 /**
- * Build SHORT scene description
+ * Build character description from Bible - GENERIC for any character type
  */
-function buildShortScene(card: PageSceneCard): string {
-  const setting = card.setting.toLowerCase();
+function buildCharacterDescription(bible: CharacterBible): string {
+  const name = bible.name;
+  const type = bible.character_type;
 
-  // SPACE - inside ship
-  if (setting.includes('inside rocket') || setting.includes('cockpit')) {
-    return 'Inside a rocket cockpit in outer space, stars visible through window.';
+  // For animals: "Smiley, a friendly dog with golden fur"
+  if (type === 'animal' && bible.species) {
+    const fur = bible.appearance.skin_tone;
+    const outfit = bible.signature_outfit ? `, wearing ${bible.signature_outfit}` : '';
+    return `${name}, a friendly ${bible.species} with ${fur}${outfit}.`;
   }
 
-  // SPACE - flying
-  if (setting.includes('outer space') || setting.includes('cosmos') || setting.includes('stars')) {
-    return 'Outer space scene, dark starry sky, colorful planets visible.';
+  // For creatures: "Sparkle, a magical unicorn"
+  if (type === 'creature') {
+    return `${name}, a magical ${bible.species || 'creature'}.`;
   }
 
-  // MARS
-  if (setting.includes('mars')) {
-    return 'Mars surface, red rocky terrain, pink-orange sky.';
-  }
-
-  // MOON
-  if (setting.includes('moon')) {
-    return 'Moon surface, gray craters, Earth visible in black sky.';
-  }
-
-  // UNDERWATER
-  if (setting.includes('underwater') || setting.includes('ocean') || setting.includes('coral')) {
-    return 'Underwater ocean scene, blue water, coral reef, fish swimming.';
-  }
-
-  // FOREST
-  if (setting.includes('forest') || setting.includes('trees')) {
-    return 'Lush green forest, tall trees, soft sunlight filtering through.';
-  }
-
-  // MEADOW
-  if (setting.includes('meadow') || setting.includes('garden') || setting.includes('flower')) {
-    return 'Beautiful meadow with colorful wildflowers, sunny day.';
-  }
-
-  // DESERT
-  if (setting.includes('desert') || setting.includes('sand')) {
-    return 'Golden desert, rolling sand dunes, warm orange sky.';
-  }
-
-  // HOME/INDOOR
-  if (setting.includes('home') || setting.includes('room') || setting.includes('house')) {
-    return 'Cozy indoor room, warm lighting.';
-  }
-
-  // SKY
-  if (setting.includes('sky') || setting.includes('cloud')) {
-    return 'High in the sky, fluffy white clouds, blue sky.';
-  }
-
-  // VILLAGE
-  if (setting.includes('village') || setting.includes('town')) {
-    return 'Peaceful village, cozy cottages.';
-  }
-
-  // Default
-  return 'Magical storybook scene.';
+  // For humans: "Ava, a 6 year old child with brown skin, curly hair"
+  const skin = bible.appearance.skin_tone;
+  const hair = bible.appearance.hair;
+  return `${name}, a young child with ${skin}, ${hair}.`;
 }
 
 /**
- * Build "Must show:" clause from key objects and supporting characters
- * Max 3 items to keep it short
+ * Build "Must show:" clause from key objects
  */
 function buildMustShow(card: PageSceneCard): string {
-  const items: string[] = [];
-
-  // Add key objects (most important)
-  for (const obj of card.key_objects.slice(0, 2)) {
-    items.push(obj);
-  }
-
-  // Add supporting characters if room
-  if (items.length < 3 && card.supporting_characters.length > 0) {
-    items.push(card.supporting_characters[0]);
-  }
+  const items = card.key_objects.slice(0, 3);
 
   if (items.length === 0) {
     return '';
@@ -120,67 +67,14 @@ function buildMustShow(card: PageSceneCard): string {
 }
 
 /**
- * Build SHORT character description
- * Handles both humans and animals
- */
-function buildShortCharacter(bible: CharacterBible, action: string): string {
-  const name = bible.name;
-  const isAnimal = bible.character_type === 'animal';
-  const isCreature = bible.character_type === 'creature';
-
-  // Extract just the action
-  let actionShort = action
-    .replace(new RegExp(bible.name, 'gi'), '')
-    .replace(/^\s*(is\s+)?/, '')
-    .trim();
-
-  if (!actionShort || actionShort.length < 3) {
-    actionShort = 'looking happy';
-  }
-
-  // ANIMAL: "Smiley, a friendly dog with golden fur, wearing astronaut helmet"
-  if (isAnimal) {
-    const species = bible.species || 'animal';
-    const fur = bible.appearance.skin_tone; // For animals, this is fur color
-    const outfit = bible.signature_outfit ? `, wearing ${bible.signature_outfit}` : '';
-    return `${name}, a cute friendly ${species} with ${fur}${outfit}, ${actionShort}.`;
-  }
-
-  // CREATURE: "Sparkle, a magical unicorn with rainbow mane"
-  if (isCreature) {
-    const appearance = bible.appearance.hair || bible.appearance.skin_tone;
-    return `${name}, a magical creature with ${appearance}, ${actionShort}.`;
-  }
-
-  // HUMAN: "Ava, 6 years old, brown skin, curly hair"
-  const skin = bible.appearance.skin_tone;
-  const hair = bible.appearance.hair;
-  return `${name}, 6 years old, ${skin}, ${hair}, ${actionShort}.`;
-}
-
-/**
  * Render negative prompt
  */
 export function renderNegativePrompt(card: PageSceneCard): string {
   const base = "text, watermark, logo, frame, photorealistic, 3d render, anime, ugly, deformed";
 
-  // Add scene-specific forbidden elements
-  const setting = card.setting.toLowerCase();
-
-  if (setting.includes('space') || setting.includes('rocket') || setting.includes('mars') || setting.includes('moon')) {
-    return `${base}, forest, trees, grass, porch, house, door, land animals`;
-  }
-
-  if (setting.includes('underwater') || setting.includes('ocean')) {
-    return `${base}, forest, trees, grass, sky, land, buildings, porch, house`;
-  }
-
-  if (setting.includes('forest') || setting.includes('meadow')) {
-    return `${base}, space, planets, stars, underwater, ocean, fish`;
-  }
-
-  if (setting.includes('desert')) {
-    return `${base}, water, ocean, fish, forest, snow, space, planets`;
+  // Add forbidden elements from the scene card
+  if (card.forbidden_elements && card.forbidden_elements.length > 0) {
+    return `${base}, ${card.forbidden_elements.slice(0, 5).join(', ')}`;
   }
 
   return base;

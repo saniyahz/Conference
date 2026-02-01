@@ -2,7 +2,7 @@ import { PageSceneCard, CharacterBible } from "./visual-types";
 
 /**
  * Generate a Page Scene Card from page text
- * This creates a structured card with all the information needed for image generation
+ * GENERIC - extracts info directly from text, no hardcoded scenarios
  */
 export function generatePageSceneCard(
   pageText: string,
@@ -12,263 +12,198 @@ export function generatePageSceneCard(
 ): PageSceneCard {
   const lowerText = pageText.toLowerCase();
 
-  // Generate unique scene_id
-  const sceneId = generateSceneId(pageText, pageNumber);
+  // Extract setting from the text
+  const setting = extractSetting(lowerText);
 
-  // Detect setting/environment
-  const setting = detectSetting(lowerText);
-
-  // Detect time and weather
-  const timeWeather = detectTimeWeather(lowerText);
-
-  // Extract main action
-  const mainAction = extractMainAction(pageText, bible.name);
-
-  // Extract supporting characters
-  const supportingCharacters = extractSupportingCharacters(lowerText);
-
-  // Extract key objects that MUST appear
+  // Extract key objects mentioned in the text
   const keyObjects = extractKeyObjects(lowerText);
 
-  // Build required elements (objects + characters that must be visible)
-  const requiredElements = buildRequiredElements(keyObjects, supportingCharacters);
+  // Extract supporting characters
+  const supportingCharacters = extractSupportingCharacters(lowerText, bible.name);
 
-  // Build forbidden elements (from previous scenes + environment mismatch)
-  const forbiddenElements = buildForbiddenElements(setting, previousSceneCards);
-
-  // Determine camera shot type
-  const camera = determineCameraShot(supportingCharacters.length, keyObjects.length);
+  // Build forbidden elements based on what's NOT in this scene
+  const forbiddenElements = buildForbiddenElements(lowerText);
 
   return {
     page_number: pageNumber,
-    scene_id: sceneId,
+    scene_id: `page_${pageNumber}`,
     setting,
-    time_weather: timeWeather,
-    main_action: mainAction,
+    time_weather: extractTimeWeather(lowerText),
+    main_action: extractAction(lowerText, bible.name),
     supporting_characters: supportingCharacters,
     key_objects: keyObjects,
-    required_elements: requiredElements,
+    required_elements: [...keyObjects, ...supportingCharacters],
     forbidden_elements: forbiddenElements,
-    camera,
+    camera: {
+      shot_type: keyObjects.length > 2 ? 'wide' : 'medium',
+      composition_notes: 'Main character clearly visible'
+    }
   };
 }
 
 /**
- * Generate unique scene_id from page content
+ * Extract setting from page text - GENERIC approach
+ * Looks for location/environment phrases
  */
-function generateSceneId(pageText: string, pageNumber: number): string {
-  const lowerText = pageText.toLowerCase();
+function extractSetting(text: string): string {
+  // Location patterns to look for
+  const locationPatterns = [
+    // Space
+    { keywords: ['outer space', 'through space', 'in space', 'cosmos', 'among the stars'], setting: 'Outer space with stars and planets' },
+    { keywords: ['rocket ship', 'spaceship', 'cockpit'], setting: 'Inside a rocket ship' },
+    { keywords: ['moon surface', 'on the moon', 'lunar'], setting: 'Moon surface with craters' },
+    { keywords: ['mars', 'red planet'], setting: 'Mars surface, red terrain' },
 
-  // Priority-based scene detection
-  if (lowerText.includes('underwater') || lowerText.includes('ocean') || lowerText.includes('sea')) {
-    return `ocean_scene_${pageNumber}`;
-  }
-  if (lowerText.includes('space') || lowerText.includes('moon') || lowerText.includes('star') || lowerText.includes('rocket')) {
-    return `space_scene_${pageNumber}`;
-  }
-  if (lowerText.includes('desert') || lowerText.includes('sand') || lowerText.includes('camel')) {
-    return `desert_scene_${pageNumber}`;
-  }
-  if (lowerText.includes('forest') || lowerText.includes('woods') || lowerText.includes('tree')) {
-    return `forest_scene_${pageNumber}`;
-  }
-  if (lowerText.includes('village') || lowerText.includes('town') || lowerText.includes('house')) {
-    return `village_scene_${pageNumber}`;
-  }
-  if (lowerText.includes('mountain') || lowerText.includes('hill') || lowerText.includes('cave')) {
-    return `mountain_scene_${pageNumber}`;
-  }
-  if (lowerText.includes('sky') || lowerText.includes('cloud') || lowerText.includes('flying')) {
-    return `sky_scene_${pageNumber}`;
-  }
+    // Water
+    { keywords: ['underwater', 'beneath the waves', 'ocean floor'], setting: 'Underwater ocean scene' },
+    { keywords: ['ocean', 'sea', 'beach'], setting: 'Ocean or beach scene' },
 
-  return `scene_${pageNumber}`;
-}
+    // Nature
+    { keywords: ['forest', 'woods', 'trees'], setting: 'Forest with trees' },
+    { keywords: ['meadow', 'field', 'grassland'], setting: 'Open meadow with grass and flowers' },
+    { keywords: ['garden', 'flowers'], setting: 'Beautiful garden' },
+    { keywords: ['desert', 'sand dunes', 'sandy'], setting: 'Desert with sand dunes' },
+    { keywords: ['mountain', 'cliff', 'peak'], setting: 'Mountain landscape' },
+    { keywords: ['jungle', 'rainforest'], setting: 'Jungle setting' },
 
-/**
- * Detect the setting/environment from text
- */
-function detectSetting(lowerText: string): string {
-  // PRIORITY ORDER: Check specific environments first
+    // Indoor/Urban
+    { keywords: ['home', 'house', 'room', 'bedroom', 'kitchen'], setting: 'Cozy indoor room' },
+    { keywords: ['castle', 'palace', 'throne'], setting: 'Castle interior' },
+    { keywords: ['village', 'town', 'street'], setting: 'Village or town' },
+    { keywords: ['school', 'classroom'], setting: 'School classroom' },
 
-  // 1. Underwater/Ocean
-  if (lowerText.includes('underwater') || lowerText.includes('ocean floor') ||
-      lowerText.includes('coral reef') || lowerText.includes('beneath the waves')) {
-    return 'Deep underwater ocean with coral reefs, blue-green water, light rays from above';
-  }
-  if (lowerText.includes('ocean') || lowerText.includes('sea') ||
-      (lowerText.includes('shark') && !lowerText.includes('land'))) {
-    return 'Underwater ocean scene with sea creatures and coral';
-  }
-
-  // 2. Space scenes - check for being IN space or inside a spacecraft
-  const inSpaceKeywords = [
-    'floated through space', 'into space', 'outer space', 'through the cosmos',
-    'among the stars', 'in space', 'floating in space', 'flew through space',
-    'entered the cosmos', 'into the cosmos', 'through space', 'stars and planets',
-    'pierced the atmosphere', 'soared into the sky', 'rocket ship', 'spaceship',
-    'weightless', 'floating in her seat', 'floating in his seat',
-    'gazed out the window', 'stars whizzing', 'planets whizzing'
+    // Sky
+    { keywords: ['sky', 'clouds', 'flying', 'soaring'], setting: 'High in the sky with clouds' },
   ];
-  const isInSpace = inSpaceKeywords.some(k => lowerText.includes(k));
 
-  // Check if inside a spaceship/rocket
-  const insideShip = lowerText.includes('inside') || lowerText.includes('seat') ||
-                     lowerText.includes('cockpit') || lowerText.includes('window') ||
-                     lowerText.includes('weightless') || lowerText.includes('floating in');
-
-  if (isInSpace && insideShip) {
-    return 'Inside rocket ship cockpit in outer space, stars visible through window';
-  }
-  if (isInSpace) {
-    return 'Outer space with stars, planets, and cosmic wonders';
-  }
-
-  // 3. Mars surface - ONLY when actually ON Mars (landed/arrived)
-  const onMarsKeywords = ['landed on mars', 'arrived on mars', 'reached mars', 'on mars',
-                          'mars surface', 'stepped onto mars', 'walking on mars'];
-  const isOnMars = (lowerText.includes('mars') || lowerText.includes('red planet')) &&
-                   onMarsKeywords.some(k => lowerText.includes(k));
-  if (isOnMars) {
-    return 'Mars surface, red rocky terrain, pink-orange sky, distant red mountains';
-  }
-
-  // 4. Moon surface - ONLY when actually ON the Moon (landed/arrived)
-  const onMoonKeywords = ['landed on', 'arrived on', 'reached the moon', 'on the moon',
-                          'moon surface', 'stepped onto', 'walking on the moon'];
-  const isOnMoon = lowerText.includes('moon') && onMoonKeywords.some(k => lowerText.includes(k));
-  if (isOnMoon) {
-    return 'Moon surface with gray craters, Earth visible in the black starry sky';
-  }
-
-  // 5. Desert
-  if (lowerText.includes('desert') || lowerText.includes('sand dune') || lowerText.includes('oasis')) {
-    return 'Golden desert with rolling sand dunes under a warm sky';
-  }
-  if (lowerText.includes('camel')) {
-    return 'Desert landscape with sand dunes and warm sunlight';
-  }
-
-  // 5. Forest/Woods - Check BEFORE space since rocket in forest should show forest
-  if (lowerText.includes('forest') || lowerText.includes('woods') || lowerText.includes('trees')) {
-    return 'Lush green forest with tall trees, soft sunlight filtering through leaves';
-  }
-
-  // 6. Meadow/Garden
-  if (lowerText.includes('meadow') || lowerText.includes('garden') || lowerText.includes('flower field')) {
-    return 'Beautiful meadow with colorful flowers and soft grass';
-  }
-
-  // 7. Village/Home
-  if (lowerText.includes('village') || lowerText.includes('town')) {
-    return 'Cozy village with cottages and friendly atmosphere';
-  }
-  if (lowerText.includes('home') || lowerText.includes('house') || lowerText.includes('room')) {
-    return 'Warm cozy home interior with comfortable furnishings';
-  }
-
-  // 8. Mountain/Cave
-  if (lowerText.includes('mountain') || lowerText.includes('peak')) {
-    return 'Majestic mountain landscape with scenic views';
-  }
-  if (lowerText.includes('cave')) {
-    return 'Mysterious cave with soft glowing light';
-  }
-
-  // 9. Sky/Clouds
-  if (lowerText.includes('sky') || lowerText.includes('cloud') || lowerText.includes('flying')) {
-    return 'High in the sky among fluffy white clouds';
-  }
-
-  // 10. Rocket/Spaceship ON GROUND (not in space)
-  if (lowerText.includes('rocket') || lowerText.includes('spaceship')) {
-    // Check if launching or on ground
-    if (lowerText.includes('launch') || lowerText.includes('blast') || lowerText.includes('lift off')) {
-      return 'Launch site with rocket lifting off, sky background';
-    }
-    // Rocket found/discovered - usually on ground
-    if (lowerText.includes('found') || lowerText.includes('discover') || lowerText.includes('clearing')) {
-      return 'Open clearing or field with rocket ship visible';
+  // Find the first matching pattern
+  for (const pattern of locationPatterns) {
+    if (pattern.keywords.some(kw => text.includes(kw))) {
+      return pattern.setting;
     }
   }
 
   // Default
-  return 'Magical storybook world with warm, friendly atmosphere';
+  return 'Storybook scene';
 }
 
 /**
- * Detect time of day and weather
+ * Extract key objects from text - GENERIC
  */
-function detectTimeWeather(lowerText: string): string {
-  let time = 'daytime';
-  let weather = 'clear and pleasant';
+function extractKeyObjects(text: string): string[] {
+  const objects: string[] = [];
 
-  // Time detection
-  if (lowerText.includes('morning') || lowerText.includes('dawn') || lowerText.includes('sunrise')) {
-    time = 'early morning';
-  } else if (lowerText.includes('noon') || lowerText.includes('midday')) {
-    time = 'midday';
-  } else if (lowerText.includes('afternoon')) {
-    time = 'afternoon';
-  } else if (lowerText.includes('evening') || lowerText.includes('sunset') || lowerText.includes('dusk')) {
-    time = 'golden sunset';
-  } else if (lowerText.includes('night') || lowerText.includes('dark') || lowerText.includes('moon')) {
-    time = 'nighttime';
+  const objectPatterns = [
+    // Vehicles
+    { keywords: ['rocket', 'spaceship'], name: 'rocket ship' },
+    { keywords: ['boat', 'ship', 'sailboat'], name: 'boat' },
+    { keywords: ['car', 'truck', 'bus'], name: 'vehicle' },
+    { keywords: ['airplane', 'plane'], name: 'airplane' },
+    { keywords: ['balloon'], name: 'balloon' },
+
+    // Nature
+    { keywords: ['rainbow'], name: 'rainbow' },
+    { keywords: ['waterfall'], name: 'waterfall' },
+    { keywords: ['river', 'stream'], name: 'river' },
+
+    // Items
+    { keywords: ['treasure', 'chest'], name: 'treasure chest' },
+    { keywords: ['crown'], name: 'crown' },
+    { keywords: ['wand', 'magic wand'], name: 'magic wand' },
+    { keywords: ['book'], name: 'book' },
+    { keywords: ['map'], name: 'map' },
+    { keywords: ['telescope'], name: 'telescope' },
+    { keywords: ['helmet'], name: 'helmet' },
+
+    // Celestial
+    { keywords: ['moon'], name: 'moon' },
+    { keywords: ['star', 'stars'], name: 'stars' },
+    { keywords: ['planet', 'planets'], name: 'planets' },
+    { keywords: ['sun'], name: 'sun' },
+  ];
+
+  for (const pattern of objectPatterns) {
+    if (pattern.keywords.some(kw => text.includes(kw))) {
+      objects.push(pattern.name);
+    }
   }
 
-  // Weather detection
-  if (lowerText.includes('rain') || lowerText.includes('storm')) {
-    weather = 'rainy';
-  } else if (lowerText.includes('snow') || lowerText.includes('winter') || lowerText.includes('cold')) {
-    weather = 'snowy';
-  } else if (lowerText.includes('sunny') || lowerText.includes('bright')) {
-    weather = 'sunny and warm';
-  } else if (lowerText.includes('cloudy') || lowerText.includes('overcast')) {
-    weather = 'partly cloudy';
-  }
-
-  return `${time}, ${weather}`;
+  return objects.slice(0, 4); // Max 4 objects
 }
 
 /**
- * Extract what the main character is doing
+ * Extract supporting characters from text
  */
-function extractMainAction(pageText: string, characterName: string): string {
-  const lowerText = pageText.toLowerCase();
+function extractSupportingCharacters(text: string, mainCharName: string): string[] {
+  const characters: string[] = [];
 
-  // Action verbs with their descriptions
-  const actions: { [key: string]: string } = {
-    'swimming': `${characterName} swimming happily`,
-    'flying': `${characterName} soaring through the air`,
-    'running': `${characterName} running with excitement`,
-    'walking': `${characterName} walking along`,
-    'climbing': `${characterName} climbing adventurously`,
-    'jumping': `${characterName} jumping with joy`,
-    'dancing': `${characterName} dancing gracefully`,
-    'playing': `${characterName} playing cheerfully`,
-    'exploring': `${characterName} exploring curiously`,
-    'discovering': `${characterName} discovering something wonderful`,
-    'hugging': `${characterName} hugging warmly`,
-    'waving': `${characterName} waving happily`,
-    'looking': `${characterName} looking with curiosity`,
-    'sleeping': `${characterName} sleeping peacefully`,
-    'eating': `${characterName} enjoying a meal`,
-    'laughing': `${characterName} laughing joyfully`,
-    'crying': `${characterName} showing emotion`,
-    'smiling': `${characterName} smiling brightly`,
-    'talking': `${characterName} having a conversation`,
-    'reading': `${characterName} reading a book`,
-    'painting': `${characterName} creating art`,
-    'building': `${characterName} building something`,
-    'helping': `${characterName} helping others`,
-    'celebrating': `${characterName} celebrating happily`,
-    'said goodbye': `${characterName} waving goodbye`,
-    'climbed': `${characterName} climbing into`,
-  };
+  const characterPatterns = [
+    { keywords: ['friend', 'friends'], name: 'friends' },
+    { keywords: ['family', 'parent', 'mother', 'father', 'mom', 'dad'], name: 'family' },
 
-  for (const [keyword, action] of Object.entries(actions)) {
-    if (lowerText.includes(keyword)) {
-      return action;
+    // Animals
+    { keywords: ['dog', 'puppy'], name: 'dog' },
+    { keywords: ['cat', 'kitten'], name: 'cat' },
+    { keywords: ['bird', 'birds'], name: 'birds' },
+    { keywords: ['rabbit', 'bunny'], name: 'rabbit' },
+    { keywords: ['bear'], name: 'bear' },
+    { keywords: ['fox'], name: 'fox' },
+    { keywords: ['owl'], name: 'owl' },
+    { keywords: ['butterfly', 'butterflies'], name: 'butterflies' },
+
+    // Sea creatures
+    { keywords: ['fish'], name: 'fish' },
+    { keywords: ['dolphin'], name: 'dolphins' },
+    { keywords: ['whale'], name: 'whale' },
+    { keywords: ['shark'], name: 'shark' },
+    { keywords: ['turtle'], name: 'turtle' },
+    { keywords: ['octopus'], name: 'octopus' },
+
+    // Fantasy
+    { keywords: ['dragon'], name: 'dragon' },
+    { keywords: ['unicorn'], name: 'unicorn' },
+    { keywords: ['fairy', 'fairies'], name: 'fairies' },
+    { keywords: ['alien', 'aliens'], name: 'aliens' },
+    { keywords: ['robot'], name: 'robot' },
+  ];
+
+  for (const pattern of characterPatterns) {
+    // Don't add if it's the main character
+    if (mainCharName.toLowerCase().includes(pattern.keywords[0])) continue;
+
+    if (pattern.keywords.some(kw => text.includes(kw))) {
+      characters.push(pattern.name);
+    }
+  }
+
+  return characters.slice(0, 3); // Max 3 supporting characters
+}
+
+/**
+ * Extract time/weather from text
+ */
+function extractTimeWeather(text: string): string {
+  if (text.includes('night') || text.includes('dark') || text.includes('moon')) return 'nighttime';
+  if (text.includes('morning') || text.includes('sunrise') || text.includes('dawn')) return 'morning';
+  if (text.includes('sunset') || text.includes('evening') || text.includes('dusk')) return 'sunset';
+  if (text.includes('rain') || text.includes('storm')) return 'rainy';
+  if (text.includes('snow') || text.includes('winter')) return 'snowy';
+  return 'daytime';
+}
+
+/**
+ * Extract action from text
+ */
+function extractAction(text: string, characterName: string): string {
+  const actions = [
+    'flying', 'swimming', 'running', 'walking', 'jumping', 'dancing',
+    'playing', 'exploring', 'climbing', 'sleeping', 'eating', 'reading',
+    'laughing', 'smiling', 'waving', 'hugging', 'looking', 'standing'
+  ];
+
+  for (const action of actions) {
+    if (text.includes(action)) {
+      return `${characterName} ${action}`;
     }
   }
 
@@ -276,173 +211,28 @@ function extractMainAction(pageText: string, characterName: string): string {
 }
 
 /**
- * Extract supporting characters from text
+ * Build forbidden elements - exclude things NOT in this scene
  */
-function extractSupportingCharacters(lowerText: string): string[] {
-  const characters: string[] = [];
-
-  const characterMap: { [key: string]: string } = {
-    'shark': 'friendly sharks',
-    'dolphin': 'playful dolphins',
-    'whale': 'gentle whale',
-    'fish': 'colorful fish',
-    'octopus': 'cute octopus',
-    'turtle': 'wise turtle',
-    'crab': 'cheerful crab',
-    'jellyfish': 'glowing jellyfish',
-    'mermaid': 'beautiful mermaid',
-    'seahorse': 'tiny seahorse',
-    'owl': 'wise owl',
-    'bird': 'friendly birds',
-    'butterfly': 'colorful butterflies',
-    'bee': 'busy bees',
-    'rabbit': 'fluffy rabbit',
-    'bunny': 'cute bunny',
-    'fox': 'clever fox',
-    'deer': 'gentle deer',
-    'bear': 'friendly bear',
-    'squirrel': 'playful squirrel',
-    'mouse': 'tiny mouse',
-    'dragon': 'friendly dragon',
-    'unicorn': 'magical unicorn',
-    'fairy': 'sparkly fairy',
-    'alien': 'friendly aliens',
-    'robot': 'helpful robot',
-    'camel': 'friendly camels',
-    'friend': 'new friends',
-  };
-
-  for (const [keyword, character] of Object.entries(characterMap)) {
-    if (lowerText.includes(keyword)) {
-      characters.push(character);
-    }
-  }
-
-  return characters.slice(0, 4); // Max 4 supporting characters
-}
-
-/**
- * Extract key objects that MUST appear in the image
- */
-function extractKeyObjects(lowerText: string): string[] {
-  const objects: string[] = [];
-
-  const objectMap: { [key: string]: string } = {
-    'rocket': 'shiny rocket ship',
-    'spaceship': 'silver spaceship',
-    'treasure': 'golden treasure chest',
-    'crown': 'sparkling crown',
-    'wand': 'magic wand',
-    'castle': 'beautiful castle',
-    'balloon': 'colorful balloons',
-    'rainbow': 'bright rainbow',
-    'star': 'twinkling stars',
-    'moon': 'glowing moon',
-    'planet': 'colorful planets',
-    'boat': 'small boat',
-    'ship': 'sailing ship',
-    'telescope': 'brass telescope',
-    'map': 'treasure map',
-    'book': 'magical book',
-    'crystal': 'glowing crystal',
-    'flower': 'beautiful flowers',
-    'tree': 'tall trees',
-    'mountain': 'distant mountains',
-    'waterfall': 'cascading waterfall',
-    'bridge': 'wooden bridge',
-    'tent': 'camping tent',
-    'campfire': 'warm campfire',
-  };
-
-  for (const [keyword, object] of Object.entries(objectMap)) {
-    if (lowerText.includes(keyword)) {
-      objects.push(object);
-    }
-  }
-
-  return objects.slice(0, 5); // Max 5 key objects
-}
-
-/**
- * Build required elements list
- */
-function buildRequiredElements(keyObjects: string[], supportingCharacters: string[]): string[] {
-  const required: string[] = [];
-
-  // Add supporting characters
-  for (const char of supportingCharacters) {
-    required.push(char);
-  }
-
-  // Add key objects
-  for (const obj of keyObjects) {
-    required.push(obj);
-  }
-
-  return required;
-}
-
-/**
- * Build forbidden elements based on current setting and previous scenes
- * Rule C: Previous scene items should be forbidden in new scenes
- */
-function buildForbiddenElements(setting: string, previousSceneCards: PageSceneCard[]): string[] {
+function buildForbiddenElements(text: string): string[] {
   const forbidden: string[] = [];
-  const lowerSetting = setting.toLowerCase();
 
-  // Environment-based exclusions
-  if (lowerSetting.includes('underwater') || lowerSetting.includes('ocean')) {
-    forbidden.push('forest', 'trees', 'grass', 'land', 'sky', 'buildings', 'desert', 'mountains');
-  } else if (lowerSetting.includes('space') || lowerSetting.includes('star') || lowerSetting.includes('cosmic')) {
-    forbidden.push('forest', 'trees', 'grass', 'water', 'ocean', 'fish', 'buildings', 'land');
-  } else if (lowerSetting.includes('desert') || lowerSetting.includes('sand')) {
-    forbidden.push('ocean', 'water', 'fish', 'forest', 'snow', 'space', 'stars', 'underwater');
-  } else if (lowerSetting.includes('forest') || lowerSetting.includes('meadow')) {
-    forbidden.push('space', 'planets', 'stars', 'underwater', 'ocean', 'fish', 'coral', 'desert');
-  } else if (lowerSetting.includes('moon')) {
-    forbidden.push('forest', 'trees', 'ocean', 'water', 'fish', 'animals', 'buildings');
+  // If in space, forbid earth elements
+  if (text.includes('space') || text.includes('cosmos') || text.includes('rocket')) {
+    if (!text.includes('forest')) forbidden.push('forest', 'trees');
+    if (!text.includes('ocean')) forbidden.push('ocean', 'water');
   }
 
-  // Add previous scene environments to prevent repetition
-  if (previousSceneCards.length > 0) {
-    const lastScene = previousSceneCards[previousSceneCards.length - 1];
-    // If last scene was different environment, exclude its distinctive features
-    if (lastScene.setting.toLowerCase().includes('ocean') && !lowerSetting.includes('ocean')) {
-      forbidden.push('coral', 'seaweed', 'bubbles');
-    }
-    if (lastScene.setting.toLowerCase().includes('forest') && !lowerSetting.includes('forest')) {
-      forbidden.push('thick trees', 'forest path');
-    }
+  // If underwater, forbid land elements
+  if (text.includes('underwater') || text.includes('ocean')) {
+    forbidden.push('forest', 'trees', 'buildings');
   }
 
-  // Always forbidden
-  forbidden.push('text', 'logos', 'watermarks', 'signature', 'extra unrelated characters');
-
-  return [...new Set(forbidden)]; // Remove duplicates
-}
-
-/**
- * Determine camera shot type based on scene complexity
- */
-function determineCameraShot(numCharacters: number, numObjects: number): { shot_type: "wide" | "medium" | "close-up"; composition_notes: string } {
-  const totalElements = numCharacters + numObjects;
-
-  if (totalElements >= 4) {
-    return {
-      shot_type: 'wide',
-      composition_notes: 'Show full environment with all characters and objects visible'
-    };
-  } else if (totalElements >= 2) {
-    return {
-      shot_type: 'medium',
-      composition_notes: 'Main character centered with supporting elements visible around them'
-    };
-  } else {
-    return {
-      shot_type: 'medium',
-      composition_notes: 'Focus on main character with environment as backdrop'
-    };
+  // If forest/land, forbid space elements
+  if (text.includes('forest') || text.includes('meadow') || text.includes('garden')) {
+    forbidden.push('space', 'planets', 'rockets');
   }
+
+  return forbidden;
 }
 
 /**
@@ -459,7 +249,7 @@ export function generateAllSceneCards(
       pages[i].text,
       i + 1,
       bible,
-      sceneCards // Pass previous cards for forbidden elements
+      sceneCards
     );
     sceneCards.push(card);
   }
