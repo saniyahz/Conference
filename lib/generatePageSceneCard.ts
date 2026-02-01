@@ -42,44 +42,68 @@ export function generatePageSceneCard(
 }
 
 /**
- * Extract setting from page text - GENERIC approach
- * Looks for location/environment phrases
+ * Extract setting from page text - looks for WHERE the scene takes place
+ * Priority: "in/at/through [location]" phrases > general keywords
  */
 function extractSetting(text: string): string {
-  // Location patterns to look for
-  const locationPatterns = [
-    // Space
-    { keywords: ['outer space', 'through space', 'in space', 'cosmos', 'among the stars'], setting: 'Outer space with stars and planets' },
-    { keywords: ['rocket ship', 'spaceship', 'cockpit'], setting: 'Inside a rocket ship' },
-    { keywords: ['moon surface', 'on the moon', 'lunar'], setting: 'Moon surface with craters' },
-    { keywords: ['mars', 'red planet'], setting: 'Mars surface, red terrain' },
+  // PRIORITY 1: Look for explicit location phrases "in the X", "through the X", "at the X"
+  const locationPhrases = [
+    // City/Town
+    { pattern: /(?:in|through|around)\s+(?:the\s+)?(?:city|town|village|streets?)/i, setting: 'City streets with buildings' },
+    { pattern: /(?:explored|walked|strolled)\s+(?:the\s+)?(?:city|town|streets?)/i, setting: 'City streets with buildings' },
 
-    // Water
-    { keywords: ['underwater', 'beneath the waves', 'ocean floor'], setting: 'Underwater ocean scene' },
-    { keywords: ['ocean', 'sea', 'beach'], setting: 'Ocean or beach scene' },
+    // Indoor
+    { pattern: /(?:in|inside)\s+(?:the\s+)?(?:house|home|room|bedroom|kitchen)/i, setting: 'Cozy indoor room' },
+    { pattern: /(?:in|inside)\s+(?:the\s+)?(?:castle|palace|throne)/i, setting: 'Castle interior' },
+    { pattern: /(?:in|inside)\s+(?:the\s+)?(?:school|classroom)/i, setting: 'School classroom' },
+    { pattern: /(?:in|inside)\s+(?:the\s+)?(?:rocket|spaceship|ship)/i, setting: 'Inside a rocket ship cockpit' },
 
     // Nature
-    { keywords: ['forest', 'woods', 'trees'], setting: 'Forest with trees' },
-    { keywords: ['meadow', 'field', 'grassland'], setting: 'Open meadow with grass and flowers' },
-    { keywords: ['garden', 'flowers'], setting: 'Beautiful garden' },
-    { keywords: ['desert', 'sand dunes', 'sandy'], setting: 'Desert with sand dunes' },
-    { keywords: ['mountain', 'cliff', 'peak'], setting: 'Mountain landscape' },
-    { keywords: ['jungle', 'rainforest'], setting: 'Jungle setting' },
+    { pattern: /(?:in|through|into)\s+(?:the\s+)?(?:forest|woods)/i, setting: 'Forest with tall trees' },
+    { pattern: /(?:in|at|by)\s+(?:the\s+)?(?:meadow|field|garden)/i, setting: 'Beautiful meadow with flowers' },
+    { pattern: /(?:in|at)\s+(?:the\s+)?(?:desert|dunes)/i, setting: 'Desert with sand dunes' },
+    { pattern: /(?:on|at)\s+(?:the\s+)?(?:mountain|hill|cliff)/i, setting: 'Mountain landscape' },
+    { pattern: /(?:at|on)\s+(?:the\s+)?(?:beach|shore)/i, setting: 'Beach with sand and waves' },
 
-    // Indoor/Urban
-    { keywords: ['home', 'house', 'room', 'bedroom', 'kitchen'], setting: 'Cozy indoor room' },
-    { keywords: ['castle', 'palace', 'throne'], setting: 'Castle interior' },
-    { keywords: ['village', 'town', 'street'], setting: 'Village or town' },
-    { keywords: ['school', 'classroom'], setting: 'School classroom' },
+    // Water
+    { pattern: /(?:under|beneath)\s+(?:the\s+)?(?:water|waves|sea|ocean)/i, setting: 'Underwater ocean scene' },
+    { pattern: /(?:in|into)\s+(?:the\s+)?(?:ocean|sea|lake|river)/i, setting: 'By the water' },
+
+    // Space
+    { pattern: /(?:in|through|into)\s+(?:outer\s+)?space/i, setting: 'Outer space with stars and planets' },
+    { pattern: /(?:on|landed\s+on)\s+(?:the\s+)?(?:moon)/i, setting: 'Moon surface with craters' },
+    { pattern: /(?:on|landed\s+on)\s+(?:the\s+)?(?:mars|planet)/i, setting: 'Alien planet surface' },
 
     // Sky
-    { keywords: ['sky', 'clouds', 'flying', 'soaring'], setting: 'High in the sky with clouds' },
+    { pattern: /(?:in|through|across)\s+(?:the\s+)?(?:sky|clouds)/i, setting: 'High in the sky with clouds' },
+    { pattern: /(?:flying|soaring)\s+(?:through|in)/i, setting: 'Flying through the sky' },
   ];
 
-  // Find the first matching pattern
-  for (const pattern of locationPatterns) {
-    if (pattern.keywords.some(kw => text.includes(kw))) {
-      return pattern.setting;
+  // Check explicit location phrases first
+  for (const { pattern, setting } of locationPhrases) {
+    if (pattern.test(text)) {
+      return setting;
+    }
+  }
+
+  // PRIORITY 2: Keyword-based fallback (but with lower priority)
+  const keywordPatterns = [
+    { keywords: ['city', 'street', 'town', 'village'], setting: 'City or town scene' },
+    { keywords: ['underwater', 'ocean floor', 'coral reef'], setting: 'Underwater ocean scene' },
+    { keywords: ['outer space', 'cosmos', 'galaxy'], setting: 'Outer space with stars' },
+    { keywords: ['forest', 'woods', 'trees'], setting: 'Forest scene' },
+    { keywords: ['meadow', 'garden', 'flowers'], setting: 'Garden or meadow' },
+    { keywords: ['desert', 'sand'], setting: 'Desert scene' },
+    { keywords: ['mountain', 'cliff'], setting: 'Mountain scene' },
+    { keywords: ['beach', 'shore', 'ocean'], setting: 'Beach scene' },
+    { keywords: ['home', 'house', 'room'], setting: 'Indoor room' },
+    { keywords: ['castle', 'palace'], setting: 'Castle scene' },
+    { keywords: ['sky', 'clouds', 'flying'], setting: 'Sky scene' },
+  ];
+
+  for (const { keywords, setting } of keywordPatterns) {
+    if (keywords.some(kw => text.includes(kw))) {
+      return setting;
     }
   }
 
@@ -133,9 +157,17 @@ function extractKeyObjects(text: string): string[] {
 
 /**
  * Extract supporting characters from text
+ * Also detects "X and Y" patterns for multiple main characters
  */
 function extractSupportingCharacters(text: string, mainCharName: string): string[] {
   const characters: string[] = [];
+
+  // Check for "Name and Name" pattern (multiple main characters)
+  const andPattern = new RegExp(`${mainCharName}\\s+and\\s+([A-Z][a-z]+)`, 'i');
+  const andMatch = text.match(andPattern);
+  if (andMatch) {
+    characters.push(andMatch[1]); // Add the second character
+  }
 
   const characterPatterns = [
     { keywords: ['friend', 'friends'], name: 'friends' },
