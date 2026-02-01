@@ -2,33 +2,34 @@ import { CharacterBible, PageSceneCard } from "./visual-types";
 
 /**
  * UNIVERSAL PROMPT TEMPLATE
- * Disney/Pixar animated style
- * Extracts scene and characters DIRECTLY from page text
+ * CHARACTER-FIRST approach - species must be the FIRST words in prompt
+ * SDXL only pays attention to first ~77 tokens
  */
 export function renderPrompt(bible: CharacterBible, card: PageSceneCard, pageText?: string): string {
   const text = pageText || '';
   const lowerText = text.toLowerCase();
 
-  // 1. SCENE - Extract directly from page text
+  // 1. CHARACTER SPECIES FIRST - This is the most important part!
+  const species = bible.species || 'animal';
+  const charName = bible.name;
+
+  // 2. SCENE - Extract from page text
   const scene = extractSceneFromText(lowerText, card.setting);
 
-  // 2. MAIN CHARACTER - from bible
-  const mainChar = buildMainCharacter(bible);
+  // 3. SUPPORTING CHARACTERS - only named ones from text
+  const supporting = extractNamedCharactersFromText(lowerText, charName);
 
-  // 3. SUPPORTING CHARACTERS - extract from page text
-  const supporting = extractSupportingFromText(lowerText, bible.name);
+  // BUILD PROMPT - CHARACTER FIRST, then scene
+  // Format: "A cute [species], [name], in [scene]. Disney Pixar style."
+  let prompt: string;
 
-  // 4. KEY OBJECTS - extract from page text
-  const objects = extractObjectsFromText(lowerText);
-
-  // 5. STYLE - Disney/Pixar animated style (short!)
-  const style = "Disney Pixar 3D animated, cute, vibrant colors.";
-
-  // Build prompt - SDXL only uses first ~77 tokens, keep it SHORT
-  let prompt = `${scene}. ${mainChar}`;
-  if (supporting) prompt += ` ${supporting}`;
-  if (objects) prompt += ` ${objects}`;
-  prompt += ` ${style}`;
+  if (bible.character_type === 'animal' && species !== 'animal') {
+    // ANIMAL CHARACTER - species is FIRST and REPEATED
+    prompt = `A cute cartoon ${species} with big eyes, ${charName} the ${species}, in ${scene}. ${supporting}Disney Pixar 3D animated style.`;
+  } else {
+    // HUMAN or unknown - generic child
+    prompt = `A cute cartoon child, ${charName}, in ${scene}. ${supporting}Disney Pixar 3D animated style.`;
+  }
 
   console.log(`[PROMPT] Page ${card.page_number}: ${prompt}`);
   return prompt;
@@ -118,6 +119,32 @@ function extractSceneFromText(text: string, fallbackSetting: string): string {
   }
 
   return fallbackSetting;
+}
+
+/**
+ * Extract named characters from text like "Benny the dog" or "Fufu the cat"
+ * Returns string like "with Benny the dog and Fufu the cat, "
+ */
+function extractNamedCharactersFromText(text: string, mainCharName: string): string {
+  const found: string[] = [];
+  const mainLower = mainCharName.toLowerCase();
+
+  // Common pattern: "[Name] the [animal]"
+  const namedAnimalPattern = /\b([A-Z][a-z]+)\s+the\s+(dog|cat|rabbit|bunny|bear|fox|owl|bird|mouse|squirrel|deer|porcupine|hedgehog|raccoon|beaver|frog|turtle|fish|penguin|lion|tiger|elephant|monkey|giraffe|zebra|hippo|koala|kangaroo|dolphin|whale|seal|otter|wolf|pig|cow|horse|sheep|goat|duck|chicken|butterfly|bee|dragon|unicorn)\b/gi;
+
+  let match;
+  while ((match = namedAnimalPattern.exec(text)) !== null) {
+    const name = match[1];
+    const animal = match[2].toLowerCase();
+    // Skip if it's the main character
+    if (name.toLowerCase() === mainLower) continue;
+    found.push(`${name} the ${animal}`);
+  }
+
+  if (found.length === 0) return '';
+  // Limit to 2 supporting characters to keep prompt short
+  const chars = [...new Set(found)].slice(0, 2);
+  return `with ${chars.join(' and ')}, `;
 }
 
 /**
