@@ -4,6 +4,8 @@ import { NormalizedScene, CharacterCanon } from "./visual-types";
  * Normalize page text into a structured scene specification.
  * This is DETERMINISTIC - same input always produces same output.
  * NEVER throws - always returns a valid scene.
+ *
+ * EXPLICIT SCENE TYPE DETECTION - specific rules for common story patterns
  */
 export function normalizeScene(
   pageText: string,
@@ -18,7 +20,79 @@ export function normalizeScene(
   const lowerText = pageText.toLowerCase();
   console.log(`[normalizeScene] Processing: "${lowerText.substring(0, 100)}..."`);
 
-  // Detect environment type
+  // EXPLICIT SCENE TYPE DETECTION - check specific patterns FIRST
+
+  // ROCKET + MEADOW = Rocket discovery scene (NOT underwater!)
+  if (lowerText.includes('rocket') && lowerText.includes('meadow')) {
+    console.log('[normalizeScene] EXPLICIT: Rocket discovery in meadow');
+    return {
+      sceneType: 'rocket discovery',
+      camera: 'wide',
+      mainCharacter: {
+        id: canon.id,
+        position: 'center foreground',
+        visibility: 'full body visible',
+        action: `${canon.name} standing beside an old rocket ship`,
+      },
+      supportingElements: [
+        { type: 'old rusty rocket ship', count: 1, position: 'background center' },
+      ],
+      environment: {
+        setting: 'forest meadow',
+        elements: ['grass', 'flowers', 'blue sky', 'trees in distance'],
+      },
+      exclusions: ['no water', 'no ocean', 'no fish', 'no underwater', 'no scuba gear', 'no coral'],
+    };
+  }
+
+  // SPACE/COSMOS travel scenes
+  if ((lowerText.includes('space') || lowerText.includes('cosmos')) &&
+      (lowerText.includes('travel') || lowerText.includes('soar') || lowerText.includes('blast'))) {
+    console.log('[normalizeScene] EXPLICIT: Space travel');
+    return {
+      sceneType: 'space travel',
+      camera: 'wide',
+      mainCharacter: {
+        id: canon.id,
+        position: 'center',
+        visibility: 'full body visible',
+        action: `${canon.name} inside or near a rocket ship`,
+      },
+      supportingElements: [
+        { type: 'rocket ship', count: 1, position: 'around character' },
+      ],
+      environment: {
+        setting: 'outer space',
+        elements: ['stars', 'planets', 'dark sky', 'cosmic dust'],
+      },
+      exclusions: ['no grass', 'no water', 'no fish', 'no trees', 'no land animals', 'no ocean'],
+    };
+  }
+
+  // ALIENS meeting scene
+  if (lowerText.includes('alien')) {
+    console.log('[normalizeScene] EXPLICIT: Alien encounter');
+    return {
+      sceneType: 'alien encounter',
+      camera: 'medium-wide',
+      mainCharacter: {
+        id: canon.id,
+        position: 'center left',
+        visibility: 'full body visible',
+        action: `${canon.name} meeting friendly aliens`,
+      },
+      supportingElements: [
+        { type: 'friendly cute aliens', count: 2, position: 'center right' },
+      ],
+      environment: {
+        setting: 'outer space',
+        elements: ['alien planet surface', 'strange plants', 'colorful sky'],
+      },
+      exclusions: ['no water', 'no ocean', 'no fish', 'no earth animals'],
+    };
+  }
+
+  // Detect environment type using keyword matching
   const envType = detectEnvironment(lowerText);
   console.log(`[normalizeScene] Detected environment: ${envType}`);
 

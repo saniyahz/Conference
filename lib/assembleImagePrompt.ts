@@ -9,6 +9,11 @@ export function assembleImagePrompt(
   scene: NormalizedScene,
   canon: CharacterCanon
 ): string {
+  // DEBUG: Log the full scene for debugging
+  console.log(`[assembleImagePrompt] Scene type: ${scene.sceneType}`);
+  console.log(`[assembleImagePrompt] Environment: ${scene.environment.setting}`);
+  console.log(`[assembleImagePrompt] Exclusions: ${scene.exclusions?.join(', ')}`);
+
   // ENVIRONMENT FIRST - this is what SDXL will pay most attention to
   const envDesc = getShortEnvironment(scene.environment.setting);
 
@@ -26,7 +31,7 @@ export function assembleImagePrompt(
     ? `${envDesc} ${charDesc} With ${elementsStr}. Children's book illustration, watercolor style.`
     : `${envDesc} ${charDesc} Children's book illustration, watercolor style.`;
 
-  console.log(`[PROMPT] ${prompt.substring(0, 200)}`);
+  console.log(`[FINAL PROMPT] ${prompt}`);
   return prompt;
 }
 
@@ -71,20 +76,42 @@ function getShortCharacter(canon: CharacterCanon): string {
 export function assembleNegativePrompt(scene: NormalizedScene): string {
   const base = "portrait, close-up, photorealistic, 3d, anime, text, logo, watermark";
 
-  // Add environment-specific exclusions
+  // Use scene-specific exclusions if available
+  if (scene.exclusions && scene.exclusions.length > 0) {
+    // Convert exclusions like "no water" to "water"
+    const exclusionTerms = scene.exclusions
+      .map(e => e.replace(/^no\s+/i, '').trim())
+      .filter(e => e.length > 0)
+      .join(', ');
+    const negPrompt = `${base}, ${exclusionTerms}`;
+    console.log(`[NEGATIVE PROMPT] ${negPrompt}`);
+    return negPrompt;
+  }
+
+  // Fallback to environment-specific exclusions
+  let envExclusions = '';
   switch (scene.environment.setting) {
     case "outer space":
     case "moon surface":
-      return `${base}, forest, trees, grass, water, ocean, animals, houses`;
+      envExclusions = "forest, trees, grass, water, ocean, fish, coral, underwater, animals, houses";
+      break;
     case "underwater ocean":
-      return `${base}, forest, trees, grass, sky, land, houses`;
+      envExclusions = "forest, trees, grass, sky, land, houses, space, stars";
+      break;
     case "sky":
-      return `${base}, ground, underwater, space, indoor`;
+      envExclusions = "ground, underwater, space, indoor, ocean";
+      break;
     case "indoor":
-      return `${base}, forest, wilderness, ocean, space`;
+      envExclusions = "forest, wilderness, ocean, space, underwater";
+      break;
     case "forest meadow":
-      return `${base}, space, underwater, ocean, buildings`;
+      envExclusions = "space, underwater, ocean, fish, coral, buildings, stars, planets";
+      break;
     default:
-      return base;
+      envExclusions = "underwater, fish, coral";
   }
+
+  const negPrompt = `${base}, ${envExclusions}`;
+  console.log(`[NEGATIVE PROMPT] ${negPrompt}`);
+  return negPrompt;
 }
