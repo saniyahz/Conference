@@ -15,6 +15,7 @@ async function generateImageWithRetry(
   customNegativePrompt: string | undefined,
   imageIndex: number,
   imagePromptsLength: number,
+  seed: number,
   maxRetries = 2
 ): Promise<string> {
   for (let attempt = 1; attempt <= maxRetries; attempt++) {
@@ -43,7 +44,7 @@ async function generateImageWithRetry(
           console.log(`===================================\n`)
 
           // Use standard SDXL for better prompt adherence
-          // More steps = better quality and prompt following
+          // SEED helps with character consistency across images
           const output = await replicate.run(
             "stability-ai/sdxl:39ed52f2a78e934b3ba6e2a89f5b1c712de7dfea535525255b1aa35c5565e08b",
             {
@@ -54,10 +55,9 @@ async function generateImageWithRetry(
                 height: 1024,
                 num_outputs: 1,
                 scheduler: "K_EULER",
-                num_inference_steps: 30,  // More steps = better prompt adherence
+                num_inference_steps: 25,  // Reduced for speed, still good quality
                 guidance_scale: 7.5,      // Higher = follows prompt more strictly
-                refine: "expert_ensemble_refiner",
-                high_noise_frac: 0.8
+                seed: seed,               // Same seed for character consistency
               }
             }
           )
@@ -129,7 +129,7 @@ async function generateImageWithRetry(
 
 export async function POST(request: NextRequest) {
   try {
-    const { imagePrompts, negativePrompts } = await request.json()
+    const { imagePrompts, negativePrompts, seed } = await request.json()
 
     if (!imagePrompts || !Array.isArray(imagePrompts)) {
       return NextResponse.json(
@@ -146,6 +146,11 @@ export async function POST(request: NextRequest) {
       )
     }
 
+    // Use provided seed or generate a random one for this story
+    // Same seed helps maintain character consistency across all images
+    const storySeed = seed || Math.floor(Math.random() * 1000000)
+    console.log(`Using seed: ${storySeed} for character consistency`)
+
     // Generate images ONE AT A TIME to avoid rate limits
     const imageUrls: string[] = []
 
@@ -156,7 +161,7 @@ export async function POST(request: NextRequest) {
       console.log(`Generating image ${i + 1}/${imagePrompts.length}...`)
 
       try {
-        const imageUrl = await generateImageWithRetry(replicate, prompt, negativePrompt, i, imagePrompts.length)
+        const imageUrl = await generateImageWithRetry(replicate, prompt, negativePrompt, i, imagePrompts.length, storySeed)
         imageUrls.push(imageUrl)
         console.log(`Image ${i + 1} done: ${imageUrl ? 'success' : 'failed'}`)
       } catch (error) {
@@ -164,13 +169,13 @@ export async function POST(request: NextRequest) {
         imageUrls.push('') // Push empty string for failed images
       }
 
-      // Shorter delay - SDXL Lightning is much faster
+      // Short delay between images
       if (i < imagePrompts.length - 1) {
-        await sleep(1500)
+        await sleep(1000)
       }
     }
 
-    return NextResponse.json({ imageUrls })
+    return NextResponse.json({ imageUrls, seed: storySeed })
   } catch (error) {
     console.error('Error in image generation:', error)
     return NextResponse.json(

@@ -252,65 +252,139 @@ function generateImagePromptsWithDNA(story: any): { prompts: string[]; negativeP
 }
 
 // Build the page-specific image scene description
-// PRODUCTION-GRADE: Counts, positions, camera framing, completeness rule
+// SIMPLIFIED: Character lock FIRST (most attention), then scene, then style
+// Models only pay attention to first ~77 tokens - keep it SHORT
 function buildPageImageScene(characterDNA: CharacterDNA, storyWorldDNA: string, sceneDescription: string, pageText: string): string {
   // Extract the ACTUAL environment from the page text
   const environment = extractEnvironmentFromText(pageText, storyWorldDNA)
 
-  // Extract characters/elements with counts and positions
-  const sceneElements = extractSceneElementsWithCounts(pageText)
+  // Extract key objects that MUST appear
+  const keyObjects = extractKeyObjects(pageText)
 
-  // Determine camera framing based on scene complexity
-  const cameraFraming = determineCameraFraming(sceneElements)
+  // Build SHORT character lock - this goes FIRST (gets most attention)
+  const charLock = buildShortCharacterLock(characterDNA)
 
-  // Extract character emotion from text
-  const emotion = extractEmotion(pageText)
+  // Build SHORT scene description with key objects
+  const sceneShort = buildShortScene(keyObjects, environment.type, sceneDescription)
 
-  // Build the production-grade prompt
-  let prompt = `SCENE TYPE: ${environment.type}
+  // SIMPLE PROMPT FORMAT:
+  // 1. Character (FIRST - most attention)
+  // 2. Scene with key objects (SECOND)
+  // 3. Style (LAST)
+  return `${charLock}
 
-MAIN CHARACTER:
-- ${characterDNA.name} in the center of the image
-- ${emotion}
-- ${characterDNA.facial_features}`
+${sceneShort}
 
-  // Add other characters if present
-  if (sceneElements.characters.length > 0) {
-    prompt += `
+Children's book illustration, soft watercolor, cute rounded style, gentle colors.`
+}
 
-OTHER CHARACTERS (exact counts):
-${sceneElements.characters.map(c => `- ${c.count} ${c.name}`).join('\n')}`
+// Build SHORT character lock - under 30 words
+function buildShortCharacterLock(dna: CharacterDNA): string {
+  // Extract the most important visual features only
+  const skinTone = extractSkinTone(dna)
+  const hairDesc = extractHairDescription(dna)
+  const clothingDesc = dna.accessories !== 'none' ? dna.accessories : 'simple colorful clothes'
+
+  return `Young ${dna.type === 'human' ? 'child' : dna.type}, ${skinTone}, ${hairDesc}, big round eyes, rosy cheeks, ${clothingDesc}.`
+}
+
+// Extract skin tone from DNA
+function extractSkinTone(dna: CharacterDNA): string {
+  const colors = dna.color_palette.join(' ').toLowerCase()
+  if (colors.includes('brown') || colors.includes('dark')) return 'dark brown skin'
+  if (colors.includes('tan') || colors.includes('olive')) return 'tan skin'
+  if (colors.includes('rosy') || colors.includes('pink')) return 'light rosy skin'
+  return 'warm skin tone'
+}
+
+// Extract hair description from DNA
+function extractHairDescription(dna: CharacterDNA): string {
+  const form = dna.physical_form.toLowerCase()
+  const colors = dna.color_palette.join(' ').toLowerCase()
+
+  // Try to extract hair info
+  if (form.includes('curly') || form.includes('afro')) {
+    if (colors.includes('pink')) return 'big pink curly hair'
+    if (colors.includes('brown')) return 'brown curly hair'
+    return 'curly hair'
+  }
+  if (form.includes('straight')) return 'straight hair'
+  if (form.includes('long')) return 'long hair'
+
+  // Default based on color
+  if (colors.includes('golden') || colors.includes('blonde')) return 'golden blonde hair'
+  if (colors.includes('brown')) return 'brown hair'
+  if (colors.includes('black')) return 'black hair'
+  if (colors.includes('red') || colors.includes('ginger')) return 'red hair'
+
+  return 'soft hair'
+}
+
+// Extract KEY objects from text that must appear in image
+function extractKeyObjects(pageText: string): string[] {
+  const objects: string[] = []
+  const lowerText = pageText.toLowerCase()
+
+  // High-priority objects (vehicles, major items)
+  const priorityObjects: { [key: string]: string } = {
+    'rocket': 'silver rocket ship',
+    'spaceship': 'silver spaceship',
+    'ship': 'ship',
+    'moon': 'glowing moon',
+    'planet': 'colorful planet',
+    'star': 'twinkling stars',
+    'shark': '2 friendly sharks',
+    'dolphin': '3 playful dolphins',
+    'whale': 'big friendly whale',
+    'octopus': 'cute octopus',
+    'jellyfish': 'glowing jellyfish',
+    'fish': 'colorful fish',
+    'treasure': 'golden treasure chest',
+    'crown': 'sparkling crown',
+    'castle': 'magical castle',
+    'dragon': 'friendly dragon',
+    'unicorn': 'magical unicorn',
+    'rainbow': 'bright rainbow',
+    'butterfly': 'colorful butterflies',
+    'balloon': 'colorful balloons',
   }
 
-  // Add positions
-  if (sceneElements.characters.length > 0 || sceneElements.objects.length > 0) {
-    prompt += `
-
-POSITIONS:
-${generatePositions(characterDNA.name, sceneElements)}`
+  for (const [key, desc] of Object.entries(priorityObjects)) {
+    if (lowerText.includes(key)) {
+      objects.push(desc)
+    }
   }
 
-  // Add scene environment and action
-  prompt += `
+  return objects.slice(0, 3) // Max 3 key objects
+}
 
-SCENE:
-${environment.type === 'underwater ocean' ? 'Ocean water with bubbles and motion.' : ''}
-${environment.type === 'outer space' ? 'Dark starry space with planets visible.' : ''}
-${environment.type === 'forest meadow' ? 'Green meadow with trees and flowers.' : ''}
-${sceneDescription}
+// Build SHORT scene description
+function buildShortScene(keyObjects: string[], envType: string, sceneDesc: string): string {
+  // Environment setting
+  let env = ''
+  switch (envType) {
+    case 'underwater ocean':
+      env = 'Underwater ocean scene, blue water, bubbles.'
+      break
+    case 'outer space':
+      env = 'Outer space scene, dark starry sky.'
+      break
+    case 'sky':
+      env = 'High in the sky, fluffy clouds.'
+      break
+    case 'forest meadow':
+      env = 'Forest meadow, green grass, flowers.'
+      break
+    default:
+      env = 'Magical storybook world.'
+  }
 
-CAMERA:
-- ${cameraFraming}
-- Shows ${characterDNA.name} plus all surrounding elements
+  // Add key objects
+  const objectsStr = keyObjects.length > 0
+    ? `With: ${keyObjects.join(', ')}.`
+    : ''
 
-VISUAL COMPLETENESS RULE:
-All characters and elements listed above must be clearly visible in the image.
-Do not omit or minimize any listed element.
-
-STRICT:
-${getStrictRestrictions(environment.type)}`
-
-  return prompt
+  return `${env} ${objectsStr}`
 }
 
 // Extract scene elements WITH COUNTS for production-grade prompts
