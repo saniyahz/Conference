@@ -2,90 +2,89 @@ import { NormalizedScene, CharacterCanon } from "./visual-types";
 
 /**
  * Assemble the final image prompt from normalized scene + character canon.
- * This produces a consistent, well-structured prompt for SDXL.
+ * CRITICAL: Keep it SHORT. SDXL only pays attention to first ~77 tokens.
+ * Put ENVIRONMENT FIRST, then character, then style.
  */
 export function assembleImagePrompt(
   scene: NormalizedScene,
   canon: CharacterCanon
 ): string {
-  const supportingElementsStr = scene.supportingElements.length > 0
-    ? scene.supportingElements
-        .map(e => `${e.count} ${e.type} positioned ${e.position}`)
-        .join("\n")
-    : "None";
+  // ENVIRONMENT FIRST - this is what SDXL will pay most attention to
+  const envDesc = getShortEnvironment(scene.environment.setting);
 
-  const environmentStr = scene.environment.elements.join(", ");
+  // SHORT character description
+  const charDesc = getShortCharacter(canon);
 
-  // Camera description
-  const cameraDesc = scene.camera === "wide"
-    ? "Wide shot showing full scene with all elements visible"
-    : "Medium-wide shot showing main character with surrounding elements";
+  // Key elements (max 2)
+  const elementsStr = scene.supportingElements.length > 0
+    ? scene.supportingElements.slice(0, 2).map(e => e.type).join(', ')
+    : '';
 
-  return `
-Children's picture book illustration, soft watercolor style.
-This is a story scene illustration, not a character portrait.
+  // Build SIMPLE, SHORT prompt - under 75 words
+  // Format: Environment + Character + Elements + Style
+  const prompt = elementsStr
+    ? `${envDesc} ${charDesc} With ${elementsStr}. Children's book illustration, watercolor style.`
+    : `${envDesc} ${charDesc} Children's book illustration, watercolor style.`;
 
-MAIN CHARACTER (must look identical across all pages):
-${canon.description}
+  console.log(`[PROMPT] ${prompt.substring(0, 200)}`);
+  return prompt;
+}
 
-SCENE:
-${scene.mainCharacter.action}, positioned ${scene.mainCharacter.position}.
-Visibility: ${scene.mainCharacter.visibility}.
+function getShortEnvironment(setting: string): string {
+  switch (setting) {
+    case 'outer space':
+      return 'Outer space scene with dark starry sky and planets.';
+    case 'moon surface':
+      return 'Moon surface scene with gray craters and Earth visible.';
+    case 'underwater ocean':
+      return 'Underwater ocean scene with blue water and coral.';
+    case 'sky':
+      return 'Sky scene with fluffy white clouds.';
+    case 'indoor':
+      return 'Cozy indoor room scene.';
+    case 'cave':
+      return 'Mysterious cave scene with glowing light.';
+    case 'forest meadow':
+      return 'Forest meadow with green trees and flowers.';
+    default:
+      return 'Magical storybook scene.';
+  }
+}
 
-SUPPORTING ELEMENTS:
-${supportingElementsStr}
+function getShortCharacter(canon: CharacterCanon): string {
+  // Extract just the key visual features - under 20 words
+  const lines = canon.description.split('\n').filter(l => l.trim());
+  const skinLine = lines.find(l => l.toLowerCase().includes('skin'));
+  const hairLine = lines.find(l => l.toLowerCase().includes('hair'));
+  const clothingLine = lines.find(l => l.toLowerCase().includes('clothing'));
 
-ENVIRONMENT:
-${scene.environment.setting} with ${environmentStr}.
+  const skin = skinLine ? skinLine.split(':')[1]?.trim() || 'warm brown skin' : 'warm brown skin';
+  const hair = hairLine ? hairLine.split(':')[1]?.trim() || 'curly hair' : 'curly hair';
+  const clothing = clothingLine ? clothingLine.split(':')[1]?.trim() || 'colorful clothes' : 'colorful clothes';
 
-CAMERA:
-${cameraDesc}
-
-STRICT:
-${scene.exclusions.join(". ")}.
-  `.trim();
+  return `Young child with ${skin}, ${hair}, wearing ${clothing}.`;
 }
 
 /**
  * Build the negative prompt based on scene exclusions and environment
  */
 export function assembleNegativePrompt(scene: NormalizedScene): string {
-  const base = [
-    "portrait",
-    "close-up",
-    "fashion illustration",
-    "outfit change",
-    "alternate hairstyle",
-    "photorealistic",
-    "3d render",
-    "anime",
-    "text",
-    "logo",
-    "watermark",
-    "signature",
-  ];
+  const base = "portrait, close-up, photorealistic, 3d, anime, text, logo, watermark";
 
   // Add environment-specific exclusions
-  const envExclusions: string[] = [];
-
   switch (scene.environment.setting) {
     case "outer space":
     case "moon surface":
-      envExclusions.push("forest", "trees", "grass", "flowers", "water", "ocean", "animals", "houses", "buildings");
-      break;
+      return `${base}, forest, trees, grass, water, ocean, animals, houses`;
     case "underwater ocean":
-      envExclusions.push("forest", "trees", "grass", "sky", "land", "ground", "houses", "buildings");
-      break;
+      return `${base}, forest, trees, grass, sky, land, houses`;
     case "sky":
-      envExclusions.push("ground", "underwater", "space", "indoor");
-      break;
+      return `${base}, ground, underwater, space, indoor`;
     case "indoor":
-      envExclusions.push("forest", "wilderness", "ocean", "space");
-      break;
+      return `${base}, forest, wilderness, ocean, space`;
     case "forest meadow":
-      envExclusions.push("space", "underwater", "ocean", "buildings", "indoor");
-      break;
+      return `${base}, space, underwater, ocean, buildings`;
+    default:
+      return base;
   }
-
-  return [...base, ...envExclusions].join(", ");
 }

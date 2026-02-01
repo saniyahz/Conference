@@ -3,15 +3,24 @@ import { NormalizedScene, CharacterCanon } from "./visual-types";
 /**
  * Normalize page text into a structured scene specification.
  * This is DETERMINISTIC - same input always produces same output.
+ * NEVER throws - always returns a valid scene.
  */
 export function normalizeScene(
   pageText: string,
   canon: CharacterCanon
 ): NormalizedScene {
+  // Safety check
+  if (!pageText || pageText.trim().length === 0) {
+    console.warn('[normalizeScene] Empty page text, using fallback');
+    return createFallbackScene(canon);
+  }
+
   const lowerText = pageText.toLowerCase();
+  console.log(`[normalizeScene] Processing: "${lowerText.substring(0, 100)}..."`);
 
   // Detect environment type
   const envType = detectEnvironment(lowerText);
+  console.log(`[normalizeScene] Detected environment: ${envType}`);
 
   // Detect supporting elements (animals, objects)
   const supportingElements = detectSupportingElements(lowerText);
@@ -248,4 +257,26 @@ function buildExclusions(envType: string): string[] {
     default:
       return base;
   }
+}
+
+/**
+ * Create a fallback scene when parsing fails
+ */
+function createFallbackScene(canon: CharacterCanon): NormalizedScene {
+  return {
+    sceneType: 'magical world',
+    camera: 'medium-wide',
+    mainCharacter: {
+      id: canon.id,
+      position: 'center foreground',
+      visibility: 'full body visible',
+      action: `${canon.name} in the scene`,
+    },
+    supportingElements: [],
+    environment: {
+      setting: 'magical world',
+      elements: ['magical atmosphere', 'soft colors', 'dreamy lighting'],
+    },
+    exclusions: ['no portraits', 'no close-ups', 'no text', 'no logos', 'no watermarks'],
+  };
 }

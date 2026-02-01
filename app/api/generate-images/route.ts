@@ -44,7 +44,7 @@ async function generateImageWithRetry(
           console.log(`===================================\n`)
 
           // Use standard SDXL for better prompt adherence
-          // SEED helps with character consistency across images
+          // HIGH guidance_scale (12) forces strict prompt following
           const output = await replicate.run(
             "stability-ai/sdxl:39ed52f2a78e934b3ba6e2a89f5b1c712de7dfea535525255b1aa35c5565e08b",
             {
@@ -54,10 +54,10 @@ async function generateImageWithRetry(
                 width: 1024,
                 height: 1024,
                 num_outputs: 1,
-                scheduler: "K_EULER",
-                num_inference_steps: 25,  // Reduced for speed, still good quality
-                guidance_scale: 7.5,      // Higher = follows prompt more strictly
-                seed: seed,               // Same seed for character consistency
+                scheduler: "DPMSolverMultistep",
+                num_inference_steps: 30,
+                guidance_scale: 12,       // Very high = strict prompt following
+                seed: seed,
               }
             }
           )
