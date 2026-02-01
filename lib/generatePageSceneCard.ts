@@ -101,21 +101,40 @@ function detectSetting(lowerText: string): string {
     return 'Underwater ocean scene with sea creatures and coral';
   }
 
-  // 2. Space scenes - BUT check if it's actually IN space or just mentioning space objects
-  const inSpaceKeywords = ['floated through space', 'into space', 'outer space', 'through the cosmos',
-                          'among the stars', 'in space', 'floating in space', 'flew through space'];
+  // 2. Space scenes - check for being IN space or inside a spacecraft
+  const inSpaceKeywords = [
+    'floated through space', 'into space', 'outer space', 'through the cosmos',
+    'among the stars', 'in space', 'floating in space', 'flew through space',
+    'entered the cosmos', 'into the cosmos', 'through space', 'stars and planets',
+    'pierced the atmosphere', 'soared into the sky', 'rocket ship', 'spaceship',
+    'weightless', 'floating in her seat', 'floating in his seat',
+    'gazed out the window', 'stars whizzing', 'planets whizzing'
+  ];
   const isInSpace = inSpaceKeywords.some(k => lowerText.includes(k));
 
+  // Check if inside a spaceship/rocket
+  const insideShip = lowerText.includes('inside') || lowerText.includes('seat') ||
+                     lowerText.includes('cockpit') || lowerText.includes('window') ||
+                     lowerText.includes('weightless') || lowerText.includes('floating in');
+
+  if (isInSpace && insideShip) {
+    return 'Inside rocket ship cockpit in outer space, stars visible through window';
+  }
   if (isInSpace) {
     return 'Outer space with stars, planets, and cosmic wonders';
   }
 
-  // 3. Moon surface (different from floating in space)
+  // 3. Mars surface
+  if (lowerText.includes('mars') || lowerText.includes('red planet')) {
+    return 'Mars surface, red rocky terrain, pink-orange sky, distant red mountains';
+  }
+
+  // 4. Moon surface (different from floating in space)
   if (lowerText.includes('moon') && (lowerText.includes('landed') || lowerText.includes('surface') || lowerText.includes('walked'))) {
     return 'Moon surface with gray craters, Earth visible in the black starry sky';
   }
 
-  // 4. Desert
+  // 5. Desert
   if (lowerText.includes('desert') || lowerText.includes('sand dune') || lowerText.includes('oasis')) {
     return 'Golden desert with rolling sand dunes under a warm sky';
   }

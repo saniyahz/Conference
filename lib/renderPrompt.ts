@@ -1,104 +1,126 @@
 import { CharacterBible, PageSceneCard } from "./visual-types";
 
 /**
- * UNIVERSAL PROMPT RENDERER
- * Takes character_bible + page_scene_card and produces final_prompt
- * This is the SAME template for every page - only the scene card changes
+ * RENDER PROMPT - SCENE FIRST, KEEP SHORT
+ * SDXL only pays attention to first ~77 tokens
+ * Format: [SCENE] [CHARACTER] [STYLE]
+ * Target: Under 75 words total
  */
 export function renderPrompt(bible: CharacterBible, card: PageSceneCard): string {
-  // Format personality as comma-separated string
-  const personality = bible.personality.join(", ");
+  // 1. SCENE FIRST - This is what SDXL will pay most attention to
+  const scene = buildShortScene(card);
 
-  // Format supporting characters
-  const supportingCharacters = card.supporting_characters.length > 0
-    ? card.supporting_characters.join(", ")
-    : "none";
+  // 2. CHARACTER - Brief description only
+  const character = buildShortCharacter(bible, card.main_action);
 
-  // Format key objects
-  const keyObjects = card.key_objects.length > 0
-    ? card.key_objects.join(", ")
-    : "none";
+  // 3. KEY OBJECTS - Only if present
+  const objects = card.key_objects.length > 0
+    ? `With ${card.key_objects.slice(0, 2).join(' and ')}.`
+    : '';
 
-  // Format required elements as bullet points
-  const requiredList = card.required_elements.length > 0
-    ? card.required_elements.map(e => `• ${e}`).join("\n")
-    : "• Main character clearly visible";
+  // 4. STYLE - Always the same
+  const style = "Children's book illustration, soft watercolor, gentle colors.";
 
-  // Format forbidden elements
-  const forbiddenList = card.forbidden_elements.length > 0
-    ? card.forbidden_elements.join(", ")
-    : "none";
+  // Combine: SCENE + CHARACTER + OBJECTS + STYLE
+  const prompt = `${scene} ${character} ${objects} ${style}`.trim();
 
-  // Build the universal prompt template
-  const prompt = `CHILDREN'S BOOK ILLUSTRATION (one image for Page ${card.page_number})
-
-MAIN CHARACTER — LOCKED (must stay identical across all pages):
-Name: ${bible.name}, Age: ${bible.age}
-Appearance: ${bible.appearance.skin_tone}, ${bible.appearance.eyes}, ${bible.appearance.hair}, ${bible.appearance.face_features}
-Signature outfit: ${bible.signature_outfit}
-Personality: ${personality}
-Art style: ${bible.art_style.medium}, ${bible.art_style.genre}, mood ${bible.art_style.mood}
-
-SCENE (must match the story text exactly):
-Setting: ${card.setting}
-Time/Weather: ${card.time_weather}
-Main action: ${card.main_action}
-Supporting characters: ${supportingCharacters}
-Key objects: ${keyObjects}
-
-CAMERA / COMPOSITION:
-Shot type: ${card.camera.shot_type}
-Notes: ${card.camera.composition_notes}
-Make the main character clearly visible and centered in the scene.
-All required elements must be clearly visible.
-
-REQUIRED ELEMENTS (must appear):
-${requiredList}
-
-HARD RULES:
-- Create a NEW illustration for this page. Do NOT reuse prior compositions.
-- Background MUST match the setting.
-- Supporting characters and key objects MUST appear if listed.
-- Do NOT include any forbidden elements.
-
-FORBIDDEN / NEGATIVE ELEMENTS:
-${forbiddenList}`;
-
+  console.log(`[PROMPT] Page ${card.page_number}: ${prompt}`);
   return prompt;
 }
 
 /**
- * Render negative prompt from scene card
+ * Build SHORT scene description - ENVIRONMENT IS KEY
+ * This goes FIRST in the prompt
+ */
+function buildShortScene(card: PageSceneCard): string {
+  const setting = card.setting.toLowerCase();
+
+  // SPACE scenes
+  if (setting.includes('outer space') || setting.includes('cosmos') || setting.includes('stars')) {
+    return 'Outer space scene, dark starry sky, colorful planets and twinkling stars visible.';
+  }
+  if (setting.includes('rocket') || setting.includes('spaceship')) {
+    if (setting.includes('inside') || card.main_action.includes('floating') || card.main_action.includes('seat')) {
+      return 'Inside a rocket ship cockpit in space, stars visible through window.';
+    }
+    return 'Rocket ship flying through outer space, stars and planets in background.';
+  }
+  if (setting.includes('moon')) {
+    return 'Moon surface with gray craters, Earth visible in dark starry sky.';
+  }
+  if (setting.includes('mars') || setting.includes('red planet')) {
+    return 'Mars surface, red rocky terrain, pink sky, distant mountains.';
+  }
+
+  // UNDERWATER scenes
+  if (setting.includes('underwater') || setting.includes('ocean') || setting.includes('coral')) {
+    return 'Underwater ocean scene, blue water, colorful coral reef, fish swimming, light rays from above.';
+  }
+
+  // NATURE scenes
+  if (setting.includes('forest') || setting.includes('trees')) {
+    return 'Lush green forest scene, tall trees, soft sunlight filtering through leaves, flowers.';
+  }
+  if (setting.includes('meadow') || setting.includes('garden') || setting.includes('flower')) {
+    return 'Beautiful meadow with colorful wildflowers, green grass, sunny day.';
+  }
+  if (setting.includes('desert') || setting.includes('sand')) {
+    return 'Golden desert scene, rolling sand dunes, warm orange sky.';
+  }
+
+  // INDOOR scenes
+  if (setting.includes('home') || setting.includes('room') || setting.includes('house') || setting.includes('indoor')) {
+    return 'Cozy indoor room scene, warm lighting, comfortable furniture.';
+  }
+
+  // SKY scenes
+  if (setting.includes('sky') || setting.includes('cloud') || setting.includes('flying')) {
+    return 'High in the sky among fluffy white clouds, blue sky, aerial view.';
+  }
+
+  // VILLAGE/TOWN
+  if (setting.includes('village') || setting.includes('town')) {
+    return 'Peaceful village scene, cozy cottages, friendly atmosphere.';
+  }
+
+  // Default
+  return 'Magical storybook scene, warm friendly atmosphere.';
+}
+
+/**
+ * Build SHORT character description
+ * Just the essentials - skin, hair, action
+ */
+function buildShortCharacter(bible: CharacterBible, action: string): string {
+  const skin = bible.appearance.skin_tone;
+  const hair = bible.appearance.hair;
+
+  // Extract just the action verb
+  const actionShort = action
+    .replace(bible.name, '')
+    .replace(/^\s*(is\s+)?/, '')
+    .trim() || 'looking happy';
+
+  return `Young child with ${skin}, ${hair}, ${actionShort}.`;
+}
+
+/**
+ * Render negative prompt - include environment exclusions
  */
 export function renderNegativePrompt(card: PageSceneCard): string {
-  const base = "photorealistic, realistic, 3d render, anime, text, logo, watermark, signature, ugly, deformed, blurry, extra characters";
+  const base = "photorealistic, 3d render, anime, text, logo, watermark, ugly, deformed";
 
+  // Add forbidden elements
   if (card.forbidden_elements.length > 0) {
-    return `${base}, ${card.forbidden_elements.join(", ")}`;
+    const forbidden = card.forbidden_elements.slice(0, 5).join(", ");
+    return `${base}, ${forbidden}`;
   }
 
   return base;
 }
 
 /**
- * Generate unique seed for a page based on scene_id
- * Rule B: Unique seed per page
- */
-export function generatePageSeed(sceneId: string, baseSeed: number): number {
-  // Simple hash of scene_id
-  let hash = 0;
-  for (let i = 0; i < sceneId.length; i++) {
-    const char = sceneId.charCodeAt(i);
-    hash = ((hash << 5) - hash) + char;
-    hash = hash & hash; // Convert to 32bit integer
-  }
-
-  // Combine with base seed
-  return Math.abs(baseSeed + hash) % 1000000;
-}
-
-/**
- * Alternative seed strategy: page-based
+ * Generate unique seed for a page
  */
 export function generatePageSeedByNumber(pageNumber: number, baseSeed: number): number {
   return baseSeed + (pageNumber * 77);
