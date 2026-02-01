@@ -1,113 +1,170 @@
 import { NormalizedScene, CharacterCanon } from "./visual-types";
 
 /**
- * Assemble the final image prompt from normalized scene + character canon.
- * CRITICAL: Keep it SHORT. SDXL only pays attention to first ~77 tokens.
- * Put ENVIRONMENT FIRST, then character, then style.
+ * GLOBAL CHARACTER LOCK - prepended to EVERY image prompt
+ * This ensures the character looks the SAME on every page
  */
-export function assembleImagePrompt(
-  scene: NormalizedScene,
-  canon: CharacterCanon
-): string {
-  // DEBUG: Log the full scene for debugging
-  console.log(`[assembleImagePrompt] Scene type: ${scene.sceneType}`);
-  console.log(`[assembleImagePrompt] Environment: ${scene.environment.setting}`);
-  console.log(`[assembleImagePrompt] Exclusions: ${scene.exclusions?.join(', ')}`);
-
-  // ENVIRONMENT FIRST - this is what SDXL will pay most attention to
-  const envDesc = getShortEnvironment(scene.environment.setting);
-
-  // SHORT character description
-  const charDesc = getShortCharacter(canon);
-
-  // Key elements (max 2)
-  const elementsStr = scene.supportingElements.length > 0
-    ? scene.supportingElements.slice(0, 2).map(e => e.type).join(', ')
-    : '';
-
-  // Build SIMPLE, SHORT prompt - under 75 words
-  // Format: Environment + Character + Elements + Style
-  const prompt = elementsStr
-    ? `${envDesc} ${charDesc} With ${elementsStr}. Children's book illustration, watercolor style.`
-    : `${envDesc} ${charDesc} Children's book illustration, watercolor style.`;
-
-  console.log(`[FINAL PROMPT] ${prompt}`);
-  return prompt;
-}
-
-function getShortEnvironment(setting: string): string {
-  switch (setting) {
-    case 'outer space':
-      return 'Outer space scene with dark starry sky and planets.';
-    case 'moon surface':
-      return 'Moon surface scene with gray craters and Earth visible.';
-    case 'underwater ocean':
-      return 'Underwater ocean scene with blue water and coral.';
-    case 'sky':
-      return 'Sky scene with fluffy white clouds.';
-    case 'indoor':
-      return 'Cozy indoor room scene.';
-    case 'cave':
-      return 'Mysterious cave scene with glowing light.';
-    case 'forest meadow':
-      return 'Forest meadow with green trees and flowers.';
-    case 'desert':
-      return 'Desert scene with sandy dunes and warm orange sky.';
-    default:
-      return 'Magical storybook scene.';
-  }
-}
-
-function getShortCharacter(canon: CharacterCanon): string {
-  // Extract just the key visual features - under 20 words
+function getCharacterLock(canon: CharacterCanon): string {
+  // Extract key features from canon
   const lines = canon.description.split('\n').filter(l => l.trim());
   const skinLine = lines.find(l => l.toLowerCase().includes('skin'));
   const hairLine = lines.find(l => l.toLowerCase().includes('hair'));
   const clothingLine = lines.find(l => l.toLowerCase().includes('clothing'));
 
   const skin = skinLine ? skinLine.split(':')[1]?.trim() || 'warm brown skin' : 'warm brown skin';
-  const hair = hairLine ? hairLine.split(':')[1]?.trim() || 'curly hair' : 'curly hair';
+  const hair = hairLine ? hairLine.split(':')[1]?.trim() || 'curly black hair' : 'curly black hair';
   const clothing = clothingLine ? clothingLine.split(':')[1]?.trim() || 'colorful clothes' : 'colorful clothes';
 
-  return `Young child with ${skin}, ${hair}, wearing ${clothing}.`;
+  return `MAIN CHARACTER — LOCKED DESIGN:
+Name: ${canon.name}
+Age: 6 years old
+Appearance: ${skin}, big expressive eyes, ${hair}
+Body: childlike proportions
+Expression: curious, joyful, brave
+Art style: soft watercolor illustration, high-quality children's picture book
+Lighting: warm, gentle, magical
+Consistency rule: ${canon.name} must look the same on every page`;
 }
 
 /**
- * Build the negative prompt based on scene exclusions and environment
+ * Assemble the final image prompt using GOLD-STANDARD format
+ */
+export function assembleImagePrompt(
+  scene: NormalizedScene,
+  canon: CharacterCanon
+): string {
+  console.log(`[assembleImagePrompt] Scene type: ${scene.sceneType}`);
+  console.log(`[assembleImagePrompt] Environment: ${scene.environment.setting}`);
+
+  // Get the character lock (SAME for every page)
+  const characterLock = getCharacterLock(canon);
+
+  // Get scene-specific prompt
+  const scenePrompt = buildScenePrompt(scene, canon);
+
+  // Get required elements
+  const requiredElements = scene.supportingElements.length > 0
+    ? `\nElements that MUST be visible:\n${scene.supportingElements.map(e => `- ${e.type}`).join('\n')}`
+    : '';
+
+  // Get forbidden elements
+  const forbiddenElements = scene.exclusions && scene.exclusions.length > 0
+    ? `\nIMPORTANT:\n${scene.exclusions.map(e => `- ${e}`).join('\n')}`
+    : '';
+
+  const fullPrompt = `Illustration for a children's storybook.
+
+${characterLock}
+
+${scenePrompt}
+${requiredElements}
+
+Style: soft watercolor, magical realism, storybook illustration.
+${forbiddenElements}`;
+
+  console.log(`[FINAL PROMPT] ${fullPrompt.substring(0, 500)}...`);
+  return fullPrompt;
+}
+
+/**
+ * Build scene-specific prompt based on environment
+ */
+function buildScenePrompt(scene: NormalizedScene, canon: CharacterCanon): string {
+  const setting = scene.environment.setting;
+  const elements = scene.environment.elements.join(', ');
+
+  switch (setting) {
+    case 'forest meadow':
+    case 'forest':
+    case 'village':
+      return `Scene: ${getSceneDescription(scene)}
+
+Main character: ${canon.name} (use locked design), ${scene.mainCharacter.action}.
+
+Details:
+- ${elements}
+- Outdoor natural environment
+- Warm sunlight, friendly atmosphere`;
+
+    case 'outer space':
+      return `Scene: ${getSceneDescription(scene)}
+
+Main character: ${canon.name} (use locked design), wearing a simple child-friendly space suit.
+
+Details:
+- ${elements}
+- Starry sky background
+- Whimsical, friendly sci-fi tone`;
+
+    case 'desert':
+      return `Scene: A golden desert with rolling sand dunes under a bright sky.
+
+Main character: ${canon.name} (use locked design), ${scene.mainCharacter.action}.
+
+Details:
+- ${elements}
+- Warm sunlight, desert atmosphere`;
+
+    case 'underwater ocean':
+      return `Scene: Underwater ocean world with coral reefs and blue water.
+
+Main character: ${canon.name} (use locked design), safely swimming underwater.
+
+Details:
+- ${elements}
+- Coral, bubbles, sunlight rays
+- Joyful, non-scary ocean mood`;
+
+    default:
+      return `Scene: ${getSceneDescription(scene)}
+
+Main character: ${canon.name} (use locked design), ${scene.mainCharacter.action}.
+
+Details:
+- ${elements}
+- Magical, friendly atmosphere`;
+  }
+}
+
+function getSceneDescription(scene: NormalizedScene): string {
+  switch (scene.sceneType) {
+    case 'forest':
+      return 'A lush green forest filled with trees, flowers, and soft sunlight.';
+    case 'village':
+      return 'A peaceful village surrounded by rolling green hills.';
+    case 'desert':
+      return 'A golden desert with rolling sand dunes.';
+    case 'outer space':
+      return 'Outer space with stars and planets visible.';
+    case 'underwater':
+      return 'Underwater ocean world with coral reefs.';
+    default:
+      return 'A magical storybook scene.';
+  }
+}
+
+/**
+ * Build the negative prompt based on scene exclusions
  */
 export function assembleNegativePrompt(scene: NormalizedScene): string {
-  const base = "portrait, close-up, photorealistic, 3d, anime, text, logo, watermark";
+  const base = "portrait, close-up, photorealistic, realistic, 3d render, anime, text, logo, watermark, signature, ugly, deformed";
 
-  // Use scene-specific exclusions if available
-  if (scene.exclusions && scene.exclusions.length > 0) {
-    // Convert exclusions like "no water" to "water"
-    const exclusionTerms = scene.exclusions
-      .map(e => e.replace(/^no\s+/i, '').trim())
-      .filter(e => e.length > 0)
-      .join(', ');
-    const negPrompt = `${base}, ${exclusionTerms}`;
-    console.log(`[NEGATIVE PROMPT] ${negPrompt}`);
-    return negPrompt;
-  }
-
-  // Fallback to environment-specific exclusions
+  // Environment-specific exclusions
   let envExclusions = '';
   switch (scene.environment.setting) {
     case "outer space":
-    case "moon surface":
-      envExclusions = "forest, trees, grass, water, ocean, fish, coral, underwater, animals, houses";
+      envExclusions = "forest, trees, grass, water, ocean, fish, animals, houses, buildings";
       break;
     case "underwater ocean":
-      envExclusions = "forest, trees, grass, sky, land, houses, space, stars";
+      envExclusions = "forest, trees, grass, sky, land, houses, space, stars, desert";
       break;
-    case "sky":
-      envExclusions = "ground, underwater, space, indoor, ocean";
-      break;
-    case "indoor":
-      envExclusions = "forest, wilderness, ocean, space, underwater";
+    case "desert":
+      envExclusions = "water, ocean, fish, forest, space, stars, planets, snow";
       break;
     case "forest meadow":
-      envExclusions = "space, underwater, ocean, fish, coral, buildings, stars, planets";
+    case "forest":
+    case "village":
+      envExclusions = "space, planets, stars, underwater, ocean, fish, coral, desert";
       break;
     default:
       envExclusions = "underwater, fish, coral";
