@@ -9,6 +9,68 @@ const replicate = new Replicate({
   auth: process.env.REPLICATE_API_TOKEN,
 })
 
+// COMPREHENSIVE LIST OF ALL ANIMALS AND INSECTS
+const ALL_ANIMALS = [
+  // PETS & DOMESTIC
+  'dog', 'puppy', 'cat', 'kitten', 'hamster', 'guinea pig', 'gerbil', 'rabbit', 'bunny',
+  'ferret', 'parrot', 'parakeet', 'budgie', 'canary', 'cockatiel', 'cockatoo', 'macaw',
+  'goldfish', 'betta', 'turtle', 'tortoise', 'snake', 'lizard', 'gecko', 'iguana', 'chameleon',
+  // FARM ANIMALS
+  'horse', 'pony', 'donkey', 'mule', 'cow', 'bull', 'calf', 'pig', 'piglet', 'hog', 'boar',
+  'sheep', 'lamb', 'goat', 'chicken', 'hen', 'rooster', 'chick', 'duck', 'duckling',
+  'goose', 'gosling', 'turkey', 'llama', 'alpaca', 'buffalo', 'bison', 'ox', 'yak',
+  // FOREST & WOODLAND
+  'fox', 'wolf', 'coyote', 'bear', 'deer', 'fawn', 'elk', 'moose', 'caribou', 'reindeer',
+  'hare', 'squirrel', 'chipmunk', 'raccoon', 'skunk', 'opossum', 'possum', 'badger',
+  'wolverine', 'weasel', 'mink', 'otter', 'beaver', 'porcupine', 'hedgehog', 'mole',
+  'shrew', 'vole', 'mouse', 'rat', 'woodchuck', 'groundhog', 'bobcat', 'lynx', 'cougar',
+  // JUNGLE & TROPICAL
+  'lion', 'tiger', 'leopard', 'jaguar', 'cheetah', 'monkey', 'ape', 'gorilla', 'chimpanzee',
+  'orangutan', 'baboon', 'lemur', 'sloth', 'anteater', 'armadillo', 'tapir', 'capybara',
+  'toucan', 'anaconda', 'python', 'boa', 'crocodile', 'alligator', 'caiman',
+  // AFRICAN SAVANNA
+  'elephant', 'giraffe', 'zebra', 'hippo', 'hippopotamus', 'rhino', 'rhinoceros',
+  'gazelle', 'antelope', 'impala', 'hyena', 'jackal', 'meerkat', 'warthog', 'ostrich', 'flamingo',
+  // AUSTRALIAN
+  'kangaroo', 'wallaby', 'koala', 'wombat', 'platypus', 'echidna', 'dingo', 'emu', 'quokka',
+  'kookaburra', 'lorikeet', 'sugar glider', 'numbat', 'tasmanian devil',
+  // ARCTIC & POLAR
+  'polar bear', 'penguin', 'seal', 'sea lion', 'walrus', 'arctic fox', 'snowy owl',
+  'narwhal', 'beluga', 'orca', 'whale', 'puffin', 'lemming', 'musk ox',
+  // OCEAN & MARINE
+  'dolphin', 'porpoise', 'shark', 'ray', 'stingray', 'manta ray', 'eel', 'octopus', 'squid',
+  'jellyfish', 'starfish', 'seahorse', 'crab', 'lobster', 'shrimp', 'clam', 'oyster',
+  'snail', 'slug', 'fish', 'salmon', 'tuna', 'clownfish', 'angelfish', 'swordfish', 'manatee',
+  'sea turtle', 'sea otter', 'hermit crab', 'crayfish', 'prawn',
+  // BIRDS
+  'bird', 'eagle', 'hawk', 'falcon', 'owl', 'vulture', 'condor', 'crow', 'raven',
+  'magpie', 'jay', 'bluejay', 'cardinal', 'robin', 'sparrow', 'finch',
+  'hummingbird', 'woodpecker', 'pelican', 'crane', 'heron', 'stork', 'swan',
+  'seagull', 'albatross', 'peacock', 'pheasant', 'quail', 'pigeon', 'dove', 'kingfisher', 'lovebird',
+  // REPTILES & AMPHIBIANS
+  'cobra', 'viper', 'rattlesnake', 'komodo dragon', 'monitor lizard', 'skink',
+  'terrapin', 'gavial', 'frog', 'toad', 'salamander', 'newt', 'axolotl', 'tadpole',
+  // INSECTS & BUGS
+  'butterfly', 'moth', 'bee', 'bumblebee', 'honeybee', 'wasp', 'hornet',
+  'ant', 'termite', 'beetle', 'ladybug', 'ladybird', 'firefly', 'lightning bug',
+  'dragonfly', 'damselfly', 'grasshopper', 'cricket', 'locust', 'katydid',
+  'mantis', 'praying mantis', 'stick insect', 'walking stick', 'leaf insect',
+  'fly', 'housefly', 'fruit fly', 'mosquito', 'gnat', 'midge',
+  'caterpillar', 'worm', 'earthworm', 'silkworm', 'glowworm', 'inchworm',
+  'cockroach', 'cicada', 'aphid', 'flea', 'tick', 'louse', 'stinkbug',
+  'water strider', 'water beetle', 'dung beetle', 'scarab', 'weevil',
+  // ARACHNIDS & OTHER CRAWLIES
+  'spider', 'tarantula', 'black widow', 'scorpion', 'mite', 'daddy longlegs',
+  'centipede', 'millipede', 'pillbug', 'roly poly', 'woodlouse', 'sowbug',
+  // MYTHICAL & FANTASY
+  'dragon', 'unicorn', 'phoenix', 'griffin', 'pegasus', 'mermaid', 'fairy', 'pixie',
+  'gnome', 'troll', 'goblin', 'elf', 'centaur', 'hydra', 'kraken', 'yeti', 'bigfoot',
+  'dinosaur', 't-rex', 'triceratops', 'stegosaurus', 'pterodactyl', 'velociraptor', 'brontosaurus',
+  // MISCELLANEOUS
+  'bat', 'flying fox', 'panda', 'red panda', 'binturong', 'civet', 'mongoose',
+  'aardvark', 'pangolin', 'okapi', 'dugong'
+]
+
 export async function POST(request: NextRequest) {
   try {
     const { prompt } = await request.json()
@@ -118,14 +180,7 @@ CRITICAL: Every page must end with a COMPLETE sentence. Never cut off mid-senten
     } else {
       // Fallback: detect if it's an animal from the original prompt
       const lowerPrompt = prompt.toLowerCase()
-      const animalKeywords = [
-        'dog', 'puppy', 'cat', 'kitten', 'rabbit', 'bunny', 'bear', 'fox',
-        'owl', 'bird', 'elephant', 'lion', 'tiger', 'mouse', 'squirrel', 'deer', 'wolf',
-        'penguin', 'duck', 'frog', 'turtle', 'beaver', 'porcupine', 'hedgehog', 'raccoon',
-        'monkey', 'panda', 'koala', 'giraffe', 'zebra', 'hippo', 'horse', 'pony', 'pig',
-        'cow', 'sheep', 'goat', 'chicken', 'rooster', 'hamster', 'guinea pig', 'parrot',
-        'otter', 'seal', 'walrus', 'moose', 'elk', 'caribou', 'reindeer', 'antelope'
-      ]
+      const animalKeywords = ALL_ANIMALS
       const detectedAnimal = animalKeywords.find(animal => lowerPrompt.includes(animal))
 
       if (detectedAnimal) {
@@ -325,16 +380,7 @@ function createDefaultDNA(prompt: string): CharacterDNA {
   const lowerPrompt = prompt.toLowerCase()
 
   // Detect if this is an animal story
-  const animalKeywords = [
-    'dog', 'puppy', 'cat', 'kitten', 'rabbit', 'bunny', 'bear', 'fox',
-    'owl', 'bird', 'elephant', 'lion', 'tiger', 'mouse', 'squirrel', 'deer', 'wolf',
-    'penguin', 'duck', 'frog', 'turtle', 'fish', 'dolphin', 'whale', 'beaver',
-    'porcupine', 'hedgehog', 'raccoon', 'monkey', 'panda', 'koala', 'giraffe',
-    'zebra', 'hippo', 'horse', 'pony', 'pig', 'cow', 'sheep', 'goat',
-    'chicken', 'rooster', 'hamster', 'parrot', 'otter', 'seal', 'moose', 'reindeer'
-  ]
-
-  const detectedAnimal = animalKeywords.find(animal => lowerPrompt.includes(animal))
+  const detectedAnimal = ALL_ANIMALS.find(animal => lowerPrompt.includes(animal))
 
   if (detectedAnimal) {
     // ANIMAL character

@@ -84,15 +84,90 @@ function extractFurDescription(physicalForm: string, texture: string): string {
 function extractSpecies(physicalForm: string): string {
   const form = physicalForm.toLowerCase();
 
+  // COMPREHENSIVE LIST OF ALL ANIMALS AND INSECTS
   const animals = [
-    'dog', 'puppy', 'cat', 'kitten', 'rabbit', 'bunny', 'bear', 'fox',
-    'owl', 'bird', 'elephant', 'lion', 'tiger', 'mouse', 'squirrel',
-    'deer', 'wolf', 'penguin', 'duck', 'frog', 'turtle', 'fish',
-    'dolphin', 'whale', 'shark', 'butterfly', 'bee', 'dragon', 'unicorn',
-    'porcupine', 'hedgehog', 'raccoon', 'monkey', 'panda', 'koala', 'giraffe',
-    'zebra', 'hippo', 'horse', 'pony', 'pig', 'cow', 'sheep', 'goat',
-    'chicken', 'rooster', 'hamster', 'parrot', 'otter', 'seal', 'moose',
-    'reindeer', 'beaver'
+    // PETS & DOMESTIC
+    'dog', 'puppy', 'cat', 'kitten', 'hamster', 'guinea pig', 'gerbil', 'rabbit', 'bunny',
+    'ferret', 'parrot', 'parakeet', 'budgie', 'canary', 'cockatiel', 'cockatoo', 'macaw',
+    'goldfish', 'betta', 'turtle', 'tortoise', 'snake', 'lizard', 'gecko', 'iguana', 'chameleon',
+
+    // FARM ANIMALS
+    'horse', 'pony', 'donkey', 'mule', 'cow', 'bull', 'calf', 'pig', 'piglet', 'hog', 'boar',
+    'sheep', 'lamb', 'goat', 'kid', 'chicken', 'hen', 'rooster', 'chick', 'duck', 'duckling',
+    'goose', 'gosling', 'turkey', 'llama', 'alpaca', 'buffalo', 'bison', 'ox', 'yak',
+
+    // FOREST & WOODLAND
+    'fox', 'wolf', 'coyote', 'bear', 'deer', 'doe', 'fawn', 'buck', 'stag', 'elk', 'moose',
+    'caribou', 'reindeer', 'rabbit', 'hare', 'squirrel', 'chipmunk', 'raccoon', 'skunk',
+    'opossum', 'possum', 'badger', 'wolverine', 'weasel', 'ferret', 'mink', 'otter',
+    'beaver', 'porcupine', 'hedgehog', 'mole', 'shrew', 'vole', 'mouse', 'rat', 'woodchuck',
+    'groundhog', 'bobcat', 'lynx', 'cougar', 'mountain lion', 'panther',
+
+    // JUNGLE & TROPICAL
+    'lion', 'tiger', 'leopard', 'jaguar', 'cheetah', 'monkey', 'ape', 'gorilla', 'chimpanzee',
+    'orangutan', 'baboon', 'lemur', 'sloth', 'anteater', 'armadillo', 'tapir', 'capybara',
+    'toucan', 'parrot', 'macaw', 'anaconda', 'python', 'boa', 'crocodile', 'alligator',
+    'caiman', 'iguana', 'chameleon', 'tree frog', 'poison dart frog',
+
+    // AFRICAN SAVANNA
+    'elephant', 'giraffe', 'zebra', 'hippo', 'hippopotamus', 'rhino', 'rhinoceros',
+    'wildebeest', 'gnu', 'gazelle', 'antelope', 'impala', 'springbok', 'oryx', 'kudu',
+    'hyena', 'jackal', 'meerkat', 'warthog', 'ostrich', 'vulture', 'flamingo',
+
+    // AUSTRALIAN
+    'kangaroo', 'wallaby', 'koala', 'wombat', 'platypus', 'echidna', 'tasmanian devil',
+    'dingo', 'emu', 'kookaburra', 'cockatoo', 'lorikeet', 'sugar glider', 'numbat', 'quokka',
+
+    // ARCTIC & POLAR
+    'polar bear', 'penguin', 'seal', 'sea lion', 'walrus', 'arctic fox', 'snowy owl',
+    'narwhal', 'beluga', 'orca', 'whale', 'puffin', 'lemming', 'musk ox', 'caribou',
+
+    // OCEAN & MARINE
+    'whale', 'dolphin', 'porpoise', 'shark', 'ray', 'stingray', 'manta ray', 'eel',
+    'octopus', 'squid', 'jellyfish', 'starfish', 'seahorse', 'crab', 'lobster', 'shrimp',
+    'clam', 'oyster', 'mussel', 'scallop', 'snail', 'slug', 'sea turtle', 'manatee',
+    'dugong', 'sea otter', 'fish', 'salmon', 'tuna', 'clownfish', 'angelfish', 'swordfish',
+
+    // BIRDS
+    'bird', 'eagle', 'hawk', 'falcon', 'owl', 'vulture', 'condor', 'crow', 'raven',
+    'magpie', 'jay', 'bluejay', 'cardinal', 'robin', 'sparrow', 'finch', 'canary',
+    'hummingbird', 'woodpecker', 'toucan', 'pelican', 'flamingo', 'crane', 'heron',
+    'stork', 'swan', 'duck', 'goose', 'seagull', 'albatross', 'penguin', 'peacock',
+    'pheasant', 'quail', 'pigeon', 'dove', 'parakeet', 'lovebird', 'kingfisher',
+
+    // REPTILES & AMPHIBIANS
+    'snake', 'python', 'cobra', 'viper', 'rattlesnake', 'boa', 'anaconda',
+    'lizard', 'gecko', 'iguana', 'chameleon', 'komodo dragon', 'monitor lizard', 'skink',
+    'turtle', 'tortoise', 'terrapin', 'crocodile', 'alligator', 'caiman', 'gavial',
+    'frog', 'toad', 'salamander', 'newt', 'axolotl', 'tadpole',
+
+    // INSECTS & BUGS
+    'butterfly', 'moth', 'bee', 'bumblebee', 'honeybee', 'wasp', 'hornet',
+    'ant', 'termite', 'beetle', 'ladybug', 'ladybird', 'firefly', 'lightning bug',
+    'dragonfly', 'damselfly', 'grasshopper', 'cricket', 'locust', 'katydid',
+    'mantis', 'praying mantis', 'stick insect', 'walking stick', 'leaf insect',
+    'fly', 'housefly', 'fruit fly', 'mosquito', 'gnat', 'midge',
+    'caterpillar', 'worm', 'earthworm', 'silkworm', 'glowworm', 'inchworm',
+    'cockroach', 'cicada', 'aphid', 'flea', 'tick', 'louse', 'bedbug', 'stinkbug',
+    'water strider', 'water beetle', 'dung beetle', 'scarab', 'weevil',
+
+    // ARACHNIDS & OTHER CRAWLIES
+    'spider', 'tarantula', 'black widow', 'scorpion', 'tick', 'mite', 'daddy longlegs',
+    'centipede', 'millipede', 'pillbug', 'roly poly', 'woodlouse', 'sowbug',
+
+    // CRUSTACEANS & MOLLUSKS
+    'crab', 'hermit crab', 'lobster', 'crayfish', 'crawfish', 'shrimp', 'prawn', 'barnacle',
+    'snail', 'slug', 'clam', 'oyster', 'mussel', 'scallop', 'squid', 'octopus', 'nautilus',
+
+    // MYTHICAL & FANTASY
+    'dragon', 'unicorn', 'phoenix', 'griffin', 'pegasus', 'mermaid', 'fairy', 'pixie',
+    'gnome', 'troll', 'goblin', 'elf', 'dwarf', 'centaur', 'minotaur', 'hydra',
+    'kraken', 'yeti', 'bigfoot', 'werewolf', 'vampire bat', 'dinosaur', 't-rex',
+    'triceratops', 'stegosaurus', 'pterodactyl', 'velociraptor', 'brontosaurus',
+
+    // MISCELLANEOUS
+    'bat', 'flying fox', 'panda', 'red panda', 'binturong', 'civet', 'mongoose',
+    'aardvark', 'pangolin', 'okapi', 'tapir', 'manatee', 'dugong', 'narwhal',
   ];
 
   for (const animal of animals) {
