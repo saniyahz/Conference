@@ -13,26 +13,62 @@ export function renderPrompt(bible: CharacterBible, card: PageSceneCard, pageTex
   const species = bible.species || 'animal';
   const charName = bible.name;
 
-  // 2. SCENE - Extract from page text
+  // 2. Get character appearance details for consistency
+  const furColor = bible.appearance?.skin_tone || 'golden';
+  const eyeDesc = bible.appearance?.eyes || 'big sparkling eyes';
+
+  // 3. SCENE - Extract from page text
   const scene = extractSceneFromText(lowerText, card.setting);
 
-  // 3. SUPPORTING CHARACTERS - only named ones from text
+  // 4. SUPPORTING CHARACTERS - only named ones from text
   const supporting = extractNamedCharactersFromText(lowerText, charName);
 
-  // BUILD PROMPT - CHARACTER FIRST, then scene
-  // Format: "A cute [species], [name], in [scene]. Disney Pixar style."
+  // 5. ACTION - What is the character doing?
+  const action = extractActionFromText(lowerText, charName);
+
+  // BUILD PROMPT - CHARACTER FIRST, with appearance, then scene + action
+  // More detailed format for better SDXL results
   let prompt: string;
 
   if (bible.character_type === 'animal' && species !== 'animal') {
-    // ANIMAL CHARACTER - species is FIRST and REPEATED
-    prompt = `A cute cartoon ${species} with big eyes, ${charName} the ${species}, in ${scene}. ${supporting}Disney Pixar 3D animated style.`;
+    // ANIMAL CHARACTER - detailed appearance for consistency
+    prompt = `A cute cartoon ${species} with ${furColor} fur and ${eyeDesc}, ${charName} the adorable ${species}, ${action}, ${scene}. ${supporting}Pixar Disney 3D animation style, soft lighting, vibrant colors, children's book illustration.`;
   } else {
-    // HUMAN or unknown - generic child
-    prompt = `A cute cartoon child, ${charName}, in ${scene}. ${supporting}Disney Pixar 3D animated style.`;
+    // HUMAN or unknown - generic child with details
+    prompt = `A cute cartoon child with friendly face and big expressive eyes, ${charName}, ${action}, ${scene}. ${supporting}Pixar Disney 3D animation style, soft lighting, vibrant colors, children's book illustration.`;
   }
 
   console.log(`[PROMPT] Page ${card.page_number}: ${prompt}`);
   return prompt;
+}
+
+/**
+ * Extract action from page text - what is the character doing?
+ */
+function extractActionFromText(text: string, charName: string): string {
+  // Priority actions with specific descriptions
+  if (text.includes('blasted off') || text.includes('blast off')) {
+    return 'inside rocket ship cockpit pressing buttons';
+  }
+  if (text.includes('soared over') || text.includes('flew over') || text.includes('flying over')) {
+    return 'looking out rocket window at the view below';
+  }
+  if (text.includes('landed safely') || text.includes('landing')) {
+    return 'celebrating with happy expression';
+  }
+  if (text.includes('climbed inside') || text.includes('got inside')) {
+    return 'climbing into rocket ship';
+  }
+  if (text.includes('exploring')) return 'exploring with curious expression';
+  if (text.includes('running')) return 'running with joyful expression';
+  if (text.includes('swimming')) return 'swimming happily';
+  if (text.includes('flying')) return 'flying through the air';
+  if (text.includes('playing')) return 'playing happily';
+  if (text.includes('sleeping')) return 'sleeping peacefully';
+  if (text.includes('smiling') || text.includes('smiled')) return 'smiling warmly';
+  if (text.includes('laughing') || text.includes('laughed')) return 'laughing joyfully';
+
+  return 'with happy curious expression';
 }
 
 /**
@@ -42,31 +78,31 @@ export function renderPrompt(bible: CharacterBible, card: PageSceneCard, pageTex
 function extractSceneFromText(text: string, fallbackSetting: string): string {
   // SPACE / CELESTIAL - Check most specific patterns first
 
-  // CRATER scenes (moon adventures)
+  // CRATER scenes (moon adventures) - VERY SPECIFIC for SDXL
   if (text.includes('crater') || text.includes('lunar crater')) {
     if (text.includes('soared over') || text.includes('fly across') || text.includes('flew over') || text.includes('flying over')) {
-      return 'Rocket ship flying over moon crater in outer space, stars in background';
+      return 'in a colorful cartoon rocket ship flying over grey moon surface with large craters, black starry space background with Earth visible, dramatic angle';
     }
     if (text.includes('landed') || text.includes('other side')) {
-      return 'Moon surface near large crater, rocket ship landed, starry sky';
+      return 'on grey moon surface next to a colorful cartoon rocket ship, large crater nearby, black starry sky with stars twinkling';
     }
-    return 'Moon surface with craters, Earth visible in black starry sky';
+    return 'on grey bumpy moon surface with craters all around, bright Earth visible in black starry sky';
   }
 
-  // ROCKET LAUNCH / BLASTOFF scenes
+  // ROCKET LAUNCH / BLASTOFF scenes - INSIDE ROCKET
   if (text.includes('blasted off') || text.includes('blast off') || text.includes('took off') || text.includes('launched')) {
     if (text.includes('moon') || text.includes('crater') || text.includes('lunar')) {
-      return 'Rocket ship blasting off from moon surface into starry space';
+      return 'inside colorful cartoon rocket ship cockpit with big windows showing moon surface and stars outside, control panel with glowing buttons';
     }
-    return 'Rocket ship blasting off into colorful outer space with stars';
+    return 'inside colorful cartoon rocket ship cockpit with big windows showing stars and planets outside, control panel with buttons';
   }
 
-  // SOARING / FLYING in space
+  // SOARING / FLYING in space - EMPHASIZE ROCKET WINDOW VIEW
   if (text.includes('soared') || text.includes('soaring')) {
     if (text.includes('moon') || text.includes('crater')) {
-      return 'Rocket ship soaring over moon landscape with craters below';
+      return 'inside cartoon rocket ship looking out big round window at moon craters passing below, stars in black space';
     }
-    return 'Rocket ship soaring through colorful outer space';
+    return 'inside cartoon rocket ship with big window showing colorful outer space with stars and planets';
   }
 
   if (text.includes('moon surface') || text.includes('on the moon') || text.includes('lunar surface')) {
@@ -130,12 +166,12 @@ function extractSceneFromText(text: string, fallbackSetting: string): string {
     return 'Cozy interior with warm lighting';
   }
 
-  // VEHICLES
-  if (text.includes('rocket') || text.includes('spaceship')) {
-    if (text.includes('inside') || text.includes('cockpit')) {
-      return 'Inside a rocket ship cockpit with controls and windows showing space';
+  // VEHICLES - ROCKET/SPACESHIP
+  if (text.includes('rocket') || text.includes('spaceship') || text.includes('ship')) {
+    if (text.includes('inside') || text.includes('cockpit') || text.includes('climbed inside') || text.includes('back to')) {
+      return 'inside colorful cartoon rocket ship cockpit with big windows, glowing control panel with buttons, cozy seats';
     }
-    return 'Rocket ship in colorful outer space';
+    return 'in colorful cartoon rocket ship flying through space with stars and planets visible through windows';
   }
 
   // WEATHER/TIME
