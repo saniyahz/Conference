@@ -178,21 +178,43 @@ CRITICAL: Every page must end with a COMPLETE sentence. Never cut off mid-senten
     if (parsedStory.characterDNA) {
       characterBible = createCharacterBible(parsedStory.characterDNA)
     } else {
-      // Fallback: detect if it's an animal from the original prompt
+      // Fallback: detect main character from FIRST PAGE of generated story
+      const firstPageText = parsedStory.pages[0]?.text || ''
+      const lowerFirstPage = firstPageText.toLowerCase()
       const lowerPrompt = prompt.toLowerCase()
-      const animalKeywords = ALL_ANIMALS
-      const detectedAnimal = animalKeywords.find(animal => lowerPrompt.includes(animal))
 
-      if (detectedAnimal) {
+      // Try to find "Name the Animal" pattern in story text first
+      const nameTheAnimalMatch = firstPageText.match(/\b([A-Z][a-z]+)\s+the\s+(Porcupine|Cat|Dog|Elephant|Rabbit|Bear|Fox|Lion|Tiger|Mouse|Squirrel|Deer|Owl|Bird|Penguin|Monkey|Giraffe|Zebra|Hippo|Koala|Kangaroo|Dolphin|Whale|Seal|Otter|Wolf|Pig|Cow|Horse|Sheep|Goat|Duck|Chicken|Butterfly|Bee|Dragon|Unicorn|Frog|Turtle|Fish|Hedgehog|Raccoon|Beaver|Panda|Hamster|Guinea Pig|Parrot|Snake|Lizard)\b/i)
+
+      if (nameTheAnimalMatch) {
+        const charName = nameTheAnimalMatch[1]
+        const species = nameTheAnimalMatch[2].toLowerCase()
+        console.log(`[CHARACTER DETECTION] Found "${charName} the ${species}" in story`)
         characterBible = createSimpleBible(
-          extractNameFromPrompt(prompt),
+          charName,
           'animal',
-          detectedAnimal,  // species
-          'golden',        // fur color
-          'soft fluffy fur'
+          species,
+          'soft',
+          'soft fur'
         )
       } else {
-        characterBible = createSimpleBible(extractNameFromPrompt(prompt))
+        // Fallback: search for any animal keyword in story or prompt
+        const searchText = lowerFirstPage + ' ' + lowerPrompt
+        const detectedAnimal = ALL_ANIMALS.find(animal => searchText.includes(animal))
+
+        if (detectedAnimal) {
+          const charName = extractNameFromPrompt(prompt) || extractNameFromText(firstPageText)
+          console.log(`[CHARACTER DETECTION] Found animal "${detectedAnimal}" in text`)
+          characterBible = createSimpleBible(
+            charName,
+            'animal',
+            detectedAnimal,
+            'golden',
+            'soft fluffy fur'
+          )
+        } else {
+          characterBible = createSimpleBible(extractNameFromPrompt(prompt) || 'Hero')
+        }
       }
     }
 
@@ -423,6 +445,18 @@ function extractNameFromPrompt(prompt: string): string {
 
   // Default name
   return 'Little Hero'
+}
+
+function extractNameFromText(text: string): string {
+  // Try to find "Name the Animal" pattern
+  const nameTheMatch = text.match(/\b([A-Z][a-z]+)\s+the\s+\w+/i)
+  if (nameTheMatch) return nameTheMatch[1]
+
+  // Try to find a capitalized name at start of story
+  const firstNameMatch = text.match(/\b([A-Z][a-z]{2,})\b/)
+  if (firstNameMatch) return firstNameMatch[1]
+
+  return 'Hero'
 }
 
 function createFallbackStory(prompt: string, dna: CharacterDNA | null): ParsedStory {
