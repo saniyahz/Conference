@@ -48,6 +48,15 @@ export function generatePageSceneCard(
 function extractSetting(text: string): string {
   // PRIORITY 1: Look for explicit location phrases "in the X", "through the X", "at the X"
   const locationPhrases = [
+    // Space/Moon - Priority (check these first for space adventures)
+    { pattern: /(?:soared|flew|fly|flying)\s+(?:over|across)\s+(?:the\s+)?crater/i, setting: 'Rocket ship flying over moon crater in space' },
+    { pattern: /(?:landed|landing)\s+(?:on|near|by)\s+(?:the\s+)?(?:other\s+side|crater)/i, setting: 'Moon surface near crater with rocket ship' },
+    { pattern: /(?:blasted\s+off|blast\s+off|took\s+off|launched)/i, setting: 'Rocket ship blasting off into space' },
+    { pattern: /crater/i, setting: 'Moon surface with craters and starry sky' },
+    { pattern: /(?:in|through|into)\s+(?:outer\s+)?space/i, setting: 'Outer space with stars and planets' },
+    { pattern: /(?:on|landed\s+on)\s+(?:the\s+)?(?:moon)/i, setting: 'Moon surface with craters' },
+    { pattern: /(?:on|landed\s+on)\s+(?:the\s+)?(?:mars|planet)/i, setting: 'Alien planet surface' },
+
     // City/Town
     { pattern: /(?:in|through|around)\s+(?:the\s+)?(?:city|town|village|streets?)/i, setting: 'City streets with buildings' },
     { pattern: /(?:explored|walked|strolled)\s+(?:the\s+)?(?:city|town|streets?)/i, setting: 'City streets with buildings' },
@@ -56,7 +65,8 @@ function extractSetting(text: string): string {
     { pattern: /(?:in|inside)\s+(?:the\s+)?(?:house|home|room|bedroom|kitchen)/i, setting: 'Cozy indoor room' },
     { pattern: /(?:in|inside)\s+(?:the\s+)?(?:castle|palace|throne)/i, setting: 'Castle interior' },
     { pattern: /(?:in|inside)\s+(?:the\s+)?(?:school|classroom)/i, setting: 'School classroom' },
-    { pattern: /(?:in|inside)\s+(?:the\s+)?(?:rocket|spaceship|ship)/i, setting: 'Inside a rocket ship cockpit' },
+    { pattern: /(?:in|inside|back\s+to)\s+(?:the\s+)?(?:rocket|spaceship|ship)/i, setting: 'Inside a rocket ship cockpit' },
+    { pattern: /climbed\s+inside/i, setting: 'Inside a rocket ship cockpit' },
 
     // Nature
     { pattern: /(?:in|through|into)\s+(?:the\s+)?(?:forest|woods)/i, setting: 'Forest with tall trees' },
@@ -68,11 +78,6 @@ function extractSetting(text: string): string {
     // Water
     { pattern: /(?:under|beneath)\s+(?:the\s+)?(?:water|waves|sea|ocean)/i, setting: 'Underwater ocean scene' },
     { pattern: /(?:in|into)\s+(?:the\s+)?(?:ocean|sea|lake|river)/i, setting: 'By the water' },
-
-    // Space
-    { pattern: /(?:in|through|into)\s+(?:outer\s+)?space/i, setting: 'Outer space with stars and planets' },
-    { pattern: /(?:on|landed\s+on)\s+(?:the\s+)?(?:moon)/i, setting: 'Moon surface with craters' },
-    { pattern: /(?:on|landed\s+on)\s+(?:the\s+)?(?:mars|planet)/i, setting: 'Alien planet surface' },
 
     // Sky
     { pattern: /(?:in|through|across)\s+(?:the\s+)?(?:sky|clouds)/i, setting: 'High in the sky with clouds' },
@@ -158,15 +163,32 @@ function extractKeyObjects(text: string): string[] {
 /**
  * Extract supporting characters from text
  * Also detects "X and Y" patterns for multiple main characters
+ * Detects friend names like "Susu and Piku"
  */
 function extractSupportingCharacters(text: string, mainCharName: string): string[] {
   const characters: string[] = [];
+  const mainLower = mainCharName.toLowerCase();
 
   // Check for "Name and Name" pattern (multiple main characters)
   const andPattern = new RegExp(`${mainCharName}\\s+and\\s+([A-Z][a-z]+)`, 'i');
   const andMatch = text.match(andPattern);
   if (andMatch) {
     characters.push(andMatch[1]); // Add the second character
+  }
+
+  // Check for friend names pattern: "Name and Name cheered/laughed/etc"
+  // This catches "Susu and Piku cheered" style names
+  const friendNamesPattern = /\b([A-Z][a-z]{2,})\s+and\s+([A-Z][a-z]{2,})\s+(?:cheered|laughed|smiled|waved|played|watched|followed|joined|helped)/gi;
+  let friendMatch;
+  while ((friendMatch = friendNamesPattern.exec(text)) !== null) {
+    const name1 = friendMatch[1];
+    const name2 = friendMatch[2];
+    if (name1.toLowerCase() !== mainLower && !characters.includes(name1)) {
+      characters.push(name1);
+    }
+    if (name2.toLowerCase() !== mainLower && !characters.includes(name2)) {
+      characters.push(name2);
+    }
   }
 
   const characterPatterns = [
@@ -224,13 +246,31 @@ function extractTimeWeather(text: string): string {
 }
 
 /**
- * Extract action from text
+ * Extract action from text - expanded list for space/adventure stories
  */
 function extractAction(text: string, characterName: string): string {
+  // Priority actions - more specific first
+  const priorityActions = [
+    { keywords: ['blasted off', 'blast off'], action: 'blasting off in rocket' },
+    { keywords: ['soared over', 'soaring over'], action: 'soaring over' },
+    { keywords: ['flew over', 'flying over'], action: 'flying over' },
+    { keywords: ['landed safely', 'safe landing'], action: 'landing safely' },
+    { keywords: ['climbed inside', 'climbing inside'], action: 'climbing inside' },
+    { keywords: ['taking off', 'took off'], action: 'taking off' },
+  ];
+
+  for (const { keywords, action } of priorityActions) {
+    if (keywords.some(kw => text.includes(kw))) {
+      return `${characterName} ${action}`;
+    }
+  }
+
+  // General actions
   const actions = [
     'flying', 'swimming', 'running', 'walking', 'jumping', 'dancing',
     'playing', 'exploring', 'climbing', 'sleeping', 'eating', 'reading',
-    'laughing', 'smiling', 'waving', 'hugging', 'looking', 'standing'
+    'laughing', 'smiling', 'waving', 'hugging', 'looking', 'standing',
+    'soaring', 'blasting', 'landing', 'cheering', 'exclaiming', 'leading'
   ];
 
   for (const action of actions) {

@@ -40,7 +40,35 @@ export function renderPrompt(bible: CharacterBible, card: PageSceneCard, pageTex
  * Looks for location keywords and builds appropriate scene description
  */
 function extractSceneFromText(text: string, fallbackSetting: string): string {
-  // SPACE / CELESTIAL
+  // SPACE / CELESTIAL - Check most specific patterns first
+
+  // CRATER scenes (moon adventures)
+  if (text.includes('crater') || text.includes('lunar crater')) {
+    if (text.includes('soared over') || text.includes('fly across') || text.includes('flew over') || text.includes('flying over')) {
+      return 'Rocket ship flying over moon crater in outer space, stars in background';
+    }
+    if (text.includes('landed') || text.includes('other side')) {
+      return 'Moon surface near large crater, rocket ship landed, starry sky';
+    }
+    return 'Moon surface with craters, Earth visible in black starry sky';
+  }
+
+  // ROCKET LAUNCH / BLASTOFF scenes
+  if (text.includes('blasted off') || text.includes('blast off') || text.includes('took off') || text.includes('launched')) {
+    if (text.includes('moon') || text.includes('crater') || text.includes('lunar')) {
+      return 'Rocket ship blasting off from moon surface into starry space';
+    }
+    return 'Rocket ship blasting off into colorful outer space with stars';
+  }
+
+  // SOARING / FLYING in space
+  if (text.includes('soared') || text.includes('soaring')) {
+    if (text.includes('moon') || text.includes('crater')) {
+      return 'Rocket ship soaring over moon landscape with craters below';
+    }
+    return 'Rocket ship soaring through colorful outer space';
+  }
+
   if (text.includes('moon surface') || text.includes('on the moon') || text.includes('lunar surface')) {
     return 'Moon surface with craters, Earth visible in black starry sky';
   }
@@ -123,13 +151,14 @@ function extractSceneFromText(text: string, fallbackSetting: string): string {
 
 /**
  * Extract named characters from text like "Benny the dog" or "Fufu the cat"
+ * Also detects "[Name] and [Name]" patterns for friends with creative names
  * Returns string like "with Benny the dog and Fufu the cat, "
  */
 function extractNamedCharactersFromText(text: string, mainCharName: string): string {
   const found: string[] = [];
   const mainLower = mainCharName.toLowerCase();
 
-  // Common pattern: "[Name] the [animal]"
+  // Pattern 1: "[Name] the [animal]"
   const namedAnimalPattern = /\b([A-Z][a-z]+)\s+the\s+(dog|cat|rabbit|bunny|bear|fox|owl|bird|mouse|squirrel|deer|porcupine|hedgehog|raccoon|beaver|frog|turtle|fish|penguin|lion|tiger|elephant|monkey|giraffe|zebra|hippo|koala|kangaroo|dolphin|whale|seal|otter|wolf|pig|cow|horse|sheep|goat|duck|chicken|butterfly|bee|dragon|unicorn)\b/gi;
 
   let match;
@@ -139,6 +168,27 @@ function extractNamedCharactersFromText(text: string, mainCharName: string): str
     // Skip if it's the main character
     if (name.toLowerCase() === mainLower) continue;
     found.push(`${name} the ${animal}`);
+  }
+
+  // Pattern 2: "[Name] and [Name]" or "[Name], [Name] and [Name]" (friends with creative names)
+  // Common in children's stories: "Susu and Piku cheered" or "Luna, Max and Ruby played"
+  const friendNamesPattern = /\b([A-Z][a-z]{2,})\s+and\s+([A-Z][a-z]{2,})\b/g;
+  while ((match = friendNamesPattern.exec(text)) !== null) {
+    const name1 = match[1];
+    const name2 = match[2];
+    // Skip main character, skip common words
+    const skipWords = ['the', 'and', 'but', 'his', 'her', 'they', 'them', 'this', 'that', 'with'];
+    if (name1.toLowerCase() !== mainLower && !skipWords.includes(name1.toLowerCase())) {
+      if (!found.some(f => f.includes(name1))) found.push(name1);
+    }
+    if (name2.toLowerCase() !== mainLower && !skipWords.includes(name2.toLowerCase())) {
+      if (!found.some(f => f.includes(name2))) found.push(name2);
+    }
+  }
+
+  // Pattern 3: "his friends" or "her friends" or "three friends" - generic friends
+  if (text.includes('friends') && found.length === 0) {
+    found.push('friends');
   }
 
   if (found.length === 0) return '';
