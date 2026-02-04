@@ -4,13 +4,23 @@
 /**
  * CHARACTER BIBLE - Generated ONCE per book
  * Store this and reuse for every page
+ *
+ * The visual_fingerprint is the KEY to consistency:
+ * - Short, precise descriptors that SDXL can reliably reproduce
+ * - Same fingerprint used on EVERY page prompt
  */
 export type CharacterBible = {
   character_id: string;
   name: string;
   character_type: 'human' | 'animal' | 'object' | 'creature' | 'other';
-  species?: string;  // For animals: "dog", "cat", "rabbit", etc.
+  species?: string;  // For animals: "rhinoceros", "rabbit", etc.
   age: string;
+
+  // NEW: Visual fingerprint - precise, consistent descriptors
+  visual_fingerprint: string[];  // e.g. ["cute baby rhinoceros", "light gray skin", "big teal eyes"]
+  outfit?: string;  // e.g. "simple blue space helmet"
+
+  // Legacy appearance (kept for backward compatibility)
   appearance: {
     skin_tone: string;  // or fur color for animals
     eyes: string;
@@ -19,6 +29,14 @@ export type CharacterBible = {
   };
   signature_outfit: string;
   personality: string[];
+
+  // NEW: Style object for consistent rendering
+  style: {
+    base: string;      // e.g. "children's picture book illustration"
+    render: string[];  // e.g. ["clean lines", "vibrant colors", "soft shading"]
+    aspect: string;    // e.g. "square"
+  };
+
   art_style: {
     medium: string;
     genre: string;
@@ -31,21 +49,36 @@ export type CharacterBible = {
 /**
  * PAGE SCENE CARD - One per page
  * This is the only part that changes per page
+ *
+ * CRITICAL: must_include items are NON-NEGOTIABLE
+ * The prompt renderer MUST include these in the prompt
  */
 export type PageSceneCard = {
   page_number: number;
   scene_id: string;
-  setting: string;
+  setting: string;           // e.g. "moon surface with craters and stars"
   time_weather: string;
-  main_action: string;
+  action: string;            // e.g. "Riri waves at two moon rabbits beside a small flag"
+
+  // EXPLICIT must-include list - these MUST appear in the image
+  must_include: string[];    // e.g. ["Riri full body", "two rabbits", "moon craters", "small flag"]
+  must_not_include: string[]; // e.g. ["humans", "text", "watermark"]
+
+  // Supporting data
   supporting_characters: string[];
   key_objects: string[];
-  required_elements: string[];
-  forbidden_elements: string[];
+  mood: string;              // e.g. "wonder, playful"
+
+  // Camera/composition
   camera: {
     shot_type: "wide" | "medium" | "close-up";
     composition_notes: string;
   };
+
+  // Legacy fields (for backward compatibility)
+  main_action?: string;
+  required_elements?: string[];
+  forbidden_elements?: string[];
 };
 
 /**

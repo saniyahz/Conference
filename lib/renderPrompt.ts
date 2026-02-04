@@ -1,951 +1,532 @@
 import { CharacterBible, PageSceneCard } from "./visual-types";
 
 /**
- * Scene requirements extracted from page text
- * Used for validation to ensure prompt contains required elements
+ * UNIVERSAL PROMPT RENDERER
+ *
+ * Architecture:
+ * 1. CharacterBible (once per story) → visual_fingerprint
+ * 2. PageSceneCard (per page) → must_include list
+ * 3. Template A → structured prompt that SDXL follows reliably
+ *
+ * SDXL Attention Rules:
+ * - Tokens 1-20: HIGHEST attention (character + critical object)
+ * - Tokens 20-40: HIGH attention (style + setting)
+ * - Tokens 40-77: MEDIUM attention (action + details)
+ * - Tokens 77+: LOW/IGNORED
  */
-interface SceneRequirements {
-  setting: string;
-  requiredObjects: string[];
-  requiredCharacters: string[];
-  action: string;
-}
+
+// ============================================================================
+// SCENE CARD EXTRACTION - Convert raw page text into structured SceneCard
+// ============================================================================
 
 /**
- * Extract hard requirements from page text
- * These MUST appear in the final prompt
+ * Extract a structured SceneCard from page text
+ * This is the KEY function that makes prompts reliable
  */
-function extractSceneRequirements(text: string): SceneRequirements {
-  const lowerText = text.toLowerCase();
-  const requirements: SceneRequirements = {
-    setting: '',
-    requiredObjects: [],
-    requiredCharacters: [],
-    action: ''
-  };
-
-  // REQUIRED OBJECTS - if mentioned in text, MUST be in prompt
-  const objectPatterns = [
-    { pattern: /rocket\s*ship|spaceship/i, obj: 'rocket ship' },
-    { pattern: /\bocean\b|\bsea\b/i, obj: 'ocean' },
-    { pattern: /\bdolphins?\b/i, obj: 'dolphins' },
-    { pattern: /\bflag\b/i, obj: 'flag' },
-    { pattern: /\bcraters?\b/i, obj: 'moon craters' },
-    { pattern: /\brainbow\b/i, obj: 'rainbow' },
-    { pattern: /\bwaterfall\b/i, obj: 'waterfall' },
-    { pattern: /\btreasure\b|\bchest\b/i, obj: 'treasure chest' },
-    { pattern: /\bcrown\b/i, obj: 'crown' },
-    { pattern: /\bballoons?\b/i, obj: 'balloons' },
-  ];
-
-  for (const { pattern, obj } of objectPatterns) {
-    if (pattern.test(lowerText)) {
-      requirements.requiredObjects.push(obj);
-    }
-  }
-
-  // REQUIRED CHARACTERS - supporting characters that must appear
-  const characterPatterns = [
-    { pattern: /moon\s*rabbits?/i, char: 'moon rabbits' },
-    { pattern: /\bdolphins?\b/i, char: 'dolphins' },
-    { pattern: /lunar\s*guardians?/i, char: 'lunar guardians' },
-    { pattern: /\bwhales?\b/i, char: 'whale' },
-    { pattern: /\bbutterfl(?:y|ies)\b/i, char: 'butterflies' },
-  ];
-
-  for (const { pattern, char } of characterPatterns) {
-    if (pattern.test(lowerText)) {
-      requirements.requiredCharacters.push(char);
-    }
-  }
-
-  // SETTING detection
-  if (lowerText.includes('ocean') || lowerText.includes('sea') || lowerText.includes('underwater')) {
-    requirements.setting = 'ocean';
-  } else if (lowerText.includes('moon') || lowerText.includes('lunar') || lowerText.includes('crater')) {
-    requirements.setting = 'moon';
-  } else if (lowerText.includes('forest') || lowerText.includes('woods') || lowerText.includes('trees')) {
-    requirements.setting = 'forest';
-  } else if (lowerText.includes('beach') || lowerText.includes('sand')) {
-    requirements.setting = 'beach';
-  } else if (lowerText.includes('space') || lowerText.includes('stars') || lowerText.includes('galaxy')) {
-    requirements.setting = 'space';
-  }
-
-  return requirements;
-}
-
-/**
- * Validate that a prompt contains all required elements
- * Returns list of missing requirements
- */
-function validatePromptRequirements(prompt: string, requirements: SceneRequirements): string[] {
-  const lowerPrompt = prompt.toLowerCase();
-  const missing: string[] = [];
-
-  // Check required objects
-  for (const obj of requirements.requiredObjects) {
-    if (!lowerPrompt.includes(obj.toLowerCase())) {
-      missing.push(`object: ${obj}`);
-    }
-  }
-
-  // Check required characters
-  for (const char of requirements.requiredCharacters) {
-    if (!lowerPrompt.includes(char.toLowerCase())) {
-      missing.push(`character: ${char}`);
-    }
-  }
-
-  // Check setting
-  if (requirements.setting && !lowerPrompt.includes(requirements.setting)) {
-    missing.push(`setting: ${requirements.setting}`);
-  }
-
-  return missing;
-}
-
-/**
- * Extract the SINGLE most critical element for this scene
- * This goes directly after the species in the prompt for maximum SDXL attention
- * Returns short phrase like "rocket ship" or "moon rabbits" or null
- */
-function extractCriticalElement(text: string): string | null {
-  // Priority order - check most specific/important first
-
-  // VEHICLES - if character is WITH a vehicle, it's critical
-  if (text.includes('inside') && (text.includes('rocket') || text.includes('spaceship'))) {
-    return 'inside colorful rocket ship cockpit';
-  }
-  if (text.includes('rocket') || text.includes('spaceship')) {
-    return 'big colorful rocket ship';
-  }
-
-  // NAMED GROUPS - if there are specific characters, show them
-  if (text.includes('moon rabbit')) {
-    return 'group of cute moon rabbits';
-  }
-  if (text.includes('lunar guardian')) {
-    return 'lunar guardian creatures';
-  }
-
-  // OCEAN CREATURES
-  if (text.includes('dolphin')) {
-    return 'playful dolphins';
-  }
-  if (text.includes('whale')) {
-    return 'friendly whale';
-  }
-
-  // TREASURE/ADVENTURE objects
-  if (text.includes('treasure') && text.includes('chest')) {
-    return 'treasure chest';
-  }
-  if (text.includes('crown')) {
-    return 'golden crown';
-  }
-  if (text.includes('magic wand') || text.includes('wand')) {
-    return 'magic wand';
-  }
-
-  // PARTY/CELEBRATION
-  if (text.includes('balloon')) {
-    return 'colorful balloons';
-  }
-  if (text.includes('cake')) {
-    return 'birthday cake';
-  }
-
-  // NATURE elements
-  if (text.includes('rainbow')) {
-    return 'rainbow';
-  }
-  if (text.includes('waterfall')) {
-    return 'waterfall';
-  }
-
-  // No critical element found
-  return null;
-}
-
-// Comprehensive animal list for detection - PRIORITY ORDER (check big/distinctive first)
-const PRIORITY_ANIMALS = [
-  'rhinoceros', 'rhino',  // CHECK RHINO FIRST!
-  'elephant', 'giraffe', 'hippopotamus', 'hippo', 'zebra',
-  'lion', 'tiger', 'leopard', 'jaguar', 'cheetah', 'bear', 'polar bear',
-  'gorilla', 'chimpanzee', 'orangutan', 'monkey', 'ape',
-  'wolf', 'fox', 'deer', 'moose', 'elk', 'horse', 'pony', 'donkey',
-  'kangaroo', 'koala', 'panda', 'dolphin', 'whale', 'shark', 'octopus',
-  'crocodile', 'alligator', 'turtle', 'tortoise', 'snake', 'lizard',
-  'dragon', 'unicorn', 'dinosaur',
-  'dog', 'puppy', 'cat', 'kitten', 'rabbit', 'bunny', 'hamster', 'mouse', 'rat',
-  'cow', 'pig', 'sheep', 'goat', 'chicken', 'duck', 'goose', 'turkey',
-  'owl', 'eagle', 'hawk', 'penguin', 'seal', 'walrus',
-  'frog', 'toad', 'butterfly', 'bee', 'ant', 'spider',
-  'raccoon', 'skunk', 'squirrel', 'chipmunk', 'beaver', 'otter', 'fish',
-];
-
-/**
- * UNIVERSAL PROMPT TEMPLATE
- * CRITICAL: Species MUST be the FIRST word and REPEATED multiple times
- * SDXL only pays attention to first ~77 tokens
- */
-export function renderPrompt(bible: CharacterBible, card: PageSceneCard, pageText?: string): string {
-  const text = pageText || '';
-  const lowerText = text.toLowerCase();
+export function extractSceneCard(
+  pageNumber: number,
+  pageText: string,
+  bible: CharacterBible
+): PageSceneCard {
+  const text = pageText.toLowerCase();
   const charName = bible.name;
 
-  console.log(`\n====== RENDER PROMPT DEBUG ======`);
-  console.log(`Page: ${card.page_number}`);
-  console.log(`Character name: ${charName}`);
-  console.log(`Bible species: ${bible.species}`);
-  console.log(`Bible character_type: ${bible.character_type}`);
-  console.log(`Page text (first 100 chars): ${text.substring(0, 100)}`);
+  console.log(`\n====== EXTRACTING SCENE CARD FOR PAGE ${pageNumber} ======`);
 
-  // 1. SPECIES DETECTION - BIBLE FIRST, then page text as fallback
-  // CRITICAL: The main character's species from bible takes PRIORITY
-  // Do NOT override with random animals mentioned in page text!
-  let species: string = 'animal';
+  // Extract setting
+  const setting = extractSetting(text);
+  console.log(`[SETTING]: ${setting}`);
 
-  // Method 1: Use bible character_type or species (HIGHEST PRIORITY)
-  // This is the MAIN CHARACTER's species - always use this first!
-  if (bible.character_type && bible.character_type !== 'human' && bible.character_type !== 'animal') {
-    species = bible.character_type;
-    console.log(`[DETECTION] Using bible character_type: ${species}`);
-  } else if (bible.species && bible.species !== 'animal') {
-    species = bible.species;
-    console.log(`[DETECTION] Using bible species: ${species}`);
-  }
+  // Extract action
+  const action = extractAction(text, charName);
+  console.log(`[ACTION]: ${action}`);
 
-  // Method 2: ONLY if bible has no species, try pattern "Name the Animal"
-  if (species === 'animal') {
-    const namePattern = text.match(new RegExp(`${charName}\\s+the\\s+(\\w+)`, 'i'));
-    if (namePattern) {
-      const possibleSpecies = namePattern[1].toLowerCase();
-      console.log(`[DETECTION] Name pattern found: "${namePattern[0]}" -> species: "${possibleSpecies}"`);
-      if (PRIORITY_ANIMALS.includes(possibleSpecies)) {
-        species = possibleSpecies;
-        console.log(`[DETECTION] Using pattern-matched species: ${species}`);
-      }
-    }
-  }
+  // Extract must_include items (CRITICAL)
+  const must_include = extractMustInclude(text, charName, bible.species || 'animal');
+  console.log(`[MUST_INCLUDE]: ${must_include.join(', ')}`);
 
-  // Method 3: ONLY if still no species, scan page text for ANY animal
-  // NOTE: This is last resort - don't let random animals in story override main character!
-  if (species === 'animal') {
-    for (const animal of PRIORITY_ANIMALS) {
-      // Use word boundary to avoid matching "hen" in "then"
-      const regex = new RegExp(`\\b${animal}\\b`, 'i');
-      if (regex.test(lowerText)) {
-        species = animal;
-        console.log(`[DETECTION] Found "${animal}" in page text (fallback)`);
-        break;
-      }
-    }
-  }
+  // Extract supporting characters
+  const supporting_characters = extractSupportingCharacters(text, charName);
+  console.log(`[SUPPORTING]: ${supporting_characters.join(', ')}`);
 
-  console.log(`[FINAL SPECIES]: "${species}"`);
+  // Extract key objects
+  const key_objects = extractKeyObjects(text);
+  console.log(`[OBJECTS]: ${key_objects.join(', ')}`);
 
-  // 2. Get character appearance details
-  const furColor = bible.appearance?.skin_tone || 'gray';
-  const eyeDesc = bible.appearance?.eyes || 'big friendly eyes';
+  // Determine camera shot
+  const camera = determineCameraShot(text, must_include.length);
 
-  // 3. SCENE - Extract from page text
-  const scene = extractSceneFromText(lowerText, card.setting);
+  // Build must_not_include (dynamic negatives)
+  const must_not_include = buildMustNotInclude(bible.character_type === 'animal', bible.species);
 
-  // 4. ACTION - What is the character doing?
-  const action = extractActionFromText(lowerText, charName);
+  // Determine mood
+  const mood = extractMood(text);
 
-  // 5. MUST-INCLUDE OBJECTS - Extract key objects from story that MUST appear
-  const mustInclude = extractMustIncludeObjects(lowerText);
-  if (mustInclude) {
-    console.log(`[MUST INCLUDE]: ${mustInclude}`);
-  }
+  console.log(`====== END SCENE CARD EXTRACTION ======\n`);
 
-  // 6. SUPPORTING CHARACTERS - Extract other characters mentioned in page text
-  const supportingChars = extractSupportingCharacters(lowerText, charName);
-  if (supportingChars) {
-    console.log(`[SUPPORTING]: ${supportingChars}`);
-  }
-
-  // 7. BUILD PROMPT - CRITICAL: First 20 tokens determine the image!
-  // SDXL attention: tokens 1-20 = HIGH, 20-40 = MEDIUM, 40-77 = LOW, 77+ = IGNORED
-  // Structure: [SPECIES + KEY OBJECT] [STYLE] [SETTING] [ACTION]
-  let prompt: string;
-
-  // Extract the SINGLE most important object/character for this scene
-  const criticalElement = extractCriticalElement(lowerText);
-  console.log(`[CRITICAL ELEMENT]: ${criticalElement || 'none'}`);
-
-  // Build the core subject (first 15 tokens - HIGHEST attention)
-  let coreSubject: string;
-  if (criticalElement) {
-    // SPECIES + CRITICAL OBJECT in same phrase for maximum binding
-    coreSubject = `cute cartoon ${species} with ${criticalElement}`;
-  } else {
-    coreSubject = `cute cartoon ${species}`;
-  }
-
-  // Style comes after subject (tokens 15-30)
-  const STYLE = "children's book 2D illustration, colorful vibrant";
-
-  // Build the full prompt
-  if (species && species !== 'animal') {
-    prompt = `${coreSubject}, ${STYLE}, ${scene}, ${action}, big expressive eyes, friendly face`;
-  } else {
-    prompt = `cute cartoon animal, ${STYLE}, ${scene}, ${action}, big expressive eyes`;
-  }
-
-  // 8. VALIDATE and FIX prompt if missing required elements
-  const requirements = extractSceneRequirements(text);
-  console.log(`[REQUIREMENTS]: objects=${requirements.requiredObjects.join(',')} chars=${requirements.requiredCharacters.join(',')} setting=${requirements.setting}`);
-
-  const missing = validatePromptRequirements(prompt, requirements);
-  if (missing.length > 0) {
-    console.log(`[VALIDATION FAILED] Missing: ${missing.join(', ')}`);
-
-    // Build fix string with missing elements
-    const fixes: string[] = [];
-    for (const m of missing) {
-      if (m.startsWith('object:')) {
-        const obj = m.replace('object: ', '');
-        fixes.push(`cartoon ${obj}`);
-      } else if (m.startsWith('character:')) {
-        const char = m.replace('character: ', '');
-        fixes.push(`cute cartoon ${char}`);
-      } else if (m.startsWith('setting:')) {
-        const setting = m.replace('setting: ', '');
-        fixes.push(`${setting} background`);
-      }
-    }
-
-    // Insert fixes right after species in prompt
-    if (fixes.length > 0) {
-      const fixStr = `MUST SHOW: ${fixes.join(', ')}. `;
-      // Find position after species repetition and insert fix
-      const speciesMatch = prompt.match(/([A-Z]+\.\s*[A-Z]+\.\s*)/);
-      if (speciesMatch) {
-        const insertPos = prompt.indexOf(speciesMatch[0]) + speciesMatch[0].length;
-        prompt = prompt.slice(0, insertPos) + fixStr + prompt.slice(insertPos);
-      } else {
-        // Fallback: add after style
-        prompt = prompt.replace('cute cartoon', `cute cartoon ${fixStr}`);
-      }
-      console.log(`[VALIDATION FIX] Added: ${fixStr}`);
-    }
-  } else {
-    console.log(`[VALIDATION OK] All requirements present`);
-  }
-
-  console.log(`[FINAL PROMPT]: ${prompt.substring(0, 400)}...`);
-  console.log(`====== END RENDER PROMPT DEBUG ======\n`);
-
-  return prompt;
+  return {
+    page_number: pageNumber,
+    scene_id: `page_${pageNumber}`,
+    setting,
+    time_weather: '',
+    action,
+    must_include,
+    must_not_include,
+    supporting_characters,
+    key_objects,
+    mood,
+    camera
+  };
 }
 
 /**
- * Extract MUST-INCLUDE objects from story text
- * These are key objects that MUST appear in the image (rocket ship, flag, ocean, etc.)
+ * Extract setting from text - checks ground-based settings FIRST
  */
-function extractMustIncludeObjects(text: string): string {
-  const objects: string[] = [];
-
-  // VEHICLES
-  if (text.includes('rocket') || text.includes('spaceship') || text.includes('ship')) {
-    objects.push('colorful cartoon rocket ship');
-  }
-
-  // WATER/OCEAN elements
-  if (text.includes('ocean') || text.includes('sea') || text.includes('underwater')) {
-    objects.push('blue ocean water with waves');
-  }
-  if (text.includes('splash') || text.includes('wave')) {
-    objects.push('water splashing');
-  }
-
-  // SPACE elements
-  if (text.includes('crater')) {
-    objects.push('moon craters');
-  }
-  if (text.includes('flag') || text.includes('planted')) {
-    objects.push('colorful flag');
-  }
-  if (text.includes('earth') && (text.includes('moon') || text.includes('space'))) {
-    objects.push('Earth visible in sky');
-  }
-
-  // NATURE elements
-  if (text.includes('waterfall')) {
-    objects.push('sparkling waterfall');
-  }
-  if (text.includes('rainbow')) {
-    objects.push('colorful rainbow');
-  }
-  if (text.includes('treasure') || text.includes('chest')) {
-    objects.push('treasure chest');
-  }
-
-  // SPECIAL objects
-  if (text.includes('crown')) {
-    objects.push('golden crown');
-  }
-  if (text.includes('wand') || text.includes('magic')) {
-    objects.push('magic wand with sparkles');
-  }
-  if (text.includes('balloon')) {
-    objects.push('colorful balloons');
-  }
-  if (text.includes('cake') || text.includes('birthday')) {
-    objects.push('birthday cake');
-  }
-  if (text.includes('present') || text.includes('gift')) {
-    objects.push('wrapped presents');
-  }
-  if (text.includes('telescope')) {
-    objects.push('telescope');
-  }
-  if (text.includes('map')) {
-    objects.push('treasure map');
-  }
-
-  // Limit to top 2 objects to keep prompt focused
-  return objects.slice(0, 2).join(', ');
-}
-
-/**
- * Extract supporting characters mentioned in page text
- * Returns a phrase like "with friendly dolphins" or "with the Lunar Guardians"
- */
-function extractSupportingCharacters(text: string, mainCharName: string): string {
-  const found: string[] = [];
-  const mainLower = mainCharName.toLowerCase();
-
-  // Named groups/characters (e.g., "Lunar Guardians", "Moon Friends", "Star Creatures")
-  const namedGroups = [
-    { pattern: /moon rabbits?/i, desc: 'cute cartoon moon rabbits' },
-    { pattern: /lunar guardians?/i, desc: 'cute cartoon Lunar Guardian creatures' },
-    { pattern: /lunar friends?/i, desc: 'cute cartoon alien friends' },
-    { pattern: /moon friends?/i, desc: 'cute cartoon moon creatures' },
-    { pattern: /star creatures?/i, desc: 'friendly cartoon star beings' },
-    { pattern: /space friends?/i, desc: 'cute cartoon alien friends' },
-    { pattern: /his friends?|her friends?|their friends?/i, desc: 'cute cartoon animal friends' },
-  ];
-
-  for (const { pattern, desc } of namedGroups) {
-    if (pattern.test(text)) {
-      found.push(desc);
-      break; // Only add one group
-    }
-  }
-
-  // Common animals mentioned as supporting characters
-  const supportingAnimals = [
-    { pattern: /\bdolphins?\b/i, desc: 'playful cartoon dolphins' },
-    { pattern: /\bwhales?\b/i, desc: 'friendly cartoon whale' },
-    { pattern: /\bfish\b/i, desc: 'colorful cartoon fish' },
-    { pattern: /\bbutterfl(?:y|ies)\b/i, desc: 'colorful cartoon butterflies' },
-    { pattern: /\bbirds?\b/i, desc: 'cute cartoon birds' },
-    { pattern: /\brabbits?\b|\bbunnies?\b/i, desc: 'cute cartoon rabbits' },
-    { pattern: /\bsquirrels?\b/i, desc: 'friendly cartoon squirrel' },
-    { pattern: /\bdeer\b/i, desc: 'gentle cartoon deer' },
-    { pattern: /\blions?\b/i, desc: 'friendly cartoon lion' },
-    { pattern: /\belephants?\b/i, desc: 'cute cartoon elephant' },
-    { pattern: /\bmonkeys?\b/i, desc: 'playful cartoon monkeys' },
-    { pattern: /\bturtles?\b/i, desc: 'friendly cartoon turtle' },
-    { pattern: /\bfrogs?\b/i, desc: 'cute cartoon frog' },
-    { pattern: /\bowls?\b/i, desc: 'wise cartoon owl' },
-    { pattern: /\bbears?\b/i, desc: 'friendly cartoon bear' },
-    { pattern: /\bfoxes?\b|\bfox\b/i, desc: 'clever cartoon fox' },
-  ];
-
-  // Only add supporting animals if they're not the main character
-  for (const { pattern, desc } of supportingAnimals) {
-    if (pattern.test(text) && !pattern.test(mainLower)) {
-      found.push(desc);
-      if (found.length >= 2) break; // Limit to 2 supporting characters
-    }
-  }
-
-  if (found.length === 0) return '';
-  return `Together with ${found.join(' and ')}.`;
-}
-
-/**
- * Extract action from page text - what is the character doing?
- */
-function extractActionFromText(text: string, charName: string): string {
-  // Priority actions with specific descriptions
-  if (text.includes('blasted off') || text.includes('blast off')) {
-    return 'inside rocket ship cockpit pressing buttons';
-  }
-  if (text.includes('soared over') || text.includes('flew over') || text.includes('flying over')) {
-    return 'looking out rocket window at the view below';
-  }
-  if (text.includes('landed safely') || text.includes('landing')) {
-    return 'celebrating with happy expression';
-  }
-  if (text.includes('climbed inside') || text.includes('got inside')) {
-    return 'climbing into rocket ship';
-  }
-  if (text.includes('exploring')) return 'exploring with curious expression';
-  if (text.includes('running')) return 'running with joyful expression';
-  if (text.includes('swimming')) return 'swimming happily';
-  if (text.includes('flying')) return 'flying through the air';
-  if (text.includes('playing')) return 'playing happily';
-  if (text.includes('sleeping')) return 'sleeping peacefully';
-  if (text.includes('smiling') || text.includes('smiled')) return 'smiling warmly';
-  if (text.includes('laughing') || text.includes('laughed')) return 'laughing joyfully';
-
-  return 'with happy curious expression';
-}
-
-/**
- * Extract scene/setting directly from page text
- * Looks for location keywords and builds appropriate scene description
- * PRIORITY: Check ground-based settings FIRST before space (to avoid title contamination)
- */
-function extractSceneFromText(text: string, fallbackSetting: string): string {
-  // GROUND-BASED SETTINGS - Check these FIRST (before space keywords)
-  // This prevents "Moon Adventure" in title from overriding actual scene
-
-  // SAVANNAH / AFRICAN settings
+function extractSetting(text: string): string {
+  // GROUND-BASED (check first to avoid title contamination)
   if (text.includes('savannah') || text.includes('savanna') || text.includes('grassland')) {
     if (text.includes('rocket') || text.includes('spaceship')) {
-      return 'African savannah grassland with golden grass and acacia trees, shiny rocket ship on the ground';
+      return 'African savannah with golden grass, rocket ship visible';
     }
-    return 'African savannah with golden grass, acacia trees, blue sky';
+    return 'African savannah with golden grass and acacia trees';
   }
-
-  // JUNGLE / RAINFOREST
   if (text.includes('jungle') || text.includes('rainforest')) {
-    return 'lush green jungle with vines and tropical plants';
+    return 'lush green jungle with vines';
+  }
+  if (text.includes('forest') || text.includes('woods')) {
+    return 'magical forest with tall trees';
+  }
+  if (text.includes('beach') || text.includes('shore')) {
+    return 'sunny beach with sand and waves';
+  }
+  if (text.includes('ocean') || text.includes('underwater') || text.includes('sea')) {
+    return 'underwater ocean with coral and fish';
   }
 
-  // CRATER scenes (moon adventures) - VERY SPECIFIC for SDXL
-  if (text.includes('crater') || text.includes('lunar crater')) {
-    if (text.includes('soared over') || text.includes('fly across') || text.includes('flew over') || text.includes('flying over')) {
-      return 'in a colorful cartoon rocket ship flying over grey moon surface with large craters, black starry space background with Earth visible, dramatic angle';
-    }
-    if (text.includes('landed') || text.includes('other side')) {
-      return 'on grey moon surface next to a colorful cartoon rocket ship, large crater nearby, black starry sky with stars twinkling';
-    }
-    return 'on grey bumpy moon surface with craters all around, bright Earth visible in black starry sky';
+  // SPACE/MOON (check after ground)
+  if (text.includes('crater') || text.includes('moon surface') || text.includes('lunar surface')) {
+    return 'grey moon surface with craters, Earth in starry sky';
   }
-
-  // ROCKET LAUNCH / BLASTOFF scenes - INSIDE ROCKET
-  if (text.includes('blasted off') || text.includes('blast off') || text.includes('took off') || text.includes('launched')) {
-    if (text.includes('moon') || text.includes('crater') || text.includes('lunar')) {
-      return 'inside colorful cartoon rocket ship cockpit with big windows showing moon surface and stars outside, control panel with glowing buttons';
-    }
-    return 'inside colorful cartoon rocket ship cockpit with big windows showing stars and planets outside, control panel with buttons';
-  }
-
-  // SOARING / FLYING in space - EMPHASIZE ROCKET WINDOW VIEW
-  if (text.includes('soared') || text.includes('soaring')) {
-    if (text.includes('moon') || text.includes('crater')) {
-      return 'inside cartoon rocket ship looking out big round window at moon craters passing below, stars in black space';
-    }
-    return 'inside cartoon rocket ship with big window showing colorful outer space with stars and planets';
-  }
-
-  if (text.includes('moon surface') || text.includes('on the moon') || text.includes('lunar surface')) {
-    return 'colorful cartoon moon surface with craters, bright Earth visible in starry black sky';
-  }
-  if (text.includes('exploring the moon') || text.includes('walked on the moon') || text.includes('stepped on the moon')) {
-    return 'colorful cartoon moon surface with craters and rocks, starry space background';
-  }
-  if (text.includes('landed on the moon') || text.includes('arriving at the moon')) {
-    return 'colorful cartoon rocket ship landed on moon surface with craters';
-  }
-  // MOON RABBITS / FRIENDS ON MOON - show moon surface with creatures
   if (text.includes('moon rabbit') || text.includes('lunar guardian')) {
-    return 'grey moon surface with craters, Earth visible in starry sky, magical glowing atmosphere';
+    return 'moon surface with craters, magical atmosphere';
   }
-
-  // GENERAL MOON/LUNAR references - catch "the moon", "lunar guardians", etc.
   if (text.includes('lunar') || (text.includes('moon') && !text.includes('moonlight'))) {
-    return 'grey moon surface with craters and rocks, Earth visible in starry black sky';
+    return 'moon surface with craters and stars';
   }
-  if (text.includes('mars') || text.includes('red planet')) {
-    return 'Mars surface with red rocks and dusty terrain';
+  if (text.includes('inside') && (text.includes('rocket') || text.includes('spaceship'))) {
+    return 'inside rocket ship cockpit with windows showing space';
   }
-  if (text.includes('soared through') || text.includes('through the galaxy') || text.includes('through space') || text.includes('through the stars') || text.includes('flying through')) {
-    return 'Rocket ship flying through colorful outer space with stars and planets';
+  if (text.includes('space') || text.includes('stars') || text.includes('galaxy')) {
+    return 'outer space with stars and planets';
   }
-  if (text.includes('outer space') || text.includes('in space') || text.includes('into space') || text.includes('galaxy')) {
-    return 'Outer space with colorful nebulas, stars, and planets';
-  }
-
-  // NATURE
-  if (text.includes('waterfall')) {
-    return 'Magical waterfall in lush forest with sparkling water';
-  }
-  if (text.includes('stream') || text.includes('river') || text.includes('creek')) {
-    return 'Peaceful stream in nature with rocks and greenery';
-  }
-  if (text.includes('forest') || text.includes('woods') || text.includes('trees')) {
-    return 'Magical forest with tall trees and dappled sunlight';
-  }
-  if (text.includes('meadow') || text.includes('field of flowers') || text.includes('garden')) {
-    return 'Beautiful meadow with colorful flowers';
-  }
-  if (text.includes('ocean') || text.includes('sea') || text.includes('underwater')) {
-    return 'Underwater ocean scene with coral and fish';
-  }
-  if (text.includes('beach') || text.includes('shore') || text.includes('sand')) {
-    return 'Sunny beach with sand and gentle waves';
-  }
-  if (text.includes('mountain') || text.includes('hill') || text.includes('cliff')) {
-    return 'Mountain landscape with scenic views';
-  }
-
-  // CAVES & UNDERGROUND (check BEFORE "cozy" since "cozy cave" exists)
-  if (text.includes('cave') || text.includes('cavern') || text.includes('crevice') || text.includes('chasm')) {
-    if (text.includes('moon') || text.includes('lunar')) {
-      return 'Dark moon cave with rocky walls and glowing crystals';
-    }
-    return 'Magical cave with rocky walls and soft glowing light';
+  if (text.includes('rocket') || text.includes('spaceship')) {
+    return 'rocket ship in colorful space';
   }
 
   // INDOOR
   if (text.includes('home') || text.includes('house') || text.includes('bedroom')) {
-    return 'Cozy home interior with warm lighting';
+    return 'cozy home interior';
   }
-  if (text.includes('castle') || text.includes('palace') || text.includes('throne')) {
-    return 'Magical castle interior';
-  }
-  if (text.includes('cozy') && !text.includes('cave')) {
-    return 'Cozy interior with warm lighting';
+  if (text.includes('castle') || text.includes('palace')) {
+    return 'magical castle interior';
   }
 
-  // VEHICLES - ROCKET/SPACESHIP
-  if (text.includes('rocket') || text.includes('spaceship') || text.includes('ship')) {
-    if (text.includes('inside') || text.includes('cockpit') || text.includes('climbed inside') || text.includes('back to')) {
-      return 'inside colorful cartoon rocket ship cockpit with big windows, glowing control panel with buttons, cozy seats';
-    }
-    return 'in colorful cartoon rocket ship flying through space with stars and planets visible through windows';
-  }
-
-  // WEATHER/TIME
-  if (text.includes('sunset') || text.includes('evening')) {
-    return fallbackSetting + ' at golden sunset';
-  }
-  if (text.includes('night') || text.includes('starry')) {
-    return fallbackSetting + ' under starry night sky';
-  }
-
-  return fallbackSetting;
+  return 'colorful storybook scene';
 }
 
 /**
- * Extract named characters from text like "Benny the dog" or "Fufu the cat"
- * Also detects "[Name] and [Name]" patterns for friends with creative names
- * Returns string like "with Benny the dog and Fufu the cat, "
+ * Extract action from text
  */
-function extractNamedCharactersFromText(text: string, mainCharName: string): string {
-  const found: string[] = [];
-  const mainLower = mainCharName.toLowerCase();
+function extractAction(text: string, charName: string): string {
+  const name = charName.toLowerCase();
 
-  // Pattern 1: "[Name] the [animal]"
-  const namedAnimalPattern = /\b([A-Z][a-z]+)\s+the\s+(dog|cat|rabbit|bunny|bear|fox|owl|bird|mouse|squirrel|deer|porcupine|hedgehog|raccoon|beaver|frog|turtle|fish|penguin|lion|tiger|elephant|monkey|giraffe|zebra|hippo|koala|kangaroo|dolphin|whale|seal|otter|wolf|pig|cow|horse|sheep|goat|duck|chicken|butterfly|bee|dragon|unicorn)\b/gi;
+  // Check for specific actions
+  if (text.includes('wave') || text.includes('waving')) return `${charName} waves happily`;
+  if (text.includes('welcome') || text.includes('greeted')) return `${charName} being welcomed by friends`;
+  if (text.includes('explore') || text.includes('exploring')) return `${charName} explores curiously`;
+  if (text.includes('discover') || text.includes('found') || text.includes('stumbled')) return `${charName} discovers something amazing`;
+  if (text.includes('flying') || text.includes('soar')) return `${charName} flying through the scene`;
+  if (text.includes('float') || text.includes('weightless')) return `${charName} floating weightlessly`;
+  if (text.includes('land') || text.includes('arrived')) return `${charName} has just landed`;
+  if (text.includes('play') || text.includes('playing')) return `${charName} plays joyfully`;
+  if (text.includes('run') || text.includes('running')) return `${charName} runs with joy`;
+  if (text.includes('swim') || text.includes('swimming')) return `${charName} swims happily`;
+  if (text.includes('climb') || text.includes('climbing')) return `${charName} climbs eagerly`;
+  if (text.includes('look') || text.includes('gaze') || text.includes('marvel')) return `${charName} gazes in wonder`;
 
-  let match;
-  while ((match = namedAnimalPattern.exec(text)) !== null) {
-    const name = match[1];
-    const animal = match[2].toLowerCase();
-    // Skip if it's the main character
-    if (name.toLowerCase() === mainLower) continue;
-    found.push(`${name} the ${animal}`);
-  }
-
-  // Pattern 2: "[Name] and [Name]" or "[Name], [Name] and [Name]" (friends with creative names)
-  // Common in children's stories: "Susu and Piku cheered" or "Luna, Max and Ruby played"
-  const friendNamesPattern = /\b([A-Z][a-z]{2,})\s+and\s+([A-Z][a-z]{2,})\b/g;
-  while ((match = friendNamesPattern.exec(text)) !== null) {
-    const name1 = match[1];
-    const name2 = match[2];
-    // Skip main character, skip common words
-    const skipWords = ['the', 'and', 'but', 'his', 'her', 'they', 'them', 'this', 'that', 'with'];
-    if (name1.toLowerCase() !== mainLower && !skipWords.includes(name1.toLowerCase())) {
-      if (!found.some(f => f.includes(name1))) found.push(name1);
-    }
-    if (name2.toLowerCase() !== mainLower && !skipWords.includes(name2.toLowerCase())) {
-      if (!found.some(f => f.includes(name2))) found.push(name2);
-    }
-  }
-
-  // Pattern 3: "his friends" or "her friends" or "three friends" - generic friends
-  if (text.includes('friends') && found.length === 0) {
-    found.push('friends');
-  }
-
-  if (found.length === 0) return '';
-  // Limit to 2 supporting characters to keep prompt short
-  const chars = [...new Set(found)].slice(0, 2);
-  return `with ${chars.join(' and ')}, `;
+  return `${charName} in the scene with happy expression`;
 }
 
 /**
- * Build main character description from bible
+ * Extract MUST_INCLUDE items - these are NON-NEGOTIABLE
  */
-function buildMainCharacter(bible: CharacterBible): string {
-  const name = bible.name;
+function extractMustInclude(text: string, charName: string, species: string): string[] {
+  const items: string[] = [];
 
-  if (bible.character_type === 'animal' && bible.species) {
-    const fur = bible.appearance.skin_tone || 'soft fur';
-    return `${name} the cute cartoon ${bible.species} with ${fur}, big expressive eyes`;
-  }
+  // ALWAYS include main character
+  items.push(`${charName} the ${species} full body`);
 
-  // Human character
-  return `${name}, cute cartoon child with friendly face, big expressive eyes`;
-}
-
-/**
- * Extract supporting characters from page text
- */
-function extractSupportingFromText(text: string, mainCharName: string): string {
-  const found: string[] = [];
-  const mainLower = mainCharName.toLowerCase();
-
-  // COMPREHENSIVE ANIMAL MAP - ALL ANIMALS AND INSECTS
-  const animalMap: Record<string, string> = {
-    // PETS & DOMESTIC
-    'dog': 'cute cartoon dog', 'puppy': 'cute cartoon puppy', 'cat': 'cute cartoon cat',
-    'kitten': 'cute cartoon kitten', 'hamster': 'tiny cartoon hamster', 'guinea pig': 'cute cartoon guinea pig',
-    'gerbil': 'tiny cartoon gerbil', 'rabbit': 'cute cartoon rabbit', 'bunny': 'cute cartoon bunny',
-    'ferret': 'playful cartoon ferret', 'parrot': 'colorful cartoon parrot', 'parakeet': 'colorful cartoon parakeet',
-    'budgie': 'cute cartoon budgie', 'canary': 'tiny cartoon canary', 'cockatiel': 'cute cartoon cockatiel',
-    'cockatoo': 'fancy cartoon cockatoo', 'macaw': 'colorful cartoon macaw', 'goldfish': 'shiny cartoon goldfish',
-    'betta': 'colorful cartoon betta fish', 'turtle': 'gentle cartoon turtle', 'tortoise': 'wise cartoon tortoise',
-    'snake': 'friendly cartoon snake', 'lizard': 'cute cartoon lizard', 'gecko': 'tiny cartoon gecko',
-    'iguana': 'cool cartoon iguana', 'chameleon': 'colorful cartoon chameleon',
-    // FARM ANIMALS
-    'horse': 'majestic cartoon horse', 'pony': 'cute cartoon pony', 'donkey': 'friendly cartoon donkey',
-    'mule': 'sturdy cartoon mule', 'cow': 'friendly cartoon cow', 'bull': 'strong cartoon bull',
-    'calf': 'cute cartoon calf', 'pig': 'pink cartoon pig', 'piglet': 'tiny cartoon piglet',
-    'hog': 'big cartoon hog', 'boar': 'wild cartoon boar', 'sheep': 'fluffy cartoon sheep',
-    'lamb': 'baby cartoon lamb', 'goat': 'playful cartoon goat', 'chicken': 'cute cartoon chicken',
-    'hen': 'mother cartoon hen', 'rooster': 'proud cartoon rooster', 'chick': 'tiny cartoon chick',
-    'duck': 'cute cartoon duck', 'duckling': 'baby cartoon duckling', 'goose': 'friendly cartoon goose',
-    'gosling': 'baby cartoon gosling', 'turkey': 'funny cartoon turkey', 'llama': 'fluffy cartoon llama',
-    'alpaca': 'fuzzy cartoon alpaca', 'buffalo': 'big cartoon buffalo', 'bison': 'majestic cartoon bison',
-    'ox': 'strong cartoon ox', 'yak': 'shaggy cartoon yak',
-    // FOREST & WOODLAND
-    'fox': 'clever cartoon fox', 'wolf': 'friendly cartoon wolf', 'coyote': 'wild cartoon coyote',
-    'bear': 'friendly cartoon bear', 'deer': 'gentle cartoon deer', 'doe': 'gentle cartoon doe',
-    'fawn': 'baby cartoon fawn', 'buck': 'majestic cartoon buck', 'stag': 'noble cartoon stag',
-    'elk': 'majestic cartoon elk', 'moose': 'big cartoon moose', 'caribou': 'noble cartoon caribou',
-    'reindeer': 'magical cartoon reindeer', 'hare': 'speedy cartoon hare', 'squirrel': 'busy cartoon squirrel',
-    'chipmunk': 'tiny cartoon chipmunk', 'raccoon': 'mischievous cartoon raccoon', 'skunk': 'cute cartoon skunk',
-    'opossum': 'shy cartoon opossum', 'possum': 'shy cartoon possum', 'badger': 'grumpy cartoon badger',
-    'wolverine': 'fierce cartoon wolverine', 'weasel': 'sneaky cartoon weasel', 'mink': 'sleek cartoon mink',
-    'otter': 'playful cartoon otter', 'beaver': 'busy cartoon beaver', 'porcupine': 'spiky cartoon porcupine',
-    'hedgehog': 'cute cartoon hedgehog', 'mole': 'tiny cartoon mole', 'shrew': 'tiny cartoon shrew',
-    'vole': 'tiny cartoon vole', 'mouse': 'tiny cartoon mouse', 'mice': 'tiny cartoon mice',
-    'rat': 'clever cartoon rat', 'woodchuck': 'chubby cartoon woodchuck', 'groundhog': 'cute cartoon groundhog',
-    'bobcat': 'wild cartoon bobcat', 'lynx': 'sleek cartoon lynx', 'cougar': 'majestic cartoon cougar',
-    'panther': 'sleek cartoon panther', 'mountain lion': 'majestic cartoon mountain lion',
-    // JUNGLE & TROPICAL
-    'lion': 'majestic cartoon lion', 'tiger': 'majestic cartoon tiger', 'leopard': 'spotted cartoon leopard',
-    'jaguar': 'spotted cartoon jaguar', 'cheetah': 'fast cartoon cheetah', 'monkey': 'playful cartoon monkey',
-    'ape': 'strong cartoon ape', 'gorilla': 'gentle cartoon gorilla', 'chimpanzee': 'smart cartoon chimpanzee',
-    'orangutan': 'wise cartoon orangutan', 'baboon': 'funny cartoon baboon', 'lemur': 'cute cartoon lemur',
-    'sloth': 'sleepy cartoon sloth', 'anteater': 'long-nosed cartoon anteater', 'armadillo': 'armored cartoon armadillo',
-    'tapir': 'friendly cartoon tapir', 'capybara': 'chill cartoon capybara', 'toucan': 'colorful cartoon toucan',
-    'anaconda': 'big cartoon anaconda', 'python': 'long cartoon python', 'boa': 'friendly cartoon boa',
-    'crocodile': 'scaly cartoon crocodile', 'alligator': 'scaly cartoon alligator', 'caiman': 'small cartoon caiman',
-    // AFRICAN SAVANNA
-    'elephant': 'big cartoon elephant', 'giraffe': 'tall cartoon giraffe', 'zebra': 'striped cartoon zebra',
-    'hippo': 'big cartoon hippo', 'hippopotamus': 'big cartoon hippopotamus', 'rhino': 'strong cartoon rhino',
-    'rhinoceros': 'strong cartoon rhinoceros', 'gazelle': 'graceful cartoon gazelle', 'antelope': 'graceful cartoon antelope',
-    'impala': 'leaping cartoon impala', 'hyena': 'laughing cartoon hyena', 'jackal': 'clever cartoon jackal',
-    'meerkat': 'cute cartoon meerkat', 'warthog': 'funny cartoon warthog', 'ostrich': 'tall cartoon ostrich',
-    'flamingo': 'pink cartoon flamingo', 'vulture': 'soaring cartoon vulture',
-    // AUSTRALIAN
-    'kangaroo': 'bouncy cartoon kangaroo', 'wallaby': 'small cartoon wallaby', 'koala': 'cuddly cartoon koala',
-    'wombat': 'chubby cartoon wombat', 'platypus': 'unique cartoon platypus', 'echidna': 'spiky cartoon echidna',
-    'tasmanian devil': 'wild cartoon tasmanian devil', 'dingo': 'wild cartoon dingo', 'emu': 'tall cartoon emu',
-    'kookaburra': 'laughing cartoon kookaburra', 'lorikeet': 'colorful cartoon lorikeet', 'sugar glider': 'cute cartoon sugar glider',
-    'numbat': 'striped cartoon numbat', 'quokka': 'happy cartoon quokka',
-    // ARCTIC & POLAR
-    'polar bear': 'white cartoon polar bear', 'penguin': 'cute cartoon penguin', 'seal': 'sleek cartoon seal',
-    'sea lion': 'playful cartoon sea lion', 'walrus': 'big cartoon walrus', 'arctic fox': 'white cartoon arctic fox',
-    'snowy owl': 'white cartoon snowy owl', 'narwhal': 'magical cartoon narwhal', 'beluga': 'white cartoon beluga',
-    'orca': 'majestic cartoon orca', 'whale': 'big cartoon whale', 'puffin': 'colorful cartoon puffin',
-    'lemming': 'tiny cartoon lemming', 'musk ox': 'shaggy cartoon musk ox',
-    // OCEAN & MARINE
-    'dolphin': 'playful cartoon dolphin', 'porpoise': 'friendly cartoon porpoise', 'shark': 'cool cartoon shark',
-    'ray': 'flat cartoon ray', 'stingray': 'flat cartoon stingray', 'manta ray': 'majestic cartoon manta ray',
-    'eel': 'wiggly cartoon eel', 'octopus': 'smart cartoon octopus', 'squid': 'fast cartoon squid',
-    'jellyfish': 'glowing cartoon jellyfish', 'starfish': 'colorful cartoon starfish', 'seahorse': 'tiny cartoon seahorse',
-    'crab': 'sideways cartoon crab', 'lobster': 'red cartoon lobster', 'shrimp': 'tiny cartoon shrimp',
-    'clam': 'shy cartoon clam', 'oyster': 'pearly cartoon oyster', 'snail': 'slow cartoon snail',
-    'slug': 'slimy cartoon slug', 'fish': 'colorful cartoon fish', 'salmon': 'pink cartoon salmon',
-    'tuna': 'fast cartoon tuna', 'clownfish': 'orange cartoon clownfish', 'angelfish': 'pretty cartoon angelfish',
-    'swordfish': 'fast cartoon swordfish', 'manatee': 'gentle cartoon manatee', 'sea turtle': 'wise cartoon sea turtle',
-    'sea otter': 'floating cartoon sea otter', 'hermit crab': 'shy cartoon hermit crab', 'crayfish': 'red cartoon crayfish',
-    'prawn': 'small cartoon prawn', 'nautilus': 'spiral cartoon nautilus', 'dugong': 'gentle cartoon dugong',
-    // BIRDS
-    'bird': 'colorful cartoon bird', 'eagle': 'majestic cartoon eagle', 'hawk': 'sharp cartoon hawk',
-    'falcon': 'fast cartoon falcon', 'owl': 'wise cartoon owl', 'condor': 'soaring cartoon condor',
-    'crow': 'clever cartoon crow', 'raven': 'dark cartoon raven', 'magpie': 'shiny cartoon magpie',
-    'jay': 'blue cartoon jay', 'bluejay': 'blue cartoon bluejay', 'cardinal': 'red cartoon cardinal',
-    'robin': 'red-breasted cartoon robin', 'sparrow': 'tiny cartoon sparrow', 'finch': 'tiny cartoon finch',
-    'hummingbird': 'tiny cartoon hummingbird', 'woodpecker': 'busy cartoon woodpecker', 'pelican': 'big-beaked cartoon pelican',
-    'crane': 'elegant cartoon crane', 'heron': 'tall cartoon heron', 'stork': 'long-legged cartoon stork',
-    'swan': 'graceful cartoon swan', 'seagull': 'coastal cartoon seagull', 'albatross': 'soaring cartoon albatross',
-    'peacock': 'colorful cartoon peacock', 'pheasant': 'fancy cartoon pheasant', 'quail': 'small cartoon quail',
-    'pigeon': 'city cartoon pigeon', 'dove': 'peaceful cartoon dove', 'kingfisher': 'colorful cartoon kingfisher',
-    'lovebird': 'cute cartoon lovebird',
-    // REPTILES & AMPHIBIANS
-    'cobra': 'hooded cartoon cobra', 'viper': 'coiled cartoon viper', 'rattlesnake': 'rattling cartoon rattlesnake',
-    'komodo dragon': 'big cartoon komodo dragon', 'monitor lizard': 'big cartoon monitor lizard', 'skink': 'shiny cartoon skink',
-    'terrapin': 'spotted cartoon terrapin', 'gavial': 'long-nosed cartoon gavial', 'frog': 'happy cartoon frog',
-    'toad': 'bumpy cartoon toad', 'salamander': 'spotted cartoon salamander', 'newt': 'tiny cartoon newt',
-    'axolotl': 'smiling cartoon axolotl', 'tadpole': 'baby cartoon tadpole',
-    // INSECTS & BUGS
-    'butterfly': 'beautiful cartoon butterfly', 'moth': 'fuzzy cartoon moth', 'bee': 'busy cartoon bee',
-    'bumblebee': 'fuzzy cartoon bumblebee', 'honeybee': 'golden cartoon honeybee', 'wasp': 'striped cartoon wasp',
-    'hornet': 'big cartoon hornet', 'ant': 'tiny cartoon ant', 'termite': 'tiny cartoon termite',
-    'beetle': 'shiny cartoon beetle', 'ladybug': 'spotted cartoon ladybug', 'ladybird': 'spotted cartoon ladybird',
-    'firefly': 'glowing cartoon firefly', 'lightning bug': 'glowing cartoon lightning bug', 'dragonfly': 'colorful cartoon dragonfly',
-    'damselfly': 'delicate cartoon damselfly', 'grasshopper': 'jumping cartoon grasshopper', 'cricket': 'chirping cartoon cricket',
-    'locust': 'jumping cartoon locust', 'katydid': 'green cartoon katydid', 'mantis': 'praying cartoon mantis',
-    'praying mantis': 'praying cartoon mantis', 'stick insect': 'camouflage cartoon stick insect',
-    'walking stick': 'thin cartoon walking stick', 'leaf insect': 'leafy cartoon leaf insect',
-    'fly': 'buzzing cartoon fly', 'mosquito': 'tiny cartoon mosquito', 'gnat': 'tiny cartoon gnat',
-    'caterpillar': 'fuzzy cartoon caterpillar', 'worm': 'wiggly cartoon worm', 'earthworm': 'pink cartoon earthworm',
-    'silkworm': 'white cartoon silkworm', 'glowworm': 'glowing cartoon glowworm', 'inchworm': 'tiny cartoon inchworm',
-    'cockroach': 'brown cartoon cockroach', 'cicada': 'singing cartoon cicada', 'aphid': 'tiny cartoon aphid',
-    'flea': 'tiny cartoon flea', 'tick': 'tiny cartoon tick', 'stinkbug': 'smelly cartoon stinkbug',
-    'water strider': 'skating cartoon water strider', 'dung beetle': 'rolling cartoon dung beetle', 'scarab': 'golden cartoon scarab',
-    'weevil': 'long-nosed cartoon weevil',
-    // ARACHNIDS & OTHER CRAWLIES
-    'spider': 'web-spinning cartoon spider', 'tarantula': 'fuzzy cartoon tarantula', 'black widow': 'dark cartoon spider',
-    'scorpion': 'pinchy cartoon scorpion', 'daddy longlegs': 'leggy cartoon daddy longlegs',
-    'centipede': 'many-legged cartoon centipede', 'millipede': 'curly cartoon millipede',
-    'pillbug': 'rolling cartoon pillbug', 'roly poly': 'rolling cartoon roly poly', 'woodlouse': 'gray cartoon woodlouse',
-    // MYTHICAL & FANTASY
-    'dragon': 'friendly cartoon dragon', 'unicorn': 'magical cartoon unicorn', 'phoenix': 'fiery cartoon phoenix',
-    'griffin': 'majestic cartoon griffin', 'pegasus': 'winged cartoon pegasus', 'mermaid': 'beautiful cartoon mermaid',
-    'fairy': 'tiny cartoon fairy', 'fairies': 'tiny cartoon fairies', 'pixie': 'sparkly cartoon pixie',
-    'gnome': 'tiny cartoon gnome', 'troll': 'friendly cartoon troll', 'goblin': 'mischievous cartoon goblin',
-    'elf': 'pointy-eared cartoon elf', 'centaur': 'half-horse cartoon centaur', 'hydra': 'many-headed cartoon hydra',
-    'kraken': 'giant cartoon kraken', 'yeti': 'fluffy cartoon yeti', 'bigfoot': 'fuzzy cartoon bigfoot',
-    'dinosaur': 'friendly cartoon dinosaur', 't-rex': 'big cartoon t-rex', 'triceratops': 'horned cartoon triceratops',
-    'stegosaurus': 'plated cartoon stegosaurus', 'pterodactyl': 'flying cartoon pterodactyl', 'velociraptor': 'fast cartoon velociraptor',
-    'brontosaurus': 'long-necked cartoon brontosaurus',
-    // MISCELLANEOUS
-    'bat': 'flying cartoon bat', 'flying fox': 'big cartoon flying fox', 'panda': 'cute cartoon panda',
-    'red panda': 'fluffy cartoon red panda', 'binturong': 'fuzzy cartoon binturong', 'civet': 'spotted cartoon civet',
-    'mongoose': 'quick cartoon mongoose', 'aardvark': 'long-nosed cartoon aardvark', 'pangolin': 'scaly cartoon pangolin',
-    'okapi': 'striped cartoon okapi',
-    // ROBOTS & OTHER
-    'robot': 'friendly cartoon robot', 'alien': 'friendly cartoon alien', 'aliens': 'friendly cartoon aliens',
-  };
-
-  for (const [keyword, description] of Object.entries(animalMap)) {
-    // Don't include if it's the main character
-    if (mainLower.includes(keyword)) continue;
-    if (text.includes(keyword)) {
-      found.push(description);
+  // VEHICLES
+  if (text.includes('rocket') || text.includes('spaceship')) {
+    if (text.includes('inside') || text.includes('cockpit') || text.includes('seat')) {
+      items.push('rocket ship cockpit interior');
+    } else {
+      items.push('colorful rocket ship');
     }
   }
 
-  // People
-  if (text.includes('friend') && !found.includes('friends')) found.push('friends');
-  if (text.includes('family') || text.includes('parent') || text.includes('mother') || text.includes('father')) {
-    found.push('family members');
+  // CHARACTERS/CREATURES
+  if (text.includes('moon rabbit')) {
+    // Count if mentioned
+    if (text.includes('group') || text.includes('friends')) {
+      items.push('group of moon rabbits');
+    } else if (text.includes('two')) {
+      items.push('two moon rabbits');
+    } else {
+      items.push('moon rabbits');
+    }
+  }
+  if (text.includes('dolphin')) {
+    items.push('playful dolphins');
+  }
+  if (text.includes('whale')) {
+    items.push('friendly whale');
+  }
+  if (text.includes('butterfly') || text.includes('butterflies')) {
+    items.push('colorful butterflies');
   }
 
-  if (found.length === 0) return '';
-  return `Also showing: ${[...new Set(found)].slice(0, 3).join(', ')}.`;
+  // OBJECTS
+  if (text.includes('flag') && (text.includes('plant') || text.includes('moon') || text.includes('crater'))) {
+    items.push('small flag');
+  }
+  if (text.includes('crater')) {
+    items.push('moon craters');
+  }
+  if (text.includes('treasure') || text.includes('chest')) {
+    items.push('treasure chest');
+  }
+  if (text.includes('crown')) {
+    items.push('golden crown');
+  }
+  if (text.includes('balloon')) {
+    items.push('colorful balloons');
+  }
+  if (text.includes('rainbow')) {
+    items.push('rainbow in sky');
+  }
+
+  return items;
 }
 
 /**
- * Extract key objects from page text
+ * Extract supporting characters
  */
-function extractObjectsFromText(text: string): string {
-  const found: string[] = [];
+function extractSupportingCharacters(text: string, mainChar: string): string[] {
+  const chars: string[] = [];
+  const main = mainChar.toLowerCase();
 
-  const objectMap: Record<string, string> = {
-    'rocket': 'rocket ship',
-    'spaceship': 'spaceship',
-    'telescope': 'telescope',
-    'star': 'twinkling stars',
-    'planet': 'colorful planets',
-    'moon': 'glowing moon',
-    'treasure': 'treasure chest',
-    'crown': 'golden crown',
-    'wand': 'magic wand',
-    'rainbow': 'rainbow',
-    'balloon': 'colorful balloons',
-    'cake': 'birthday cake',
-    'present': 'wrapped presents',
-    'book': 'magical book',
-    'map': 'treasure map',
-  };
+  const patterns = [
+    { pattern: /moon\s*rabbits?/i, char: 'moon rabbits' },
+    { pattern: /lunar\s*guardians?/i, char: 'lunar guardians' },
+    { pattern: /\bdolphins?\b/i, char: 'dolphins' },
+    { pattern: /\bwhales?\b/i, char: 'whale' },
+    { pattern: /\bbutterfl(?:y|ies)\b/i, char: 'butterflies' },
+    { pattern: /\bbirds?\b/i, char: 'birds' },
+    { pattern: /\bfish\b/i, char: 'fish' },
+    { pattern: /\bfriends?\b/i, char: 'friends' },
+  ];
 
-  for (const [keyword, description] of Object.entries(objectMap)) {
-    if (text.includes(keyword)) {
-      found.push(description);
+  for (const { pattern, char } of patterns) {
+    if (pattern.test(text) && !main.includes(char)) {
+      chars.push(char);
     }
   }
 
-  if (found.length === 0) return '';
-  return `With ${[...new Set(found)].slice(0, 2).join(' and ')}.`;
+  return chars.slice(0, 3); // Max 3 supporting characters
 }
 
+/**
+ * Extract key objects from text
+ */
+function extractKeyObjects(text: string): string[] {
+  const objects: string[] = [];
+
+  const patterns = [
+    { pattern: /rocket|spaceship/i, obj: 'rocket ship' },
+    { pattern: /flag/i, obj: 'flag' },
+    { pattern: /crater/i, obj: 'craters' },
+    { pattern: /treasure|chest/i, obj: 'treasure chest' },
+    { pattern: /crown/i, obj: 'crown' },
+    { pattern: /balloon/i, obj: 'balloons' },
+    { pattern: /rainbow/i, obj: 'rainbow' },
+    { pattern: /telescope/i, obj: 'telescope' },
+    { pattern: /map/i, obj: 'map' },
+  ];
+
+  for (const { pattern, obj } of patterns) {
+    if (pattern.test(text)) {
+      objects.push(obj);
+    }
+  }
+
+  return objects.slice(0, 4);
+}
 
 /**
- * Negative prompt - excludes humans for animal stories, realistic style always
- * CRITICAL: Block realistic styles and common SDXL substitution animals
+ * Determine camera shot based on scene complexity
  */
-export function renderNegativePrompt(card: PageSceneCard, isAnimal?: boolean, species?: string): string {
-  // Base exclusions for all images - STRONGLY block realistic/photorealistic
-  let base = "photorealistic, realistic, photograph, photo, real, lifelike, hyperrealistic, " +
-    "3D render, 3D, CGI, rendered, unreal engine, blender, " +
-    "sketch, pencil drawing, line art, black and white, grayscale, monochrome, " +
-    "anime, manga, " +
-    "text, watermark, logo, signature";
+function determineCameraShot(text: string, mustIncludeCount: number): { shot_type: "wide" | "medium" | "close-up"; composition_notes: string } {
+  // More items = wider shot needed
+  if (mustIncludeCount >= 4) {
+    return { shot_type: 'wide', composition_notes: 'Show all required elements clearly' };
+  }
+  if (text.includes('face') || text.includes('expression') || text.includes('eyes')) {
+    return { shot_type: 'close-up', composition_notes: 'Focus on character expression' };
+  }
+  return { shot_type: 'medium', composition_notes: 'Balance character and scene' };
+}
 
-  // Always exclude humans for animal-only stories
+/**
+ * Build must_not_include list (dynamic negatives)
+ */
+function buildMustNotInclude(isAnimal: boolean, species?: string): string[] {
+  const base = ['text', 'watermark', 'logo', 'signature', 'realistic photo', 'scary', 'horror'];
+
   if (isAnimal) {
-    base += ", human, person, boy, girl, child, man, woman, people, face, portrait";
+    base.push('human', 'person', 'boy', 'girl', 'child', 'face closeup');
 
-    // CRITICAL: Block ALL common SDXL substitution animals
-    // SDXL tends to draw these instead of the correct animal
-    const commonWrongAnimals = [
-      'chicken', 'rooster', 'hen', 'chick',
-      'penguin', 'bird', 'duck', 'goose',
-      'owl', 'eagle', 'crow',
-      'cat', 'dog', 'rabbit', 'bunny',
-      'fox', 'wolf',
-      'furry', 'feathers', 'beak', 'wings'
-    ];
-
-    // Filter out the correct species from wrong animals list
-    const filteredWrong = species
-      ? commonWrongAnimals.filter(a => a !== species && !species.includes(a))
-      : commonWrongAnimals;
-
-    base += `, ${filteredWrong.join(', ')}`;
+    // Add common SDXL substitutions to avoid
+    const wrongAnimals = ['chicken', 'hen', 'rooster', 'penguin', 'duck'];
+    const filtered = wrongAnimals.filter(a => a !== species && !species?.includes(a));
+    base.push(...filtered);
   }
 
-  // Add any scene-specific forbidden elements
-  if (card.forbidden_elements && card.forbidden_elements.length > 0) {
-    const uniqueForbidden = card.forbidden_elements
-      .filter(e => !base.includes(e))
-      .slice(0, 5);
-    if (uniqueForbidden.length > 0) {
-      base += `, ${uniqueForbidden.join(', ')}`;
-    }
-  }
-
-  console.log(`[NEGATIVE PROMPT]: ${base}`);
   return base;
 }
 
+/**
+ * Extract mood from text
+ */
+function extractMood(text: string): string {
+  if (text.includes('excit') || text.includes('thrill')) return 'excited, adventurous';
+  if (text.includes('wonder') || text.includes('amaz') || text.includes('marvel')) return 'wonder, awe';
+  if (text.includes('happy') || text.includes('joy') || text.includes('laugh')) return 'happy, playful';
+  if (text.includes('curious') || text.includes('discover')) return 'curious, exploratory';
+  if (text.includes('brave') || text.includes('courage')) return 'brave, determined';
+  if (text.includes('friend') || text.includes('welcome')) return 'friendly, warm';
+  return 'joyful, adventurous';
+}
+
+// ============================================================================
+// VISUAL FINGERPRINT - Build consistent character description
+// ============================================================================
+
+/**
+ * Build visual fingerprint from CharacterBible
+ * Returns comma-separated string of visual descriptors
+ */
+export function buildVisualFingerprint(bible: CharacterBible): string {
+  // If bible has visual_fingerprint, use it
+  if (bible.visual_fingerprint && bible.visual_fingerprint.length > 0) {
+    return bible.visual_fingerprint.join(', ');
+  }
+
+  // Otherwise, build from appearance
+  const parts: string[] = [];
+
+  if (bible.species) {
+    parts.push(`cute cartoon ${bible.species}`);
+  }
+  if (bible.appearance?.skin_tone) {
+    parts.push(bible.appearance.skin_tone);
+  }
+  if (bible.appearance?.eyes) {
+    parts.push(bible.appearance.eyes);
+  }
+  if (bible.appearance?.face_features) {
+    parts.push(bible.appearance.face_features);
+  }
+
+  return parts.join(', ') || `cute cartoon ${bible.species || 'animal'}`;
+}
+
+// ============================================================================
+// TEMPLATE A - UNIVERSAL PAGE ILLUSTRATION PROMPT
+// ============================================================================
+
+/**
+ * TEMPLATE A - Universal Page Illustration
+ *
+ * Structure optimized for SDXL attention:
+ * 1. CHARACTER LOCK (tokens 1-15) - species + fingerprint
+ * 2. MUST SHOW (tokens 15-35) - required items
+ * 3. SCENE (tokens 35-55) - setting + action
+ * 4. STYLE (tokens 55-77) - render style
+ */
+export function renderPrompt(bible: CharacterBible, card: PageSceneCard, pageText?: string): string {
+  // If we have page text but card is minimal, extract a proper card
+  let sceneCard = card;
+  if (pageText && (!card.must_include || card.must_include.length === 0)) {
+    sceneCard = extractSceneCard(card.page_number, pageText, bible);
+  }
+
+  const charName = bible.name;
+  const species = bible.species || bible.character_type || 'animal';
+  const fingerprint = buildVisualFingerprint(bible);
+  const outfit = bible.outfit || bible.signature_outfit || '';
+
+  // Get style settings
+  const styleBase = bible.style?.base || "children's picture book illustration";
+  const styleRender = bible.style?.render?.join(', ') || "clean lines, vibrant colors, soft shading";
+
+  console.log(`\n====== TEMPLATE A PROMPT BUILD ======`);
+  console.log(`Character: ${charName} the ${species}`);
+  console.log(`Fingerprint: ${fingerprint}`);
+  console.log(`Setting: ${sceneCard.setting}`);
+  console.log(`Action: ${sceneCard.action}`);
+  console.log(`Must Include: ${sceneCard.must_include.join(', ')}`);
+
+  // BUILD PROMPT using Template A structure
+
+  // 1. CHARACTER LOCK (highest attention)
+  const characterLock = `${charName} the cute cartoon ${species}, ${fingerprint}`;
+
+  // 2. MUST SHOW (high attention) - limit to top 4 items
+  const mustShowItems = sceneCard.must_include.slice(0, 4).join(', ');
+  const mustShow = mustShowItems ? `showing ${mustShowItems}` : '';
+
+  // 3. SCENE (medium attention)
+  const scene = `Scene: ${sceneCard.setting}. ${sceneCard.action}`;
+
+  // 4. STYLE (end of attention window)
+  const style = `${styleBase}, ${styleRender}`;
+
+  // 5. Outfit if present
+  const outfitStr = outfit ? `Wearing ${outfit}.` : '';
+
+  // Combine with attention-optimized order
+  let prompt = `${characterLock}. ${mustShow}. ${scene}. ${outfitStr} ${style}. No text.`;
+
+  // Clean up extra spaces/periods
+  prompt = prompt.replace(/\.\s*\./g, '.').replace(/\s+/g, ' ').trim();
+
+  console.log(`[FINAL PROMPT]: ${prompt}`);
+  console.log(`[PROMPT LENGTH]: ~${prompt.split(' ').length} words`);
+  console.log(`====== END TEMPLATE A ======\n`);
+
+  return prompt;
+}
+
+// ============================================================================
+// NEGATIVE PROMPT - Smart defaults + dynamic negatives
+// ============================================================================
+
+/**
+ * Build negative prompt from card's must_not_include + smart defaults
+ */
+export function renderNegativePrompt(card: PageSceneCard, isAnimal?: boolean, species?: string): string {
+  // Base negatives (always include)
+  const base = [
+    'photorealistic', 'realistic', 'photograph', 'photo', '3D render', '3D', 'CGI',
+    'sketch', 'pencil drawing', 'black and white', 'grayscale',
+    'text', 'watermark', 'logo', 'signature',
+    'scary', 'horror', 'gore', 'weapon'
+  ];
+
+  // Add card's must_not_include
+  if (card.must_not_include) {
+    for (const item of card.must_not_include) {
+      if (!base.includes(item)) {
+        base.push(item);
+      }
+    }
+  }
+
+  // Add human exclusions for animal stories
+  if (isAnimal) {
+    base.push('human', 'person', 'boy', 'girl', 'child', 'man', 'woman', 'portrait', 'hands');
+
+    // Block common SDXL wrong substitutions
+    const wrongAnimals = ['chicken', 'hen', 'rooster', 'chick', 'penguin', 'bird', 'duck', 'owl'];
+    const filtered = wrongAnimals.filter(a => a !== species && !species?.includes(a));
+    base.push(...filtered);
+  }
+
+  const negative = base.join(', ');
+  console.log(`[NEGATIVE PROMPT]: ${negative}`);
+  return negative;
+}
+
+// ============================================================================
+// SEED STRATEGY - Consistent seeds per story
+// ============================================================================
+
+/**
+ * Generate deterministic seed from story ID
+ * Using same seed for whole book reduces character drift
+ */
+export function generateStorySeed(storyId: string): number {
+  let hash = 0;
+  for (let i = 0; i < storyId.length; i++) {
+    const char = storyId.charCodeAt(i);
+    hash = ((hash << 5) - hash) + char;
+    hash = hash & hash; // Convert to 32bit integer
+  }
+  return Math.abs(hash) % 2147483647; // Keep in valid seed range
+}
+
+/**
+ * Generate page seed (consistent but slightly varied per page)
+ */
 export function generatePageSeedByNumber(pageNumber: number, baseSeed: number): number {
   return baseSeed + (pageNumber * 77);
+}
+
+// ============================================================================
+// TEMPLATE C - CHARACTER SHEET (for reference image)
+// ============================================================================
+
+/**
+ * Generate character sheet prompt for reference image
+ * Run this ONCE per story to establish character look
+ */
+export function renderCharacterSheetPrompt(bible: CharacterBible): string {
+  const charName = bible.name;
+  const species = bible.species || 'animal';
+  const fingerprint = buildVisualFingerprint(bible);
+  const styleBase = bible.style?.base || "children's picture book illustration";
+
+  const prompt = `CHARACTER SHEET: ${charName} the cute cartoon ${species}. Full body reference. ` +
+    `${fingerprint}. Neutral pose, friendly smile. ` +
+    `Three views: front view, side view, 3/4 view. ` +
+    `Plain light background. ` +
+    `${styleBase}, clean lines, vibrant colors, soft shading. No text.`;
+
+  console.log(`[CHARACTER SHEET PROMPT]: ${prompt}`);
+  return prompt;
+}
+
+// ============================================================================
+// TEMPLATE B - COVER IMAGE
+// ============================================================================
+
+/**
+ * Generate book cover prompt
+ */
+export function renderCoverPrompt(bible: CharacterBible, storyTitle: string): string {
+  const charName = bible.name;
+  const species = bible.species || 'animal';
+  const fingerprint = buildVisualFingerprint(bible);
+  const styleBase = bible.style?.base || "children's picture book illustration";
+
+  const prompt = `BOOK COVER: ${charName} the cute cartoon ${species}. ` +
+    `${fingerprint}. ` +
+    `Big friendly title space at top (leave blank area). ` +
+    `Magical colorful scene with sparkles. ` +
+    `${styleBase}, clean lines, vibrant colors, soft shading. ` +
+    `Eye-catching, inviting, child-friendly. No text.`;
+
+  console.log(`[COVER PROMPT]: ${prompt}`);
+  return prompt;
 }
