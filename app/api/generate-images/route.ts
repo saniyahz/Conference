@@ -24,9 +24,9 @@ async function generateImageWithRetry(
           const cleanPrompt = prompt
 
           // Use passed negative prompt OR fallback to default
-          // MUST include environment-blocking terms to prevent forest/castle defaults
+          // NOTE: Do NOT include "land animals" - it blocks main characters like rhinos!
           const negativePrompt = customNegativePrompt ||
-            `forest, trees, grass, castle, human child, people, land animals, houses, realistic, 3D render, anime, text in image, text, words, letters, writing, caption, label, watermark, signature, logo, typography, font, numbers, scary, creepy, horror, dark, evil, ugly, deformed, bad anatomy, bad proportions, photorealistic`
+            `human child, people, realistic, 3D render, anime, text in image, text, words, letters, writing, caption, label, watermark, signature, logo, typography, font, numbers, scary, creepy, horror, dark, evil, ugly, deformed, bad anatomy, bad proportions, photorealistic`
 
           console.log(`\n========== IMAGE ${imageIndex + 1} DEBUG ==========`)
           console.log(`Attempt ${attempt}/${maxRetries}`)
@@ -62,45 +62,39 @@ async function generateImageWithRetry(
           )
 
           // Handle output - SDXL returns array of URLs
+          // Log raw output for debugging
+          console.log(`[IMAGE ${imageIndex + 1}] Raw output type: ${typeof output}, isArray: ${Array.isArray(output)}`)
+          if (Array.isArray(output)) {
+            console.log(`[IMAGE ${imageIndex + 1}] Array length: ${output.length}, first element type: ${typeof output[0]}`)
+            if (output[0]) console.log(`[IMAGE ${imageIndex + 1}] First element preview: ${String(output[0]).substring(0, 100)}`)
+          }
+
           let imageUrl = ''
 
+          // Robust output normalization - handle all Replicate output formats
           if (Array.isArray(output) && output.length > 0) {
-            // If it's an array, take the first element
             const firstOutput = output[0]
-
-            // Check if it's already a string URL
             if (typeof firstOutput === 'string') {
               imageUrl = firstOutput
             } else if (firstOutput && typeof firstOutput === 'object') {
-              // If it's a stream or object, try to read it
-              // The stream might contain the URL as data
-              try {
-                // Try converting to string (might be a URL object)
-                imageUrl = String(firstOutput)
-                // If it looks like a stream object, we need to iterate
-                if (imageUrl.includes('ReadableStream') || imageUrl.includes('[object')) {
-                  // Use async iteration to read the stream
-                  const chunks: string[] = []
-                  for await (const chunk of output as any) {
-                    if (typeof chunk === 'string') {
-                      chunks.push(chunk)
-                    }
-                  }
-                  imageUrl = chunks.join('')
-                }
-              } catch (e) {
-                // Error reading stream
-              }
+              // Try common URL properties
+              imageUrl = firstOutput.url || firstOutput.output || firstOutput.href || String(firstOutput)
             }
           } else if (typeof output === 'string') {
             imageUrl = output
+          } else if (output && typeof output === 'object') {
+            // Handle object with URL property
+            imageUrl = (output as any).url || (output as any).output || String(output)
           }
 
+          console.log(`[IMAGE ${imageIndex + 1}] Extracted URL: ${imageUrl ? imageUrl.substring(0, 80) + '...' : 'EMPTY'}`)
+
           if (imageUrl && imageUrl.startsWith('http')) {
-          return imageUrl
-        } else {
-          return ''
-        }
+            return imageUrl
+          } else {
+            console.log(`[IMAGE ${imageIndex + 1}] Invalid URL, returning empty`)
+            return ''
+          }
       } catch (error: any) {
         const errorMsg = error.message || String(error)
         const is429 = errorMsg.includes('429') || errorMsg.includes('Too Many Requests')
@@ -181,6 +175,7 @@ export async function POST(request: NextRequest) {
         const imageUrl = await generateImageWithRetry(replicate, prompt, negativePrompt, i, imagePrompts.length, pageSeed)
         imageUrls.push(imageUrl)
         console.log(`Image ${i + 1} done: ${imageUrl ? 'SUCCESS' : 'FAILED'}`)
+        console.log(`[ARRAY STATE] imageUrls.length = ${imageUrls.length}, non-empty count = ${imageUrls.filter(u => u).length}`)
       } catch (error) {
         console.error(`Image ${i + 1} error:`, error)
         imageUrls.push('') // Push empty string for failed images
