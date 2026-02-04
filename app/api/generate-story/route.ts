@@ -254,15 +254,16 @@ CRITICAL: Every page must end with a COMPLETE sentence. Never cut off mid-senten
     const baseSeed = Math.floor(Math.random() * 1000000)
     let characterAnchor: CharacterAnchor | null = null
 
-    try {
-      console.log('\n========== GENERATING CHARACTER ANCHOR ==========')
-      characterAnchor = await generateCharacterAnchor(replicate, universalBible, baseSeed)
-      console.log(`Character Anchor URL: ${characterAnchor.imageUrl}`)
-      console.log('==================================================\n')
-    } catch (anchorError) {
-      console.error('Failed to generate Character Anchor, will use txt2img fallback:', anchorError)
-      // Continue without anchor - will fall back to txt2img
+    // FAIL FAST: Anchor is REQUIRED for character consistency
+    console.log('\n========== GENERATING CHARACTER ANCHOR ==========')
+    characterAnchor = await generateCharacterAnchor(replicate, universalBible, baseSeed)
+
+    if (!characterAnchor || !characterAnchor.imageUrl) {
+      throw new Error('Failed to generate character anchor - cannot proceed without anchor')
     }
+
+    console.log(`Character Anchor URL: ${characterAnchor.imageUrl}`)
+    console.log('==================================================\n')
 
     // ==========================================
     // STEP 4: Generate Universal Scene Cards with LLM
