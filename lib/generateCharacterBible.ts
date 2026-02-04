@@ -23,6 +23,62 @@ export interface UniversalCharacterBible {
   consistency_rules: string[];
 }
 
+// Human attributes that should NEVER appear in animal character bibles
+const FORBIDDEN_HUMAN_ATTRIBUTES = [
+  'skin_tone', 'skin tone', 'skintone',
+  'hair', 'hairstyle', 'hair_style', 'hair color', 'hair_color',
+  'ethnicity', 'race',
+  't-shirt', 'tshirt', 'jeans', 'pants', 'shorts', 'dress', 'skirt',
+  'sneakers', 'shoes', 'socks', 'shirt', 'blouse',
+  'human', 'person', 'child', 'boy', 'girl', 'man', 'woman'
+];
+
+/**
+ * Sanitize animal bible by removing any human attributes
+ * This is a safety net in case the LLM doesn't follow instructions
+ */
+function sanitizeAnimalBible(bible: UniversalCharacterBible): UniversalCharacterBible {
+  console.log('Sanitizing animal bible - removing any human attributes...');
+
+  // Filter visual_fingerprint to remove human attributes
+  const sanitizedFingerprint = bible.visual_fingerprint.filter(trait => {
+    const lowerTrait = trait.toLowerCase();
+    const hasForbidden = FORBIDDEN_HUMAN_ATTRIBUTES.some(attr => lowerTrait.includes(attr));
+    if (hasForbidden) {
+      console.log(`  REMOVED human attribute from fingerprint: "${trait}"`);
+    }
+    return !hasForbidden;
+  });
+
+  // Filter outfit/props to remove human clothing
+  const sanitizedOutfit = bible.signature_outfit_or_props.filter(item => {
+    const lowerItem = item.toLowerCase();
+    const hasForbidden = FORBIDDEN_HUMAN_ATTRIBUTES.some(attr => lowerItem.includes(attr));
+    if (hasForbidden) {
+      console.log(`  REMOVED human attribute from outfit: "${item}"`);
+    }
+    return !hasForbidden;
+  });
+
+  // Filter consistency_rules
+  const sanitizedRules = bible.consistency_rules.filter(rule => {
+    const lowerRule = rule.toLowerCase();
+    // Only remove rules that specifically mention forbidden human attributes
+    const hasForbidden = ['skin_tone', 'hair', 'ethnicity'].some(attr => lowerRule.includes(attr));
+    if (hasForbidden) {
+      console.log(`  REMOVED human-specific rule: "${rule}"`);
+    }
+    return !hasForbidden;
+  });
+
+  return {
+    ...bible,
+    visual_fingerprint: sanitizedFingerprint,
+    signature_outfit_or_props: sanitizedOutfit,
+    consistency_rules: sanitizedRules
+  };
+}
+
 const CHARACTER_BIBLE_PROMPT = `You are generating a CHARACTER BIBLE for a children's illustrated storybook app.
 
 Goal: produce a stable "visual fingerprint" that an image model can follow across 10 pages.
@@ -121,8 +177,15 @@ export async function generateCharacterBibleWithLLM(
       throw new Error('Failed to parse Character Bible JSON');
     }
 
-    const bible = JSON.parse(jsonMatch[0]) as UniversalCharacterBible;
-    console.log('Parsed Character Bible:', JSON.stringify(bible, null, 2));
+    let bible = JSON.parse(jsonMatch[0]) as UniversalCharacterBible;
+
+    // POST-PROCESSING: Strip human attributes if character is NOT human
+    // This is a safety net in case the LLM doesn't follow instructions
+    if (!bible.is_human) {
+      bible = sanitizeAnimalBible(bible);
+    }
+
+    console.log('Parsed Character Bible (sanitized):', JSON.stringify(bible, null, 2));
     console.log('==========================================================\n');
 
     return bible;
