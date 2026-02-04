@@ -9,6 +9,49 @@ const replicate = new Replicate({
   auth: process.env.REPLICATE_API_TOKEN,
 })
 
+// Helper function to sleep/delay
+const sleep = (ms: number) => new Promise(resolve => setTimeout(resolve, ms))
+
+// Retry wrapper for Replicate API calls
+async function runReplicateWithRetry<T>(
+  fn: () => Promise<T>,
+  maxRetries = 3,
+  initialDelay = 2000
+): Promise<T> {
+  let lastError: Error | null = null
+  let delay = initialDelay
+
+  for (let attempt = 1; attempt <= maxRetries; attempt++) {
+    try {
+      return await fn()
+    } catch (error: any) {
+      lastError = error
+      const errorMessage = error.message || String(error)
+      console.log(`Replicate attempt ${attempt}/${maxRetries} failed: ${errorMessage.substring(0, 100)}`)
+
+      // Check if it's a network error worth retrying
+      const isNetworkError =
+        errorMessage.includes('Network') ||
+        errorMessage.includes('connection') ||
+        errorMessage.includes('ECONNRESET') ||
+        errorMessage.includes('ETIMEDOUT') ||
+        errorMessage.includes('fetch failed')
+
+      if (isNetworkError && attempt < maxRetries) {
+        console.log(`Network error, retrying in ${delay}ms...`)
+        await sleep(delay)
+        delay *= 2 // Exponential backoff
+        continue
+      }
+
+      // If it's not a network error or we've exhausted retries, throw
+      throw error
+    }
+  }
+
+  throw lastError || new Error('Max retries reached')
+}
+
 // COMPREHENSIVE LIST OF ALL ANIMALS AND INSECTS
 const ALL_ANIMALS = [
   // PETS & DOMESTIC
@@ -154,17 +197,20 @@ CRITICAL: Every page must end with a COMPLETE sentence. Never cut off mid-senten
 
     const userPrompt = `Create a magical 10-page children's story about: "${prompt}"`
 
-    const output = await replicate.run(
-      "meta/meta-llama-3.1-405b-instruct",
-      {
-        input: {
-          prompt: `${systemPrompt}\n\n${userPrompt}`,
-          temperature: 0.9,
-          max_tokens: 8000,
-          top_p: 0.9,
+    // Call Replicate with retry logic for network errors
+    const output = await runReplicateWithRetry(async () => {
+      return await replicate.run(
+        "meta/meta-llama-3.1-405b-instruct",
+        {
+          input: {
+            prompt: `${systemPrompt}\n\n${userPrompt}`,
+            temperature: 0.9,
+            max_tokens: 8000,
+            top_p: 0.9,
+          }
         }
-      }
-    ) as string[]
+      ) as string[]
+    })
 
     const storyText = output.join('')
 
