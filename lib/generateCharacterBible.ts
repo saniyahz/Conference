@@ -197,6 +197,55 @@ export async function generateCharacterBibleWithLLM(
 }
 
 /**
+ * Extract character name from text - prioritize "called X" or "named X" patterns
+ */
+function extractCharacterName(originalPrompt: string, firstPageText: string, storyTitle: string): string {
+  // Common words to skip (not names)
+  const skipWords = new Set([
+    'in', 'the', 'a', 'an', 'on', 'at', 'to', 'for', 'of', 'with', 'by',
+    'once', 'upon', 'time', 'there', 'was', 'were', 'one', 'day', 'he', 'she',
+    'his', 'her', 'they', 'their', 'it', 'its', 'this', 'that', 'and', 'but',
+    'so', 'or', 'if', 'then', 'when', 'where', 'who', 'what', 'how', 'why'
+  ]);
+
+  // 1. Try "called X" or "named X" pattern in prompt (highest priority)
+  const calledMatch = originalPrompt.match(/(?:called|named)\s+([A-Z][a-z]+)/i);
+  if (calledMatch && calledMatch[1].length >= 3) {
+    console.log(`[NAME] Found name from "called/named" pattern: ${calledMatch[1]}`);
+    return calledMatch[1].charAt(0).toUpperCase() + calledMatch[1].slice(1).toLowerCase();
+  }
+
+  // 2. Try extracting from story title (e.g., "Riri's Magical Adventure")
+  const titleMatch = storyTitle.match(/^([A-Z][a-z]+)(?:'s|'s)/);
+  if (titleMatch && titleMatch[1].length >= 3 && !skipWords.has(titleMatch[1].toLowerCase())) {
+    console.log(`[NAME] Found name from title: ${titleMatch[1]}`);
+    return titleMatch[1];
+  }
+
+  // 3. Try finding a proper noun in the prompt
+  const promptWords = originalPrompt.match(/\b([A-Z][a-z]{2,})\b/g) || [];
+  for (const word of promptWords) {
+    if (!skipWords.has(word.toLowerCase()) && word.length >= 3) {
+      console.log(`[NAME] Found name from prompt: ${word}`);
+      return word;
+    }
+  }
+
+  // 4. Try finding a proper noun in first page text (skip common words)
+  const pageWords = firstPageText.match(/\b([A-Z][a-z]{2,})\b/g) || [];
+  for (const word of pageWords) {
+    if (!skipWords.has(word.toLowerCase()) && word.length >= 3) {
+      console.log(`[NAME] Found name from page text: ${word}`);
+      return word;
+    }
+  }
+
+  // 5. Default fallback
+  console.log('[NAME] Using default name: Hero');
+  return 'Hero';
+}
+
+/**
  * Create fallback Character Bible when LLM fails
  */
 function createFallbackBible(
@@ -206,6 +255,10 @@ function createFallbackBible(
 ): UniversalCharacterBible {
   const firstPageText = storyPages[0]?.text || '';
   const lowerText = (firstPageText + ' ' + originalPrompt).toLowerCase();
+
+  // Extract character name properly
+  const name = extractCharacterName(originalPrompt, firstPageText, storyTitle);
+  console.log(`[FALLBACK BIBLE] Using character name: ${name}`);
 
   // Detect if it's an animal
   const animalPatterns = [
@@ -221,10 +274,6 @@ function createFallbackBible(
   // Find matching animal
   for (const { pattern, species, traits } of animalPatterns) {
     if (pattern.test(lowerText)) {
-      // Extract name from text
-      const nameMatch = firstPageText.match(/\b([A-Z][a-z]+)\b/);
-      const name = nameMatch ? nameMatch[1] : 'Hero';
-
       return {
         character_id: name.toLowerCase(),
         name,
@@ -250,10 +299,7 @@ function createFallbackBible(
     }
   }
 
-  // Default to human child
-  const nameMatch = firstPageText.match(/\b([A-Z][a-z]+)\b/);
-  const name = nameMatch ? nameMatch[1] : 'Hero';
-
+  // Default to human child (name already extracted above)
   return {
     character_id: name.toLowerCase(),
     name,

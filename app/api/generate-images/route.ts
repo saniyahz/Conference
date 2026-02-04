@@ -140,10 +140,11 @@ async function generateImageWithRetry(
 }
 
 // SDXL model version - use consistent version throughout
-const SDXL_MODEL = "stability-ai/sdxl:39ed52f2a78e934b3ba6e2a89f5b1c712de7dfea535525255b1aa35c5565e08b"
+const SDXL_VERSION = "39ed52f2a78e934b3ba6e2a89f5b1c712de7dfea535525255b1aa35c5565e08b"
 
 // Helper function to generate image with anchor reference (img2img)
 // This is the PRIMARY method for character consistency
+// Uses predictions API instead of run() to avoid empty [{}] response issue
 async function generateImageWithAnchor(
   replicate: Replicate,
   prompt: string,
@@ -158,7 +159,7 @@ async function generateImageWithAnchor(
 
   for (let attempt = 1; attempt <= maxRetries; attempt++) {
     try {
-      // Build ONE input object
+      // Build input object for img2img
       const input: any = {
         prompt,
         negative_prompt: negativePrompt || "text, watermark, ugly, deformed, human, person, child",
@@ -169,13 +170,11 @@ async function generateImageWithAnchor(
         num_inference_steps: 25,
         guidance_scale: 8,
         seed,  // SAME seed for all pages
+        image: anchorUrl,  // Anchor for img2img
+        prompt_strength: PROMPT_STRENGTH,  // How much to change from anchor
       }
 
-      // Add anchor for img2img
-      input.image = anchorUrl
-      input.prompt_strength = PROMPT_STRENGTH
-
-      // EXPLICIT DEBUG LOGS - these must be present and unambiguous
+      // EXPLICIT DEBUG LOGS
       console.log(`\n========== IMG2IMG PAGE ${imageIndex + 1} (attempt ${attempt}) ==========`)
       console.log(`ANCHOR URL: ${anchorUrl}`)
       console.log(`PROMPT_STRENGTH: ${input.prompt_strength}`)
@@ -183,24 +182,58 @@ async function generateImageWithAnchor(
       console.log(`FINAL REPLICATE INPUT:`, JSON.stringify(input, null, 2))
       console.log(`================================================================\n`)
 
-      const output = await replicate.run(SDXL_MODEL, { input })
+      // Use predictions API instead of run() to avoid empty [{}] response
+      const prediction = await replicate.predictions.create({
+        version: SDXL_VERSION,
+        input
+      })
 
+      console.log(`[PAGE ${imageIndex + 1}] Prediction created: ${prediction.id}`)
+
+      // Poll for completion
+      let completedPrediction = prediction
+      let pollCount = 0
+      const maxPolls = 60 // 2 minutes max
+
+      while (completedPrediction.status !== 'succeeded' && completedPrediction.status !== 'failed' && completedPrediction.status !== 'canceled') {
+        pollCount++
+        if (pollCount > maxPolls) {
+          throw new Error('Prediction timed out')
+        }
+        if (pollCount % 5 === 0) {
+          console.log(`[PAGE ${imageIndex + 1}] Polling... (${pollCount}/${maxPolls}) status: ${completedPrediction.status}`)
+        }
+        await sleep(2000)
+        completedPrediction = await replicate.predictions.get(prediction.id)
+      }
+
+      console.log(`[PAGE ${imageIndex + 1}] Final status: ${completedPrediction.status}`)
+
+      if (completedPrediction.status === 'failed') {
+        throw new Error(`Prediction failed: ${completedPrediction.error || 'Unknown error'}`)
+      }
+
+      const output = completedPrediction.output
+
+      // Extract URL from output
       let imageUrl = ''
       if (Array.isArray(output) && output.length > 0) {
         const firstOutput = output[0]
-        if (typeof firstOutput === 'string') {
+        if (typeof firstOutput === 'string' && firstOutput.startsWith('http')) {
           imageUrl = firstOutput
         }
-      } else if (typeof output === 'string') {
+      } else if (typeof output === 'string' && output.startsWith('http')) {
         imageUrl = output
       }
 
-      if (imageUrl && imageUrl.startsWith('http')) {
-        console.log(`SUCCESS: Page ${imageIndex + 1} generated with anchor`)
+      if (imageUrl) {
+        console.log(`SUCCESS: Page ${imageIndex + 1} generated with anchor: ${imageUrl.substring(0, 60)}...`)
         return imageUrl
+      } else {
+        console.log(`[PAGE ${imageIndex + 1}] No URL in output:`, JSON.stringify(output).substring(0, 200))
       }
     } catch (error: any) {
-      console.log(`img2img attempt ${attempt} failed:`, error.message?.substring(0, 100))
+      console.log(`[PAGE ${imageIndex + 1}] attempt ${attempt} failed:`, error.message?.substring(0, 100))
       if (attempt < maxRetries) {
         await sleep(3000 * attempt)
       }
