@@ -4,6 +4,10 @@ import { CharacterBible, PageSceneCard, StoryImagePack } from '@/lib/visual-type
 import { createCharacterBible, createSimpleBible, CharacterDNA } from '@/lib/createCharacterBible'
 import { generateAllSceneCards } from '@/lib/generatePageSceneCard'
 import { renderPrompt, renderNegativePrompt, generatePageSeedByNumber } from '@/lib/renderPrompt'
+// New Universal system
+import { generateCharacterBibleWithLLM, UniversalCharacterBible } from '@/lib/generateCharacterBible'
+import { generateAllSceneCardsWithLLM, UniversalSceneCard } from '@/lib/generateSceneCard'
+import { buildImagePrompt, buildNegativePrompt, generateAllImagePrompts } from '@/lib/buildImagePrompt'
 
 const replicate = new Replicate({
   auth: process.env.REPLICATE_API_TOKEN,
@@ -215,95 +219,89 @@ CRITICAL: Every page must end with a COMPLETE sentence. Never cut off mid-senten
     const storyText = output.join('')
 
     // ==========================================
-    // STEP 2: Parse story and create Character Bible
+    // STEP 2: Parse story text
     // ==========================================
     const parsedStory = parseStoryResponse(storyText, prompt)
 
-    // Create Character Bible (ONCE for entire book)
-    let characterBible;
-    if (parsedStory.characterDNA) {
-      characterBible = createCharacterBible(parsedStory.characterDNA)
-    } else {
-      // Fallback: detect main character from FIRST PAGE of generated story
-      const firstPageText = parsedStory.pages[0]?.text || ''
-      const lowerFirstPage = firstPageText.toLowerCase()
-      const lowerPrompt = prompt.toLowerCase()
-
-      // Try to find "Name the Animal" pattern in story text first
-      // Also handle "Name was a [animal]" pattern
-      const nameTheAnimalMatch = firstPageText.match(/\b([A-Z][a-z]+)\s+(?:the|was a|is a)\s+(Rhinoceros|Rhino|Porcupine|Cat|Dog|Elephant|Rabbit|Bear|Fox|Lion|Tiger|Mouse|Squirrel|Deer|Owl|Bird|Penguin|Monkey|Giraffe|Zebra|Hippo|Hippopotamus|Koala|Kangaroo|Dolphin|Whale|Seal|Otter|Wolf|Pig|Cow|Horse|Sheep|Goat|Duck|Chicken|Butterfly|Bee|Dragon|Unicorn|Frog|Turtle|Fish|Hedgehog|Raccoon|Beaver|Panda|Hamster|Guinea Pig|Parrot|Snake|Lizard)\b/i)
-
-      if (nameTheAnimalMatch) {
-        const charName = nameTheAnimalMatch[1]
-        const species = nameTheAnimalMatch[2].toLowerCase()
-        console.log(`[CHARACTER DETECTION] Found "${charName} the ${species}" in story`)
-        characterBible = createSimpleBible(
-          charName,
-          'animal',
-          species,
-          'gray'  // bodyColor - skin_texture comes from ANIMAL_FEATURES
-        )
-      } else {
-        // Fallback: search for any animal keyword in story or prompt
-        const searchText = lowerFirstPage + ' ' + lowerPrompt
-        const detectedAnimal = ALL_ANIMALS.find(animal => searchText.includes(animal))
-
-        if (detectedAnimal) {
-          const charName = extractNameFromPrompt(prompt) || extractNameFromText(firstPageText)
-          console.log(`[CHARACTER DETECTION] Found animal "${detectedAnimal}" in text`)
-          characterBible = createSimpleBible(
-            charName,
-            'animal',
-            detectedAnimal,
-            'golden'  // bodyColor - skin_texture comes from ANIMAL_FEATURES
-          )
-        } else {
-          characterBible = createSimpleBible(extractNameFromPrompt(prompt) || 'Hero')
-        }
-      }
-    }
-
-    console.log('\n========== CHARACTER BIBLE ==========')
-    console.log(JSON.stringify(characterBible, null, 2))
-    console.log('=====================================\n')
+    // Convert pages to include pageNumber
+    const pagesWithNumbers = parsedStory.pages.map((page, index) => ({
+      pageNumber: index + 1,
+      text: page.text
+    }))
 
     // ==========================================
-    // STEP 3: Generate Page Scene Cards
+    // STEP 3: Generate Universal Character Bible with LLM
+    // This properly distinguishes animals from humans
     // ==========================================
-    const sceneCards = generateAllSceneCards(parsedStory.pages, characterBible)
+    console.log('\n========== GENERATING CHARACTER BIBLE WITH LLM ==========')
+    const universalBible = await generateCharacterBibleWithLLM(
+      replicate,
+      parsedStory.title,
+      pagesWithNumbers,
+      prompt
+    )
 
-    console.log('\n========== SCENE CARDS ==========')
-    sceneCards.forEach((card, i) => {
-      console.log(`Page ${i + 1}: ${card.scene_id} | Setting: ${card.setting.substring(0, 50)}...`)
+    console.log('\n========== UNIVERSAL CHARACTER BIBLE ==========')
+    console.log(JSON.stringify(universalBible, null, 2))
+    console.log('================================================\n')
+
+    // ==========================================
+    // STEP 4: Generate Universal Scene Cards with LLM
+    // This extracts proper scene details per page
+    // ==========================================
+    const universalSceneCards = await generateAllSceneCardsWithLLM(
+      replicate,
+      pagesWithNumbers,
+      universalBible.name
+    )
+
+    console.log('\n========== UNIVERSAL SCENE CARDS ==========')
+    universalSceneCards.forEach((card, i) => {
+      console.log(`Page ${i + 1}: ${card.setting.substring(0, 60)}...`)
+      console.log(`  must_include: ${card.must_include.slice(0, 3).join(', ')}`)
     })
-    console.log('=================================\n')
+    console.log('============================================\n')
 
     // ==========================================
-    // STEP 4: Render prompts using universal template
+    // STEP 5: Build image prompts using new Universal system
     // ==========================================
     const baseSeed = Math.floor(Math.random() * 1000000)
-    const imagePrompts: string[] = []
-    const negativePrompts: string[] = []
-    const seeds: number[] = []
+    const { prompts: imagePrompts, negativePrompts } = generateAllImagePrompts(universalBible, universalSceneCards)
 
-    const isAnimalStory = characterBible.character_type === 'animal' && !characterBible.is_human
-    const characterSpecies = characterBible.species
+    // Use same seed for all pages (character consistency)
+    const seeds = universalSceneCards.map(() => baseSeed)
 
-    sceneCards.forEach((card, index) => {
-      // Pass page text so renderPrompt can detect animals from story
-      const pageText = parsedStory.pages[index]?.text || ''
-      const prompt = renderPrompt(characterBible, card, pageText)
-      // CRITICAL: Pass species for species-specific negative prompts (prevents rhino → cow drift)
-      const negativePrompt = renderNegativePrompt(card, isAnimalStory, characterSpecies)
-      const seed = generatePageSeedByNumber(card.page_number, baseSeed)
-
-      imagePrompts.push(prompt)
-      negativePrompts.push(negativePrompt)
-      seeds.push(seed)
-
-      console.log(`\n--- PAGE ${index + 1} PROMPT ---`)
-      console.log(prompt.substring(0, 600) + '...')
+    console.log('\n========== IMAGE PROMPTS ==========')
+    imagePrompts.forEach((p, i) => {
+      console.log(`\n--- PAGE ${i + 1} PROMPT ---`)
+      console.log(p.substring(0, 400) + '...')
+      console.log(`NEGATIVE: ${negativePrompts[i].substring(0, 100)}...`)
     })
+    console.log('====================================\n')
+
+    // Also create legacy characterBible for backward compatibility
+    const characterBible = createSimpleBible(
+      universalBible.name,
+      universalBible.is_human ? 'human' : 'animal',
+      universalBible.species_or_type,
+      'gray'
+    )
+
+    // Create legacy sceneCards for backward compatibility
+    const sceneCards: PageSceneCard[] = universalSceneCards.map(card => ({
+      page_number: card.page_index,
+      scene_id: `page_${card.page_index}`,
+      setting: card.setting,
+      time_weather: card.mood,
+      main_action: card.action,
+      foreground_must_include: [universalBible.name, ...card.must_include.slice(0, 2)],
+      background_must_include: card.must_include.slice(2),
+      supporting_characters: card.supporting_characters.map(c => c.type),
+      key_objects: card.must_include,
+      required_elements: card.must_include,
+      forbidden_elements: [] as string[],
+      camera: { shot_type: card.camera, composition_notes: '' }
+    }))
 
     // ==========================================
     // STEP 5: Build Story Image Pack

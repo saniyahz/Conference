@@ -1,0 +1,221 @@
+import Replicate from 'replicate';
+
+/**
+ * Universal Character Bible schema
+ * Properly distinguishes between animals and humans
+ */
+export interface UniversalCharacterBible {
+  character_id: string;
+  name: string;
+  species_or_type: string;
+  is_human: boolean;
+  age: string;
+  visual_fingerprint: string[];
+  signature_outfit_or_props: string[];
+  personality_tags: string[];
+  art_style: {
+    medium: string;
+    genre: string;
+    mood: string;
+    line_detail: string;
+    color_palette: string;
+  };
+  consistency_rules: string[];
+}
+
+const CHARACTER_BIBLE_PROMPT = `You are generating a CHARACTER BIBLE for a children's illustrated storybook app.
+
+Goal: produce a stable "visual fingerprint" that an image model can follow across 10 pages.
+
+CRITICAL RULES
+1) First determine if the main character is HUMAN or ANIMAL (or FANTASY_CREATURE).
+2) If ANIMAL or FANTASY_CREATURE:
+   - DO NOT use human attributes such as: skin_tone, hair_style, hairstyle, ethnicity, human clothing terms like "t-shirt/jeans" unless the story explicitly makes the animal wear clothes.
+   - Use animal/fantasy attributes instead: body_color, skin_texture/fur/feathers, horn/beak/ears/tail, markings, eye_color, body_shape, size.
+3) If HUMAN:
+   - You may use hair, clothing, and face features, but keep it kid-safe and simple.
+4) Keep the fingerprint SHORT and repeatable (6–10 traits max).
+5) Outfit/props must be STABLE across pages unless story explicitly changes them.
+6) Avoid contradictions (e.g., "rhinoceros with hair").
+7) Output MUST be valid JSON and conform exactly to the schema below. No extra keys. No commentary.
+
+SCHEMA (output exactly this shape)
+{
+  "character_id": "string",
+  "name": "string",
+  "species_or_type": "string",
+  "is_human": true|false,
+  "age": "string",
+  "visual_fingerprint": [
+    "short repeatable visual traits (6-10 items)"
+  ],
+  "signature_outfit_or_props": [
+    "stable outfit/prop items (0-3 items)"
+  ],
+  "personality_tags": ["string","string","string"],
+  "art_style": {
+    "medium": "string",
+    "genre": "string",
+    "mood": "string",
+    "line_detail": "string",
+    "color_palette": "string"
+  },
+  "consistency_rules": [
+    "string",
+    "string",
+    "string"
+  ]
+}
+
+GUIDANCE FOR visual_fingerprint
+- For ANIMAL: include body color, texture, horn/beak/ears/tail detail, eye color, body proportions, one cute identifying mark.
+- For HUMAN: include hair color/style, eye color, outfit color, and one distinctive accessory (e.g., headband).
+- Keep each fingerprint line short, like: "light gray rhino with one small rounded horn".
+
+Now generate the Character Bible for the main character in this story:
+STORY SUMMARY / DETAILS:`;
+
+/**
+ * Generate Character Bible using LLM
+ * Uses a dedicated prompt that properly distinguishes animals from humans
+ */
+export async function generateCharacterBibleWithLLM(
+  replicate: Replicate,
+  storyTitle: string,
+  storyPages: { pageNumber: number; text: string }[],
+  originalPrompt: string
+): Promise<UniversalCharacterBible> {
+  // Build story summary from first few pages
+  const storySummary = [
+    `Title: ${storyTitle}`,
+    `Original prompt: ${originalPrompt}`,
+    `First 3 pages:`,
+    ...storyPages.slice(0, 3).map(p => `Page ${p.pageNumber}: ${p.text.substring(0, 300)}`)
+  ].join('\n');
+
+  const fullPrompt = `${CHARACTER_BIBLE_PROMPT}\n${storySummary}\n\nOutput ONLY the JSON, no explanation:`;
+
+  console.log('\n========== GENERATING CHARACTER BIBLE WITH LLM ==========');
+  console.log('Story summary:', storySummary.substring(0, 500));
+
+  try {
+    const output = await replicate.run(
+      "meta/meta-llama-3.1-70b-instruct",
+      {
+        input: {
+          prompt: fullPrompt,
+          temperature: 0.3, // Low temperature for consistent output
+          max_tokens: 1500,
+          top_p: 0.9,
+        }
+      }
+    ) as string[];
+
+    const responseText = output.join('');
+    console.log('LLM Response:', responseText.substring(0, 1000));
+
+    // Extract JSON from response
+    const jsonMatch = responseText.match(/\{[\s\S]*\}/);
+    if (!jsonMatch) {
+      console.error('No JSON found in LLM response');
+      throw new Error('Failed to parse Character Bible JSON');
+    }
+
+    const bible = JSON.parse(jsonMatch[0]) as UniversalCharacterBible;
+    console.log('Parsed Character Bible:', JSON.stringify(bible, null, 2));
+    console.log('==========================================================\n');
+
+    return bible;
+  } catch (error) {
+    console.error('Error generating Character Bible with LLM:', error);
+    // Return a fallback bible
+    return createFallbackBible(storyTitle, storyPages, originalPrompt);
+  }
+}
+
+/**
+ * Create fallback Character Bible when LLM fails
+ */
+function createFallbackBible(
+  storyTitle: string,
+  storyPages: { pageNumber: number; text: string }[],
+  originalPrompt: string
+): UniversalCharacterBible {
+  const firstPageText = storyPages[0]?.text || '';
+  const lowerText = (firstPageText + ' ' + originalPrompt).toLowerCase();
+
+  // Detect if it's an animal
+  const animalPatterns = [
+    { pattern: /rhinoceros|rhino/i, species: 'rhinoceros', traits: ['gray rhinoceros', 'one small rounded horn', 'big friendly eyes', 'sturdy body', 'small rounded ears', 'thick gray skin'] },
+    { pattern: /elephant/i, species: 'elephant', traits: ['gray elephant', 'big floppy ears', 'long trunk', 'friendly eyes', 'sturdy legs', 'small tail'] },
+    { pattern: /lion/i, species: 'lion', traits: ['golden lion', 'fluffy mane', 'big amber eyes', 'strong paws', 'long tail with tuft'] },
+    { pattern: /bear/i, species: 'bear', traits: ['brown bear', 'round fluffy body', 'small round ears', 'big friendly eyes', 'soft fur'] },
+    { pattern: /rabbit|bunny/i, species: 'rabbit', traits: ['fluffy rabbit', 'long ears', 'pink nose', 'cotton tail', 'soft white fur'] },
+    { pattern: /cat|kitten/i, species: 'cat', traits: ['fluffy cat', 'pointed ears', 'whiskers', 'long tail', 'soft fur'] },
+    { pattern: /dog|puppy/i, species: 'dog', traits: ['friendly dog', 'floppy ears', 'wagging tail', 'wet nose', 'soft fur'] },
+  ];
+
+  // Find matching animal
+  for (const { pattern, species, traits } of animalPatterns) {
+    if (pattern.test(lowerText)) {
+      // Extract name from text
+      const nameMatch = firstPageText.match(/\b([A-Z][a-z]+)\b/);
+      const name = nameMatch ? nameMatch[1] : 'Hero';
+
+      return {
+        character_id: name.toLowerCase(),
+        name,
+        species_or_type: species,
+        is_human: false,
+        age: 'young',
+        visual_fingerprint: traits,
+        signature_outfit_or_props: [],
+        personality_tags: ['curious', 'brave', 'friendly'],
+        art_style: {
+          medium: 'soft watercolor',
+          genre: 'premium children\'s picture book',
+          mood: 'warm, gentle, magical',
+          line_detail: 'clean, whimsical',
+          color_palette: 'bright, pastel'
+        },
+        consistency_rules: [
+          `${name} must look identical across all pages.`,
+          'Maintain same body color and proportions throughout.',
+          'Keep the same art style and mood throughout the book.'
+        ]
+      };
+    }
+  }
+
+  // Default to human child
+  const nameMatch = firstPageText.match(/\b([A-Z][a-z]+)\b/);
+  const name = nameMatch ? nameMatch[1] : 'Hero';
+
+  return {
+    character_id: name.toLowerCase(),
+    name,
+    species_or_type: 'human child',
+    is_human: true,
+    age: '6',
+    visual_fingerprint: [
+      'cute cartoon child',
+      'big expressive eyes',
+      'friendly smile',
+      'colorful outfit'
+    ],
+    signature_outfit_or_props: [],
+    personality_tags: ['curious', 'brave', 'friendly'],
+    art_style: {
+      medium: 'soft watercolor',
+      genre: 'premium children\'s picture book',
+      mood: 'warm, gentle, magical',
+      line_detail: 'clean, whimsical',
+      color_palette: 'bright, pastel'
+    },
+    consistency_rules: [
+      `${name} must look identical across all pages.`,
+      'Maintain same outfit and hairstyle throughout.',
+      'Keep the same art style and mood throughout the book.'
+    ]
+  };
+}
