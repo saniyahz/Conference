@@ -1,17 +1,20 @@
 import { CharacterBible, PageSceneCard } from "./visual-types";
 
-// Comprehensive animal list for detection
-const ALL_ANIMALS = [
-  'rhino', 'rhinoceros', 'elephant', 'giraffe', 'zebra', 'hippo', 'hippopotamus',
+// Comprehensive animal list for detection - PRIORITY ORDER (check big/distinctive first)
+const PRIORITY_ANIMALS = [
+  'rhinoceros', 'rhino',  // CHECK RHINO FIRST!
+  'elephant', 'giraffe', 'hippopotamus', 'hippo', 'zebra',
   'lion', 'tiger', 'leopard', 'jaguar', 'cheetah', 'bear', 'polar bear',
+  'gorilla', 'chimpanzee', 'orangutan', 'monkey', 'ape',
+  'wolf', 'fox', 'deer', 'moose', 'elk', 'horse', 'pony', 'donkey',
+  'kangaroo', 'koala', 'panda', 'dolphin', 'whale', 'shark', 'octopus',
+  'crocodile', 'alligator', 'turtle', 'tortoise', 'snake', 'lizard',
+  'dragon', 'unicorn', 'dinosaur',
   'dog', 'puppy', 'cat', 'kitten', 'rabbit', 'bunny', 'hamster', 'mouse', 'rat',
-  'fox', 'wolf', 'deer', 'moose', 'elk', 'horse', 'pony', 'donkey', 'cow', 'pig',
-  'sheep', 'goat', 'chicken', 'duck', 'goose', 'turkey', 'owl', 'eagle', 'hawk',
-  'penguin', 'seal', 'walrus', 'dolphin', 'whale', 'shark', 'fish', 'octopus',
-  'frog', 'toad', 'turtle', 'tortoise', 'snake', 'lizard', 'crocodile', 'alligator',
-  'monkey', 'ape', 'gorilla', 'chimpanzee', 'orangutan', 'koala', 'kangaroo',
-  'panda', 'raccoon', 'skunk', 'squirrel', 'chipmunk', 'beaver', 'otter',
-  'butterfly', 'bee', 'ant', 'spider', 'dragon', 'unicorn', 'dinosaur',
+  'cow', 'pig', 'sheep', 'goat', 'chicken', 'duck', 'goose', 'turkey',
+  'owl', 'eagle', 'hawk', 'penguin', 'seal', 'walrus',
+  'frog', 'toad', 'butterfly', 'bee', 'ant', 'spider',
+  'raccoon', 'skunk', 'squirrel', 'chipmunk', 'beaver', 'otter', 'fish',
 ];
 
 /**
@@ -24,24 +27,43 @@ export function renderPrompt(bible: CharacterBible, card: PageSceneCard, pageTex
   const lowerText = text.toLowerCase();
   const charName = bible.name;
 
-  // 1. DETECT SPECIES - Try multiple sources, be aggressive
-  let species = bible.species;
+  console.log(`\n====== RENDER PROMPT DEBUG ======`);
+  console.log(`Page: ${card.page_number}`);
+  console.log(`Character name: ${charName}`);
+  console.log(`Bible species: ${bible.species}`);
+  console.log(`Bible character_type: ${bible.character_type}`);
+  console.log(`Page text (first 100 chars): ${text.substring(0, 100)}`);
 
-  // If bible doesn't have specific species, extract from page text
-  if (!species || species === 'animal') {
-    species = extractAnimalFromText(lowerText) || 'animal';
-  }
+  // 1. AGGRESSIVE SPECIES DETECTION - Check page text FIRST, override bible
+  let species: string = 'animal';
 
-  // Also check for "Name the Animal" pattern in current page
-  const nameTheAnimalMatch = text.match(/\b([A-Z][a-z]+)\s+the\s+(\w+)/i);
-  if (nameTheAnimalMatch) {
-    const possibleSpecies = nameTheAnimalMatch[2].toLowerCase();
-    if (ALL_ANIMALS.includes(possibleSpecies)) {
-      species = possibleSpecies;
+  // Method 1: Direct search in page text for animal words (MOST RELIABLE)
+  for (const animal of PRIORITY_ANIMALS) {
+    if (lowerText.includes(animal)) {
+      species = animal;
+      console.log(`[DETECTION] Found "${animal}" directly in page text`);
+      break;
     }
   }
 
-  console.log(`[renderPrompt] Detected species: "${species}" for character "${charName}"`);
+  // Method 2: Pattern match "Name the Animal" (e.g., "Riri the rhinoceros")
+  const namePattern = text.match(/\b\w+\s+the\s+(\w+)/i);
+  if (namePattern) {
+    const possibleSpecies = namePattern[1].toLowerCase();
+    console.log(`[DETECTION] Name pattern found: "${namePattern[0]}" -> species: "${possibleSpecies}"`);
+    if (PRIORITY_ANIMALS.includes(possibleSpecies)) {
+      species = possibleSpecies;
+      console.log(`[DETECTION] Using pattern-matched species: ${species}`);
+    }
+  }
+
+  // Method 3: Fall back to bible species if still 'animal'
+  if (species === 'animal' && bible.species && bible.species !== 'animal') {
+    species = bible.species;
+    console.log(`[DETECTION] Using bible species: ${species}`);
+  }
+
+  console.log(`[FINAL SPECIES]: "${species}"`);
 
   // 2. Get character appearance details
   const furColor = bible.appearance?.skin_tone || 'gray';
@@ -53,53 +75,22 @@ export function renderPrompt(bible: CharacterBible, card: PageSceneCard, pageTex
   // 4. ACTION - What is the character doing?
   const action = extractActionFromText(lowerText, charName);
 
-  // 5. BUILD PROMPT - SPECIES FIRST, REPEATED, NO HUMANS
+  // 5. BUILD PROMPT - SPECIES x3 FIRST
   let prompt: string;
 
-  // Check if this is an animal story (bible says animal OR we detected an animal)
-  const isAnimalStory = bible.character_type === 'animal' || (species && species !== 'animal');
-
-  if (isAnimalStory && species && species !== 'animal') {
+  if (species && species !== 'animal') {
     // ANIMAL CHARACTER - SPECIES x3 at START (critical for SDXL)
-    // Format: "SPECIES. SPECIES. SPECIES." then full description
     const SPECIES = species.toUpperCase();
-    prompt = `${SPECIES}. ${SPECIES}. ${SPECIES}. A full-body ${species} named ${charName} (non-human animal), clearly a ${species}. Scene: ${scene}. Action: ${action}. Must include: ${species} features, ${furColor}. Children's picture book illustration, vibrant, clean lines.`;
-  } else if (isAnimalStory) {
-    // Animal story but couldn't detect specific species - use generic but NO HUMANS
-    prompt = `ANIMAL. ANIMAL. ANIMAL. A cute cartoon animal character (non-human) with ${furColor} and ${eyeDesc}. ${charName} the friendly animal, ${action}. Scene: ${scene}. Children's picture book illustration, vibrant colors. NO humans.`;
+    prompt = `${SPECIES}. ${SPECIES}. ${SPECIES}. A full-body ${species} named ${charName} (non-human animal), clearly a ${species} with ${species} features. Scene: ${scene}. Action: ${action}. Must include: ${species} body, ${furColor}. Children's picture book illustration, vibrant, clean lines.`;
   } else {
-    // HUMAN character (only if explicitly human)
-    prompt = `A cute cartoon child character with friendly face and ${eyeDesc}, ${charName}, ${action}. Scene: ${scene}. Style: Pixar Disney animation, soft lighting, vibrant colors, children's book illustration.`;
+    // Couldn't detect species - use generic animal
+    prompt = `ANIMAL. ANIMAL. ANIMAL. A cute cartoon animal character (non-human, NOT a bird, NOT a chicken). ${charName} the friendly animal, ${action}. Scene: ${scene}. Children's picture book illustration, vibrant colors. NO humans, NO birds.`;
   }
 
-  console.log(`[PROMPT] Page ${card.page_number}: ${prompt.substring(0, 200)}...`);
+  console.log(`[FINAL PROMPT]: ${prompt}`);
+  console.log(`====== END RENDER PROMPT DEBUG ======\n`);
+
   return prompt;
-}
-
-/**
- * Extract animal species from text
- */
-function extractAnimalFromText(text: string): string | null {
-  const lowerText = text.toLowerCase();
-
-  // Check for specific animals, prioritizing larger/distinctive ones first
-  const priorityAnimals = [
-    'rhinoceros', 'rhino', 'elephant', 'giraffe', 'hippopotamus', 'hippo',
-    'lion', 'tiger', 'bear', 'wolf', 'fox', 'deer', 'horse', 'zebra',
-    'monkey', 'gorilla', 'chimpanzee', 'orangutan', 'panda', 'koala', 'kangaroo',
-    'dolphin', 'whale', 'shark', 'octopus', 'turtle', 'crocodile', 'alligator',
-    'dragon', 'unicorn', 'dinosaur', 'penguin', 'owl', 'eagle',
-    'dog', 'puppy', 'cat', 'kitten', 'rabbit', 'bunny', 'hamster', 'mouse',
-    'frog', 'butterfly', 'bee', 'duck', 'chicken', 'pig', 'cow', 'sheep', 'goat',
-  ];
-
-  for (const animal of priorityAnimals) {
-    if (lowerText.includes(animal)) {
-      return animal;
-    }
-  }
-
-  return null;
 }
 
 /**
