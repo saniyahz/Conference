@@ -1,5 +1,110 @@
 import { CharacterBible, PageSceneCard } from "./visual-types";
 
+/**
+ * Scene requirements extracted from page text
+ * Used for validation to ensure prompt contains required elements
+ */
+interface SceneRequirements {
+  setting: string;
+  requiredObjects: string[];
+  requiredCharacters: string[];
+  action: string;
+}
+
+/**
+ * Extract hard requirements from page text
+ * These MUST appear in the final prompt
+ */
+function extractSceneRequirements(text: string): SceneRequirements {
+  const lowerText = text.toLowerCase();
+  const requirements: SceneRequirements = {
+    setting: '',
+    requiredObjects: [],
+    requiredCharacters: [],
+    action: ''
+  };
+
+  // REQUIRED OBJECTS - if mentioned in text, MUST be in prompt
+  const objectPatterns = [
+    { pattern: /rocket\s*ship|spaceship/i, obj: 'rocket ship' },
+    { pattern: /\bocean\b|\bsea\b/i, obj: 'ocean' },
+    { pattern: /\bdolphins?\b/i, obj: 'dolphins' },
+    { pattern: /\bflag\b/i, obj: 'flag' },
+    { pattern: /\bcraters?\b/i, obj: 'moon craters' },
+    { pattern: /\brainbow\b/i, obj: 'rainbow' },
+    { pattern: /\bwaterfall\b/i, obj: 'waterfall' },
+    { pattern: /\btreasure\b|\bchest\b/i, obj: 'treasure chest' },
+    { pattern: /\bcrown\b/i, obj: 'crown' },
+    { pattern: /\bballoons?\b/i, obj: 'balloons' },
+  ];
+
+  for (const { pattern, obj } of objectPatterns) {
+    if (pattern.test(lowerText)) {
+      requirements.requiredObjects.push(obj);
+    }
+  }
+
+  // REQUIRED CHARACTERS - supporting characters that must appear
+  const characterPatterns = [
+    { pattern: /moon\s*rabbits?/i, char: 'moon rabbits' },
+    { pattern: /\bdolphins?\b/i, char: 'dolphins' },
+    { pattern: /lunar\s*guardians?/i, char: 'lunar guardians' },
+    { pattern: /\bwhales?\b/i, char: 'whale' },
+    { pattern: /\bbutterfl(?:y|ies)\b/i, char: 'butterflies' },
+  ];
+
+  for (const { pattern, char } of characterPatterns) {
+    if (pattern.test(lowerText)) {
+      requirements.requiredCharacters.push(char);
+    }
+  }
+
+  // SETTING detection
+  if (lowerText.includes('ocean') || lowerText.includes('sea') || lowerText.includes('underwater')) {
+    requirements.setting = 'ocean';
+  } else if (lowerText.includes('moon') || lowerText.includes('lunar') || lowerText.includes('crater')) {
+    requirements.setting = 'moon';
+  } else if (lowerText.includes('forest') || lowerText.includes('woods') || lowerText.includes('trees')) {
+    requirements.setting = 'forest';
+  } else if (lowerText.includes('beach') || lowerText.includes('sand')) {
+    requirements.setting = 'beach';
+  } else if (lowerText.includes('space') || lowerText.includes('stars') || lowerText.includes('galaxy')) {
+    requirements.setting = 'space';
+  }
+
+  return requirements;
+}
+
+/**
+ * Validate that a prompt contains all required elements
+ * Returns list of missing requirements
+ */
+function validatePromptRequirements(prompt: string, requirements: SceneRequirements): string[] {
+  const lowerPrompt = prompt.toLowerCase();
+  const missing: string[] = [];
+
+  // Check required objects
+  for (const obj of requirements.requiredObjects) {
+    if (!lowerPrompt.includes(obj.toLowerCase())) {
+      missing.push(`object: ${obj}`);
+    }
+  }
+
+  // Check required characters
+  for (const char of requirements.requiredCharacters) {
+    if (!lowerPrompt.includes(char.toLowerCase())) {
+      missing.push(`character: ${char}`);
+    }
+  }
+
+  // Check setting
+  if (requirements.setting && !lowerPrompt.includes(requirements.setting)) {
+    missing.push(`setting: ${requirements.setting}`);
+  }
+
+  return missing;
+}
+
 // Comprehensive animal list for detection - PRIORITY ORDER (check big/distinctive first)
 const PRIORITY_ANIMALS = [
   'rhinoceros', 'rhino',  // CHECK RHINO FIRST!
@@ -127,7 +232,48 @@ export function renderPrompt(bible: CharacterBible, card: PageSceneCard, pageTex
       `Bright colors, expressive eyes.`;
   }
 
-  console.log(`[FINAL PROMPT]: ${prompt.substring(0, 300)}...`);
+  // 8. VALIDATE and FIX prompt if missing required elements
+  const requirements = extractSceneRequirements(text);
+  console.log(`[REQUIREMENTS]: objects=${requirements.requiredObjects.join(',')} chars=${requirements.requiredCharacters.join(',')} setting=${requirements.setting}`);
+
+  const missing = validatePromptRequirements(prompt, requirements);
+  if (missing.length > 0) {
+    console.log(`[VALIDATION FAILED] Missing: ${missing.join(', ')}`);
+
+    // Build fix string with missing elements
+    const fixes: string[] = [];
+    for (const m of missing) {
+      if (m.startsWith('object:')) {
+        const obj = m.replace('object: ', '');
+        fixes.push(`cartoon ${obj}`);
+      } else if (m.startsWith('character:')) {
+        const char = m.replace('character: ', '');
+        fixes.push(`cute cartoon ${char}`);
+      } else if (m.startsWith('setting:')) {
+        const setting = m.replace('setting: ', '');
+        fixes.push(`${setting} background`);
+      }
+    }
+
+    // Insert fixes right after species in prompt
+    if (fixes.length > 0) {
+      const fixStr = `MUST SHOW: ${fixes.join(', ')}. `;
+      // Find position after species repetition and insert fix
+      const speciesMatch = prompt.match(/([A-Z]+\.\s*[A-Z]+\.\s*)/);
+      if (speciesMatch) {
+        const insertPos = prompt.indexOf(speciesMatch[0]) + speciesMatch[0].length;
+        prompt = prompt.slice(0, insertPos) + fixStr + prompt.slice(insertPos);
+      } else {
+        // Fallback: add after style
+        prompt = prompt.replace('cute cartoon', `cute cartoon ${fixStr}`);
+      }
+      console.log(`[VALIDATION FIX] Added: ${fixStr}`);
+    }
+  } else {
+    console.log(`[VALIDATION OK] All requirements present`);
+  }
+
+  console.log(`[FINAL PROMPT]: ${prompt.substring(0, 400)}...`);
   console.log(`====== END RENDER PROMPT DEBUG ======\n`);
 
   return prompt;
