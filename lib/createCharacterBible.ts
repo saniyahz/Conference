@@ -21,28 +21,96 @@ export interface CharacterDNA {
  * Create a CHARACTER BIBLE from DNA
  * Generated ONCE per story and reused for every page
  */
-export function createCharacterBible(dna: CharacterDNA): CharacterBible {
+export function createCharacterBible(dna: CharacterDNA, fallbackSpecies?: string): CharacterBible {
   const characterId = dna.name.toLowerCase().replace(/\s+/g, '_');
   const isAnimal = dna.type === 'animal';
   const isCreature = dna.type === 'creature';
 
-  // Extract species for animals (dog, cat, rabbit, etc.)
-  const species = isAnimal ? extractSpecies(dna.physical_form) : undefined;
+  console.log(`[createCharacterBible] Processing DNA for: ${dna.name}`);
+  console.log(`  - type: ${dna.type}`);
+  console.log(`  - physical_form: ${dna.physical_form?.substring(0, 100) || 'N/A'}`);
+
+  // Extract species for animals - try multiple sources
+  let species: string | undefined = undefined;
+  if (isAnimal) {
+    // Try 1: Check physical_form (most reliable)
+    species = extractSpecies(dna.physical_form);
+    console.log(`  - extractSpecies(physical_form): ${species}`);
+
+    // Try 2: If species is generic 'animal', check unique_identifiers
+    if (species === 'animal' && dna.unique_identifiers) {
+      const fromUnique = extractSpecies(dna.unique_identifiers);
+      if (fromUnique !== 'animal') {
+        species = fromUnique;
+        console.log(`  - extractSpecies(unique_identifiers): ${species}`);
+      }
+    }
+
+    // Try 3: If still generic, check the character name (e.g., "Riri the Rhino")
+    if (species === 'animal' && dna.name) {
+      const fromName = extractSpecies(dna.name);
+      if (fromName !== 'animal') {
+        species = fromName;
+        console.log(`  - extractSpecies(name): ${species}`);
+      }
+    }
+
+    // Try 4: Use fallback species if provided (from story text detection)
+    if (species === 'animal' && fallbackSpecies) {
+      species = fallbackSpecies;
+      console.log(`  - Using fallback species: ${species}`);
+    }
+  }
+
+  console.log(`  - FINAL species: ${species}`);
+
+  // Build appearance details
+  const skinTone = isAnimal ? extractFurColor(dna.color_palette, dna.material_or_texture) : extractSkinTone(dna.color_palette);
+  const eyes = extractEyes(dna.facial_features);
+  const hair = isAnimal ? extractFurDescription(dna.physical_form, dna.material_or_texture) : extractHair(dna.physical_form, dna.color_palette);
+  const faceFeatures = extractFaceFeatures(dna.facial_features);
+  const outfit = isAnimal ? (dna.accessories !== 'none' ? dna.accessories : '') : extractOutfit(dna.accessories);
+
+  // Build visual fingerprint - KEY for SDXL consistency
+  const visual_fingerprint: string[] = [];
+  if (isAnimal && species) {
+    visual_fingerprint.push(`cute cartoon ${species}`);
+  }
+  visual_fingerprint.push(skinTone);
+  visual_fingerprint.push(eyes);
+  if (faceFeatures) visual_fingerprint.push(faceFeatures);
+
+  console.log(`[createCharacterBible] Created bible for ${dna.name}:`);
+  console.log(`  - species: ${species}`);
+  console.log(`  - visual_fingerprint: ${visual_fingerprint.join(', ')}`);
 
   return {
     character_id: characterId,
     name: dna.name,
     character_type: dna.type,
-    species: species,  // "dog", "cat", "rabbit", etc.
+    species: species,  // "dog", "cat", "rhinoceros", etc.
     age: isAnimal ? "friendly" : (dna.age || "6 years old"),
+
+    // NEW: Visual fingerprint for SDXL consistency
+    visual_fingerprint,
+    outfit,
+
     appearance: {
-      skin_tone: isAnimal ? extractFurColor(dna.color_palette, dna.material_or_texture) : extractSkinTone(dna.color_palette),
-      eyes: extractEyes(dna.facial_features),
-      hair: isAnimal ? extractFurDescription(dna.physical_form, dna.material_or_texture) : extractHair(dna.physical_form, dna.color_palette),
-      face_features: extractFaceFeatures(dna.facial_features),
+      skin_tone: skinTone,
+      eyes,
+      hair,
+      face_features: faceFeatures,
     },
-    signature_outfit: isAnimal ? (dna.accessories !== 'none' ? dna.accessories : '') : extractOutfit(dna.accessories),
+    signature_outfit: outfit,
     personality: extractPersonality(dna.personality_visuals),
+
+    // NEW: Style object
+    style: {
+      base: "children's picture book illustration",
+      render: ["clean lines", "vibrant colors", "soft shading"],
+      aspect: "square",
+    },
+
     art_style: {
       medium: "soft watercolor",
       genre: "premium children's picture book",
@@ -165,26 +233,54 @@ function extractSpecies(physicalForm: string): string {
 export function createSimpleBible(
   name: string,
   characterType: 'human' | 'animal' | 'object' | 'creature' | 'other' = 'human',
-  species?: string,  // For animals: "dog", "cat", etc.
+  species?: string,  // For animals: "dog", "cat", "rhinoceros", etc.
   furOrSkin: string = "warm brown",
   hairOrFur: string = "black curly hair"
 ): CharacterBible {
   const isAnimal = characterType === 'animal';
+  const actualSpecies = isAnimal ? (species || 'animal') : undefined;
+  const skinTone = isAnimal ? `${furOrSkin} fur` : `${furOrSkin} skin`;
+
+  // Build visual fingerprint
+  const visual_fingerprint: string[] = [];
+  if (isAnimal && actualSpecies && actualSpecies !== 'animal') {
+    visual_fingerprint.push(`cute cartoon ${actualSpecies}`);
+  }
+  visual_fingerprint.push(skinTone);
+  visual_fingerprint.push("big expressive eyes");
+  visual_fingerprint.push("friendly smile");
+
+  console.log(`[createSimpleBible] Created bible for ${name}:`);
+  console.log(`  - species: ${actualSpecies}`);
+  console.log(`  - visual_fingerprint: ${visual_fingerprint.join(', ')}`);
 
   return {
     character_id: name.toLowerCase().replace(/\s+/g, '_'),
     name,
     character_type: characterType,
-    species: isAnimal ? (species || 'animal') : undefined,
+    species: actualSpecies,
     age: isAnimal ? "friendly" : "6 years old",
+
+    // NEW: Visual fingerprint for SDXL consistency
+    visual_fingerprint,
+    outfit: isAnimal ? "" : "colorful casual clothes",
+
     appearance: {
-      skin_tone: isAnimal ? `${furOrSkin} fur` : `${furOrSkin} skin`,
+      skin_tone: skinTone,
       eyes: "big expressive eyes",
       hair: hairOrFur,
       face_features: "friendly smile, cute face",
     },
     signature_outfit: isAnimal ? "" : "colorful casual clothes",
     personality: ["curious", "joyful", "brave"],
+
+    // NEW: Style object
+    style: {
+      base: "children's picture book illustration",
+      render: ["clean lines", "vibrant colors", "soft shading"],
+      aspect: "square",
+    },
+
     art_style: {
       medium: "soft watercolor",
       genre: "premium children's picture book",

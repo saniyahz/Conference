@@ -196,7 +196,14 @@ CRITICAL: Every page must end with a COMPLETE sentence. Never cut off mid-senten
     // Create Character Bible (ONCE for entire book)
     let characterBible;
     if (parsedStory.characterDNA) {
-      characterBible = createCharacterBible(parsedStory.characterDNA)
+      // Try to detect species from story text as fallback
+      const firstPageText = parsedStory.pages[0]?.text || ''
+      const nameTheAnimalRegex = new RegExp(`\\b([A-Z][a-z]+)\\s+the\\s+(${ALL_ANIMALS.join('|').replace(/\s+/g, '\\s+')})\\b`, 'i')
+      const nameMatch = firstPageText.match(nameTheAnimalRegex)
+      const fallbackSpecies = nameMatch ? nameMatch[2].toLowerCase() : detectAnimalInText(firstPageText + ' ' + prompt)
+
+      console.log(`[CHARACTER] DNA found, fallbackSpecies from story text: ${fallbackSpecies}`)
+      characterBible = createCharacterBible(parsedStory.characterDNA, fallbackSpecies)
     } else {
       // Fallback: detect main character from FIRST PAGE of generated story
       const firstPageText = parsedStory.pages[0]?.text || ''
