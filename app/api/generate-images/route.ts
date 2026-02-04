@@ -103,6 +103,9 @@ async function generateImageWithRetry(
             }
           }
 
+          // SAFETY: Ensure imageUrl is always a string before using string methods
+          imageUrl = String(imageUrl || '')
+
           console.log(`[IMAGE ${imageIndex + 1}] Extracted URL: ${imageUrl ? imageUrl.substring(0, 80) + '...' : 'EMPTY'}`)
 
           if (imageUrl && imageUrl.startsWith('http')) {
