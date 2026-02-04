@@ -105,6 +105,69 @@ function validatePromptRequirements(prompt: string, requirements: SceneRequireme
   return missing;
 }
 
+/**
+ * Extract the SINGLE most critical element for this scene
+ * This goes directly after the species in the prompt for maximum SDXL attention
+ * Returns short phrase like "rocket ship" or "moon rabbits" or null
+ */
+function extractCriticalElement(text: string): string | null {
+  // Priority order - check most specific/important first
+
+  // VEHICLES - if character is WITH a vehicle, it's critical
+  if (text.includes('inside') && (text.includes('rocket') || text.includes('spaceship'))) {
+    return 'inside colorful rocket ship cockpit';
+  }
+  if (text.includes('rocket') || text.includes('spaceship')) {
+    return 'big colorful rocket ship';
+  }
+
+  // NAMED GROUPS - if there are specific characters, show them
+  if (text.includes('moon rabbit')) {
+    return 'group of cute moon rabbits';
+  }
+  if (text.includes('lunar guardian')) {
+    return 'lunar guardian creatures';
+  }
+
+  // OCEAN CREATURES
+  if (text.includes('dolphin')) {
+    return 'playful dolphins';
+  }
+  if (text.includes('whale')) {
+    return 'friendly whale';
+  }
+
+  // TREASURE/ADVENTURE objects
+  if (text.includes('treasure') && text.includes('chest')) {
+    return 'treasure chest';
+  }
+  if (text.includes('crown')) {
+    return 'golden crown';
+  }
+  if (text.includes('magic wand') || text.includes('wand')) {
+    return 'magic wand';
+  }
+
+  // PARTY/CELEBRATION
+  if (text.includes('balloon')) {
+    return 'colorful balloons';
+  }
+  if (text.includes('cake')) {
+    return 'birthday cake';
+  }
+
+  // NATURE elements
+  if (text.includes('rainbow')) {
+    return 'rainbow';
+  }
+  if (text.includes('waterfall')) {
+    return 'waterfall';
+  }
+
+  // No critical element found
+  return null;
+}
+
 // Comprehensive animal list for detection - PRIORITY ORDER (check big/distinctive first)
 const PRIORITY_ANIMALS = [
   'rhinoceros', 'rhino',  // CHECK RHINO FIRST!
@@ -205,31 +268,32 @@ export function renderPrompt(bible: CharacterBible, card: PageSceneCard, pageTex
     console.log(`[SUPPORTING]: ${supportingChars}`);
   }
 
-  // 7. BUILD PROMPT - STYLE + SPECIES + MUST-INCLUDE first (CRITICAL FOR SDXL)
-  // SDXL only pays attention to ~77 tokens, so important elements must be first
+  // 7. BUILD PROMPT - CRITICAL: First 20 tokens determine the image!
+  // SDXL attention: tokens 1-20 = HIGH, 20-40 = MEDIUM, 40-77 = LOW, 77+ = IGNORED
+  // Structure: [SPECIES + KEY OBJECT] [STYLE] [SETTING] [ACTION]
   let prompt: string;
 
-  // CARTOON STYLE keywords - put at START of prompt for maximum effect
-  const STYLE = "cute cartoon 2D illustration, children's picture book, colorful vibrant";
+  // Extract the SINGLE most important object/character for this scene
+  const criticalElement = extractCriticalElement(lowerText);
+  console.log(`[CRITICAL ELEMENT]: ${criticalElement || 'none'}`);
 
-  if (species && species !== 'animal') {
-    // ANIMAL CHARACTER - STYLE + SPECIES + MUST-INCLUDE at START for maximum SDXL attention
-    const SPECIES = species.toUpperCase();
-    prompt = `${STYLE}, cute cartoon ${species}. ` +
-      `${SPECIES}. ${SPECIES}. ` +
-      (mustInclude ? `MUST INCLUDE: ${mustInclude}. ` : '') +
-      (supportingChars ? `WITH: ${supportingChars}. ` : '') +
-      `Scene: ${scene}. ` +
-      `${charName} the cartoon ${species} is ${action}. ` +
-      `Bright colors, expressive eyes, friendly face.`;
+  // Build the core subject (first 15 tokens - HIGHEST attention)
+  let coreSubject: string;
+  if (criticalElement) {
+    // SPECIES + CRITICAL OBJECT in same phrase for maximum binding
+    coreSubject = `cute cartoon ${species} with ${criticalElement}`;
   } else {
-    // Couldn't detect specific species - use generic cartoon animal
-    prompt = `${STYLE}, cute cartoon animal. ` +
-      (mustInclude ? `MUST INCLUDE: ${mustInclude}. ` : '') +
-      (supportingChars ? `WITH: ${supportingChars}. ` : '') +
-      `${charName} the friendly cartoon animal, ${action}. ` +
-      `Scene: ${scene}. ` +
-      `Bright colors, expressive eyes.`;
+    coreSubject = `cute cartoon ${species}`;
+  }
+
+  // Style comes after subject (tokens 15-30)
+  const STYLE = "children's book 2D illustration, colorful vibrant";
+
+  // Build the full prompt
+  if (species && species !== 'animal') {
+    prompt = `${coreSubject}, ${STYLE}, ${scene}, ${action}, big expressive eyes, friendly face`;
+  } else {
+    prompt = `cute cartoon animal, ${STYLE}, ${scene}, ${action}, big expressive eyes`;
   }
 
   // 8. VALIDATE and FIX prompt if missing required elements
@@ -438,9 +502,24 @@ function extractActionFromText(text: string, charName: string): string {
 /**
  * Extract scene/setting directly from page text
  * Looks for location keywords and builds appropriate scene description
+ * PRIORITY: Check ground-based settings FIRST before space (to avoid title contamination)
  */
 function extractSceneFromText(text: string, fallbackSetting: string): string {
-  // SPACE / CELESTIAL - Check most specific patterns first
+  // GROUND-BASED SETTINGS - Check these FIRST (before space keywords)
+  // This prevents "Moon Adventure" in title from overriding actual scene
+
+  // SAVANNAH / AFRICAN settings
+  if (text.includes('savannah') || text.includes('savanna') || text.includes('grassland')) {
+    if (text.includes('rocket') || text.includes('spaceship')) {
+      return 'African savannah grassland with golden grass and acacia trees, shiny rocket ship on the ground';
+    }
+    return 'African savannah with golden grass, acacia trees, blue sky';
+  }
+
+  // JUNGLE / RAINFOREST
+  if (text.includes('jungle') || text.includes('rainforest')) {
+    return 'lush green jungle with vines and tropical plants';
+  }
 
   // CRATER scenes (moon adventures) - VERY SPECIFIC for SDXL
   if (text.includes('crater') || text.includes('lunar crater')) {
@@ -478,9 +557,14 @@ function extractSceneFromText(text: string, fallbackSetting: string): string {
   if (text.includes('landed on the moon') || text.includes('arriving at the moon')) {
     return 'colorful cartoon rocket ship landed on moon surface with craters';
   }
+  // MOON RABBITS / FRIENDS ON MOON - show moon surface with creatures
+  if (text.includes('moon rabbit') || text.includes('lunar guardian')) {
+    return 'grey moon surface with craters, Earth visible in starry sky, magical glowing atmosphere';
+  }
+
   // GENERAL MOON/LUNAR references - catch "the moon", "lunar guardians", etc.
   if (text.includes('lunar') || (text.includes('moon') && !text.includes('moonlight'))) {
-    return 'colorful cartoon moon surface with craters and rocks, Earth visible in starry black sky, magical glowing atmosphere';
+    return 'grey moon surface with craters and rocks, Earth visible in starry black sky';
   }
   if (text.includes('mars') || text.includes('red planet')) {
     return 'Mars surface with red rocks and dusty terrain';
