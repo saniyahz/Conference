@@ -84,6 +84,37 @@ function extractFurDescription(physicalForm: string, texture: string): string {
 function extractSpecies(physicalForm: string): string {
   const form = physicalForm.toLowerCase();
 
+  // Common misspellings mapped to correct species
+  const misspellingMap: Record<string, string> = {
+    'rhinecerous': 'rhinoceros',
+    'rhinocerous': 'rhinoceros',
+    'rhineceros': 'rhinoceros',
+    'elefant': 'elephant',
+    'girrafe': 'giraffe',
+    'girraffe': 'giraffe',
+    'hipopotamus': 'hippopotamus',
+    'cheetuh': 'cheetah',
+    'cheeta': 'cheetah',
+    'monky': 'monkey',
+    'buterfly': 'butterfly',
+    'butterfy': 'butterfly',
+    'dolpin': 'dolphin',
+    'pengiun': 'penguin',
+    'koalla': 'koala',
+    'kangeroo': 'kangaroo',
+    'squirel': 'squirrel',
+    'rabit': 'rabbit',
+    'rabitt': 'rabbit',
+    'tortise': 'tortoise',
+  };
+
+  // Check for misspellings first
+  for (const [misspelling, correct] of Object.entries(misspellingMap)) {
+    if (form.includes(misspelling)) {
+      return correct;
+    }
+  }
+
   // COMPREHENSIVE LIST OF ALL ANIMALS AND INSECTS
   const animals = [
     // PETS & DOMESTIC
@@ -179,6 +210,34 @@ function extractSpecies(physicalForm: string): string {
   return 'animal'; // fallback
 }
 
+// Normalize species name (fix common misspellings)
+function normalizeSpecies(species: string): string {
+  const lower = species.toLowerCase();
+  const misspellingMap: Record<string, string> = {
+    'rhinecerous': 'rhinoceros',
+    'rhinocerous': 'rhinoceros',
+    'rhineceros': 'rhinoceros',
+    'elefant': 'elephant',
+    'girrafe': 'giraffe',
+    'girraffe': 'giraffe',
+    'hipopotamus': 'hippopotamus',
+    'cheetuh': 'cheetah',
+    'cheeta': 'cheetah',
+    'monky': 'monkey',
+    'buterfly': 'butterfly',
+    'butterfy': 'butterfly',
+    'dolpin': 'dolphin',
+    'pengiun': 'penguin',
+    'koalla': 'koala',
+    'kangeroo': 'kangaroo',
+    'squirel': 'squirrel',
+    'rabit': 'rabbit',
+    'rabitt': 'rabbit',
+    'tortise': 'tortoise',
+  };
+  return misspellingMap[lower] || lower;
+}
+
 /**
  * Create a simple Character Bible from just name and basic info (fallback)
  */
@@ -190,12 +249,14 @@ export function createSimpleBible(
   hairOrFur: string = "black curly hair"
 ): CharacterBible {
   const isAnimal = characterType === 'animal';
+  // Normalize species to fix common misspellings
+  const normalizedSpecies = species ? normalizeSpecies(species) : 'animal';
 
   return {
     character_id: name.toLowerCase().replace(/\s+/g, '_'),
     name,
     character_type: characterType,
-    species: isAnimal ? (species || 'animal') : undefined,
+    species: isAnimal ? normalizedSpecies : undefined,
     age: isAnimal ? "friendly" : "6 years old",
     appearance: {
       skin_tone: isAnimal ? `${furOrSkin} fur` : `${furOrSkin} skin`,

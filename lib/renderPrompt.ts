@@ -10,6 +10,34 @@ import { CharacterBible, PageSceneCard } from "./visual-types";
  * 4. Strong negative prompt blocking humans for animal stories
  */
 
+// Normalize species name (fix common misspellings)
+function normalizeSpecies(species: string): string {
+  const lower = species.toLowerCase();
+  const misspellingMap: Record<string, string> = {
+    'rhinecerous': 'rhinoceros',
+    'rhinocerous': 'rhinoceros',
+    'rhineceros': 'rhinoceros',
+    'elefant': 'elephant',
+    'girrafe': 'giraffe',
+    'girraffe': 'giraffe',
+    'hipopotamus': 'hippopotamus',
+    'cheetuh': 'cheetah',
+    'cheeta': 'cheetah',
+    'monky': 'monkey',
+    'buterfly': 'butterfly',
+    'butterfy': 'butterfly',
+    'dolpin': 'dolphin',
+    'pengiun': 'penguin',
+    'koalla': 'koala',
+    'kangeroo': 'kangaroo',
+    'squirel': 'squirrel',
+    'rabit': 'rabbit',
+    'rabitt': 'rabbit',
+    'tortise': 'tortoise',
+  };
+  return misspellingMap[lower] || lower;
+}
+
 // Animal-specific traits for visual consistency
 const ANIMAL_TRAITS: Record<string, string[]> = {
   'rhinoceros': ['gray rough skin', 'large horn on nose', 'thick sturdy body', 'small round ears', 'big gentle eyes'],
@@ -48,10 +76,12 @@ const ANIMAL_TRAITS: Record<string, string[]> = {
 export function renderPrompt(bible: CharacterBible, card: PageSceneCard, pageText?: string): string {
   const text = pageText?.toLowerCase() || '';
   const isAnimal = bible.character_type === 'animal';
-  const species = bible.species || 'animal';
+  // Normalize species to handle misspellings
+  const rawSpecies = bible.species || 'animal';
+  const species = normalizeSpecies(rawSpecies);
   const name = bible.name;
 
-  // Get character traits
+  // Get character traits (use normalized species for lookup)
   const traits = ANIMAL_TRAITS[species.toLowerCase()] || ['cute', 'friendly', 'expressive eyes'];
   const traitsStr = traits.slice(0, 4).join(', ');
 

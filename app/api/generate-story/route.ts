@@ -30,6 +30,7 @@ const ALL_ANIMALS = [
   'toucan', 'anaconda', 'python', 'boa', 'crocodile', 'alligator', 'caiman',
   // AFRICAN SAVANNA
   'elephant', 'giraffe', 'zebra', 'hippo', 'hippopotamus', 'rhino', 'rhinoceros',
+  'rhinocerous', 'rhineceros', 'rhinecerous', // Common misspellings
   'gazelle', 'antelope', 'impala', 'hyena', 'jackal', 'meerkat', 'warthog', 'ostrich', 'flamingo',
   // AUSTRALIAN
   'kangaroo', 'wallaby', 'koala', 'wombat', 'platypus', 'echidna', 'dingo', 'emu', 'quokka',
@@ -208,8 +209,9 @@ CRITICAL: Every page must end with a COMPLETE sentence. Never cut off mid-senten
       // Try to find "Name the Animal" pattern in story text first
       // EXPANDED list to include ALL common animals
       const animalPatternList = [
-        // African Savanna
-        'Rhinoceros', 'Rhino', 'Elephant', 'Giraffe', 'Zebra', 'Lion', 'Hippo', 'Hippopotamus',
+        // African Savanna (including common misspellings)
+        'Rhinoceros', 'Rhinocerous', 'Rhineceros', 'Rhinecerous', 'Rhino',
+        'Elephant', 'Giraffe', 'Zebra', 'Lion', 'Hippo', 'Hippopotamus',
         'Cheetah', 'Leopard', 'Gazelle', 'Antelope', 'Hyena', 'Meerkat', 'Warthog', 'Ostrich',
         // Pets & Domestic
         'Dog', 'Puppy', 'Cat', 'Kitten', 'Rabbit', 'Bunny', 'Hamster', 'Guinea Pig', 'Parrot',
