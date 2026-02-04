@@ -66,7 +66,8 @@ export default function Home() {
         body: JSON.stringify({
           imagePrompts: storyData.imagePrompts,
           negativePrompts: storyData.negativePrompts,
-          seed: storyData.seed  // Same seed for character consistency
+          seed: storyData.seed,  // Same seed for character consistency
+          characterAnchorUrl: storyData.characterAnchorUrl,  // Character Anchor for img2img identity lock
         }),
       })
 

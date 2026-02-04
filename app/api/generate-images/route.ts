@@ -139,15 +139,82 @@ async function generateImageWithRetry(
     return ''
 }
 
+// Helper function to generate image with anchor reference (img2img)
+async function generateImageWithAnchor(
+  replicate: Replicate,
+  prompt: string,
+  negativePrompt: string | undefined,
+  anchorUrl: string,
+  seed: number,
+  imageIndex: number,
+  strength: number = 0.4  // 0.25-0.45 recommended for identity lock
+): Promise<string> {
+  const maxRetries = 3
+
+  for (let attempt = 1; attempt <= maxRetries; attempt++) {
+    try {
+      console.log(`\n--- img2img with anchor (attempt ${attempt}) ---`)
+      console.log(`Anchor: ${anchorUrl.substring(0, 50)}...`)
+      console.log(`Strength: ${strength}`)
+
+      const output = await replicate.run(
+        "stability-ai/sdxl:39ed52f2a78e934b3ba6e2a89f5b1c712de7dfea535525255b1aa35c5565e08b",
+        {
+          input: {
+            prompt,
+            negative_prompt: negativePrompt || "text, watermark, ugly, deformed",
+            image: anchorUrl,
+            prompt_strength: strength,
+            width: 1024,
+            height: 1024,
+            num_outputs: 1,
+            scheduler: "K_EULER",
+            num_inference_steps: 25,
+            guidance_scale: 8,
+            seed,
+          }
+        }
+      )
+
+      let imageUrl = ''
+      if (Array.isArray(output) && output.length > 0) {
+        const firstOutput = output[0]
+        if (typeof firstOutput === 'string') {
+          imageUrl = firstOutput
+        }
+      } else if (typeof output === 'string') {
+        imageUrl = output
+      }
+
+      if (imageUrl && imageUrl.startsWith('http')) {
+        return imageUrl
+      }
+    } catch (error: any) {
+      console.log(`img2img attempt ${attempt} failed:`, error.message?.substring(0, 100))
+      if (attempt < maxRetries) {
+        await sleep(3000 * attempt)
+      }
+    }
+  }
+
+  return ''
+}
+
 export async function POST(request: NextRequest) {
   try {
-    const { imagePrompts, negativePrompts, seed, seeds } = await request.json()
+    const { imagePrompts, negativePrompts, seed, seeds, characterAnchorUrl } = await request.json()
 
     if (!imagePrompts || !Array.isArray(imagePrompts)) {
       return NextResponse.json(
         { error: 'Invalid image prompts provided' },
         { status: 400 }
       )
+    }
+
+    const useAnchor = !!characterAnchorUrl
+    console.log(`Character Anchor mode: ${useAnchor ? 'ENABLED' : 'DISABLED'}`)
+    if (useAnchor) {
+      console.log(`Anchor URL: ${characterAnchorUrl.substring(0, 60)}...`)
     }
 
     // Check if API key is configured
@@ -174,15 +241,38 @@ export async function POST(request: NextRequest) {
 
       try {
         // CRITICAL: Use ONE seed per story for character consistency
-        // Same seed = same character appearance across all pages
-        // Only use provided seeds array if explicitly passed (for regeneration scenarios)
         const pageSeed = seeds && seeds[i] ? seeds[i] : storySeed
         usedSeeds.push(pageSeed)
 
-        console.log(`Page ${i + 1} seed: ${pageSeed} (same seed for character consistency)`)
-        console.log(`Setting: ${prompt.match(/Setting: (.+)/)?.[1]?.substring(0, 50) || 'N/A'}`)
+        console.log(`Page ${i + 1} seed: ${pageSeed}`)
 
-        const imageUrl = await generateImageWithRetry(replicate, prompt, negativePrompt, i, imagePrompts.length, pageSeed)
+        let imageUrl: string
+
+        if (useAnchor && characterAnchorUrl) {
+          // USE CHARACTER ANCHOR (img2img) - guaranteed identity lock
+          console.log(`Using Character Anchor for identity lock`)
+          // Vary strength slightly per page (0.35-0.45) for natural variation while keeping identity
+          const strength = 0.35 + (i * 0.01)  // Pages get slightly more variation
+          imageUrl = await generateImageWithAnchor(
+            replicate,
+            prompt,
+            negativePrompt,
+            characterAnchorUrl,
+            pageSeed,
+            i,
+            Math.min(strength, 0.45)  // Cap at 0.45
+          )
+
+          // If img2img fails, fall back to txt2img
+          if (!imageUrl) {
+            console.log(`Anchor-based generation failed, falling back to txt2img`)
+            imageUrl = await generateImageWithRetry(replicate, prompt, negativePrompt, i, imagePrompts.length, pageSeed)
+          }
+        } else {
+          // Standard txt2img (no anchor)
+          imageUrl = await generateImageWithRetry(replicate, prompt, negativePrompt, i, imagePrompts.length, pageSeed)
+        }
+
         imageUrls.push(imageUrl)
         console.log(`Image ${i + 1} done: ${imageUrl ? 'SUCCESS' : 'FAILED'}`)
       } catch (error) {

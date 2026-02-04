@@ -8,6 +8,8 @@ import { renderPrompt, renderNegativePrompt, generatePageSeedByNumber } from '@/
 import { generateCharacterBibleWithLLM, UniversalCharacterBible } from '@/lib/generateCharacterBible'
 import { generateAllSceneCardsWithLLM, UniversalSceneCard } from '@/lib/generateSceneCard'
 import { buildImagePrompt, buildNegativePrompt, generateAllImagePrompts } from '@/lib/buildImagePrompt'
+// Character Anchor system for guaranteed identity lock
+import { generateCharacterAnchor, CharacterAnchor } from '@/lib/characterAnchor'
 
 const replicate = new Replicate({
   auth: process.env.REPLICATE_API_TOKEN,
@@ -246,6 +248,23 @@ CRITICAL: Every page must end with a COMPLETE sentence. Never cut off mid-senten
     console.log('================================================\n')
 
     // ==========================================
+    // STEP 3.5: Generate Character Anchor for identity lock
+    // This creates a reference image for img2img consistency
+    // ==========================================
+    const baseSeed = Math.floor(Math.random() * 1000000)
+    let characterAnchor: CharacterAnchor | null = null
+
+    try {
+      console.log('\n========== GENERATING CHARACTER ANCHOR ==========')
+      characterAnchor = await generateCharacterAnchor(replicate, universalBible, baseSeed)
+      console.log(`Character Anchor URL: ${characterAnchor.imageUrl}`)
+      console.log('==================================================\n')
+    } catch (anchorError) {
+      console.error('Failed to generate Character Anchor, will use txt2img fallback:', anchorError)
+      // Continue without anchor - will fall back to txt2img
+    }
+
+    // ==========================================
     // STEP 4: Generate Universal Scene Cards with LLM
     // This extracts proper scene details per page
     // ==========================================
@@ -265,7 +284,6 @@ CRITICAL: Every page must end with a COMPLETE sentence. Never cut off mid-senten
     // ==========================================
     // STEP 5: Build image prompts using new Universal system
     // ==========================================
-    const baseSeed = Math.floor(Math.random() * 1000000)
     const { prompts: imagePrompts, negativePrompts } = generateAllImagePrompts(universalBible, universalSceneCards)
 
     // Use same seed for all pages (character consistency)
@@ -330,6 +348,8 @@ CRITICAL: Every page must end with a COMPLETE sentence. Never cut off mid-senten
       storyImagePack,
       characterBible,
       sceneCards,
+      // Character Anchor for img2img identity lock
+      characterAnchorUrl: characterAnchor?.imageUrl || null,
     })
 
   } catch (error: any) {
