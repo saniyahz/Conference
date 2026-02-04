@@ -71,6 +71,47 @@ const ANIMAL_TRAITS: Record<string, string[]> = {
 };
 
 /**
+ * Try to extract species from page text as a last resort
+ */
+function extractSpeciesFromText(text: string): string | null {
+  const lower = text.toLowerCase();
+
+  // Common misspellings to check first
+  const misspellingMap: Record<string, string> = {
+    'rhinecerous': 'rhinoceros',
+    'rhinocerous': 'rhinoceros',
+    'rhineceros': 'rhinoceros',
+    'elefant': 'elephant',
+    'girrafe': 'giraffe',
+    'girraffe': 'giraffe',
+    'hipopotamus': 'hippopotamus',
+  };
+
+  for (const [misspelling, correct] of Object.entries(misspellingMap)) {
+    if (lower.includes(misspelling)) {
+      return correct;
+    }
+  }
+
+  // Check for known animals (prioritize larger/common animals)
+  const priorityAnimals = [
+    'rhinoceros', 'rhino', 'elephant', 'giraffe', 'zebra', 'lion', 'tiger',
+    'hippo', 'hippopotamus', 'bear', 'panda', 'koala', 'kangaroo',
+    'monkey', 'gorilla', 'fox', 'wolf', 'deer', 'rabbit', 'bunny',
+    'dog', 'puppy', 'cat', 'kitten', 'owl', 'penguin', 'dolphin',
+    'turtle', 'frog', 'dragon', 'unicorn', 'butterfly'
+  ];
+
+  for (const animal of priorityAnimals) {
+    if (lower.includes(animal)) {
+      return animal;
+    }
+  }
+
+  return null;
+}
+
+/**
  * Main prompt builder - SDXL optimized structure
  */
 export function renderPrompt(bible: CharacterBible, card: PageSceneCard, pageText?: string): string {
@@ -78,8 +119,17 @@ export function renderPrompt(bible: CharacterBible, card: PageSceneCard, pageTex
   const isAnimal = bible.character_type === 'animal';
   // Normalize species to handle misspellings
   const rawSpecies = bible.species || 'animal';
-  const species = normalizeSpecies(rawSpecies);
+  let species = normalizeSpecies(rawSpecies);
   const name = bible.name;
+
+  // CRITICAL FIX: If species is still generic 'animal', try to extract from page text
+  if (isAnimal && species === 'animal' && pageText) {
+    const detectedSpecies = extractSpeciesFromText(pageText);
+    if (detectedSpecies) {
+      species = detectedSpecies;
+      console.log(`[PROMPT] Detected species "${species}" from page text for ${name}`);
+    }
+  }
 
   // Get character traits (use normalized species for lookup)
   const traits = ANIMAL_TRAITS[species.toLowerCase()] || ['cute', 'friendly', 'expressive eyes'];
@@ -96,15 +146,16 @@ export function renderPrompt(bible: CharacterBible, card: PageSceneCard, pageTex
   // Build prompt with CHARACTER LOCK FIRST
   let prompt = '';
 
-  if (isAnimal && species !== 'animal') {
-    // ANIMAL CHARACTER - Strong lock
-    prompt = `CHARACTER LOCK: ${name} is a ${species}. Non-human animal only. Same character every page. `;
+  if (isAnimal) {
+    // ANIMAL CHARACTER - Strong lock (ALWAYS render as animal when character_type is animal)
+    const speciesLabel = species !== 'animal' ? species : 'cute animal';
+    prompt = `CHARACTER LOCK: ${name} is a ${speciesLabel}. Non-human animal only. NO HUMANS. Same character every page. `;
     prompt += `Scene: ${setting}. `;
-    prompt += `Main subject: ${name}, a ${species}, ${traitsStr}. `;
+    prompt += `Main subject: ${name}, a ${speciesLabel}, ${traitsStr}. `;
     prompt += `Action: ${action}. `;
     prompt += `Must include: ${mustInclude}. `;
     prompt += `Composition: ${camera}. Mood/lighting: ${mood}, ${lighting}. `;
-    prompt += `Style: children's picture book illustration, clean lines, vibrant colors, soft shading, high detail.`;
+    prompt += `Style: children's picture book illustration, clean lines, vibrant colors, soft shading, high detail. NO HUMAN CHARACTERS.`;
   } else {
     // HUMAN or OTHER character
     const skinTone = bible.appearance?.skin_tone || 'warm skin';
@@ -117,7 +168,12 @@ export function renderPrompt(bible: CharacterBible, card: PageSceneCard, pageTex
     prompt += `Style: children's picture book illustration, clean lines, vibrant colors, soft shading, high detail.`;
   }
 
-  console.log(`[PROMPT] Page ${card.page_number}: ${prompt.substring(0, 400)}...`);
+  console.log(`[PROMPT DEBUG] Page ${card.page_number}:`);
+  console.log(`  - character_type: ${bible.character_type}`);
+  console.log(`  - species (raw): ${rawSpecies}`);
+  console.log(`  - species (final): ${species}`);
+  console.log(`  - isAnimal: ${isAnimal}`);
+  console.log(`  - prompt: ${prompt.substring(0, 300)}...`);
   return prompt;
 }
 
@@ -346,6 +402,13 @@ function extractLighting(text: string): string {
  * NEGATIVE PROMPT - Critical for blocking humans in animal stories
  */
 export function renderNegativePrompt(card: PageSceneCard, isAnimal?: boolean): string {
+  // CRITICAL: Block humans FIRST for animal stories (most important negatives at start)
+  const humanNegatives = isAnimal ? [
+    'human', 'child', 'boy', 'girl', 'person', 'baby', 'face', 'portrait',
+    'skin', 'hands', 'human body', 'human character', 'human face',
+    'adult', 'teenager', 'kid', 'man', 'woman', 'people'
+  ] : [];
+
   // Base negatives that always apply
   const baseNegatives = [
     'realistic photo', 'photograph', 'photorealistic',
@@ -353,12 +416,6 @@ export function renderNegativePrompt(card: PageSceneCard, isAnimal?: boolean): s
     'ugly', 'deformed', 'disfigured', 'bad anatomy',
     'blurry', 'low quality', 'amateur'
   ];
-
-  // CRITICAL: Block humans for animal stories
-  const humanNegatives = isAnimal ? [
-    'human', 'child', 'boy', 'girl', 'person', 'face', 'portrait',
-    'adult', 'teenager', 'hands', 'skin', 'human body', 'human character'
-  ] : [];
 
   // Environment-specific exclusions
   const envNegatives: string[] = [];
@@ -377,10 +434,12 @@ export function renderNegativePrompt(card: PageSceneCard, isAnimal?: boolean): s
   // Add forbidden elements from card
   const cardForbidden = card.forbidden_elements?.slice(0, 3) || [];
 
-  // Combine all negatives
+  // Combine all negatives - human negatives FIRST for animal stories
   const allNegatives = [...humanNegatives, ...baseNegatives, ...envNegatives, ...cardForbidden];
 
-  return Array.from(new Set(allNegatives)).join(', ');
+  const result = Array.from(new Set(allNegatives)).join(', ');
+  console.log(`[NEGATIVE PROMPT] isAnimal=${isAnimal}: ${result.substring(0, 100)}...`);
+  return result;
 }
 
 /**
