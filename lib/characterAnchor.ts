@@ -11,44 +11,94 @@ import { UniversalCharacterBible } from './generateCharacterBible';
 
 /**
  * Robust URL extraction from Replicate output
- * Handles multiple output formats: string[], string, {url}, ReadableStream, etc.
+ * Handles multiple output formats including FileOutput objects from newer SDK versions
  */
 function extractImageUrl(output: unknown): string | null {
   console.log('[extractImageUrl] typeof output:', typeof output);
   console.log('[extractImageUrl] Array.isArray:', Array.isArray(output));
 
-  // Case 1: Array of strings (most common)
+  // Case 1: Array (most common - SDXL returns array)
   if (Array.isArray(output) && output.length > 0) {
     const first = output[0];
     console.log('[extractImageUrl] first element type:', typeof first);
 
+    // Case 1a: Array of strings
     if (typeof first === 'string' && first.startsWith('http')) {
       return first;
     }
 
-    // Case 2: Array of objects with url property
-    if (first && typeof first === 'object' && 'url' in first) {
-      const url = (first as { url: string }).url;
+    // Case 1b: Array of FileOutput objects (newer Replicate SDK)
+    // FileOutput objects have toString() that returns the URL
+    if (first && typeof first === 'object') {
+      // Try String() conversion - this works for FileOutput objects
+      try {
+        const urlFromString = String(first);
+        console.log('[extractImageUrl] String(first):', urlFromString.substring(0, 100));
+        if (urlFromString.startsWith('http')) {
+          return urlFromString;
+        }
+      } catch (e) {
+        console.log('[extractImageUrl] String() conversion failed');
+      }
+
+      // Try .url() method if it exists
+      if ('url' in first && typeof (first as any).url === 'function') {
+        try {
+          const urlFromMethod = (first as any).url();
+          console.log('[extractImageUrl] .url() method:', urlFromMethod);
+          if (typeof urlFromMethod === 'string' && urlFromMethod.startsWith('http')) {
+            return urlFromMethod;
+          }
+        } catch (e) {
+          console.log('[extractImageUrl] .url() method failed');
+        }
+      }
+
+      // Try .url property
+      if ('url' in first) {
+        const url = (first as { url: string }).url;
+        if (typeof url === 'string' && url.startsWith('http')) {
+          return url;
+        }
+      }
+
+      // Try .href property (some URL-like objects)
+      if ('href' in first) {
+        const href = (first as { href: string }).href;
+        if (typeof href === 'string' && href.startsWith('http')) {
+          return href;
+        }
+      }
+    }
+  }
+
+  // Case 2: Direct string URL
+  if (typeof output === 'string' && output.startsWith('http')) {
+    return output;
+  }
+
+  // Case 3: Single FileOutput object (not in array)
+  if (output && typeof output === 'object') {
+    // Try String() conversion
+    try {
+      const urlFromString = String(output);
+      if (urlFromString.startsWith('http')) {
+        return urlFromString;
+      }
+    } catch (e) {
+      // Ignore
+    }
+
+    // Try .url property
+    if ('url' in output) {
+      const url = (output as { url: string }).url;
       if (typeof url === 'string' && url.startsWith('http')) {
         return url;
       }
     }
   }
 
-  // Case 3: Direct string URL
-  if (typeof output === 'string' && output.startsWith('http')) {
-    return output;
-  }
-
-  // Case 4: Object with url property
-  if (output && typeof output === 'object' && 'url' in output) {
-    const url = (output as { url: string }).url;
-    if (typeof url === 'string' && url.startsWith('http')) {
-      return url;
-    }
-  }
-
-  // Case 5: Try to find any URL in stringified output
+  // Case 4: Try to find any URL in stringified output (last resort)
   try {
     const str = JSON.stringify(output);
     console.log('[extractImageUrl] stringified (first 500 chars):', str.substring(0, 500));
@@ -60,6 +110,7 @@ function extractImageUrl(output: unknown): string | null {
     console.log('[extractImageUrl] could not stringify output');
   }
 
+  console.log('[extractImageUrl] FAILED to extract URL from output');
   return null;
 }
 
@@ -107,56 +158,88 @@ export async function generateCharacterAnchor(
   console.log(`Prompt: ${prompt.substring(0, 200)}...`);
   console.log(`Negative: ${negativePrompt.substring(0, 100)}...`);
 
-  try {
-    console.log('[ANCHOR] Calling replicate.run...');
-    const output = await replicate.run(
-      "stability-ai/sdxl:39ed52f2a78e934b3ba6e2a89f5b1c712de7dfea535525255b1aa35c5565e08b",
-      {
-        input: {
-          prompt,
-          negative_prompt: negativePrompt,
-          width: 1024,
-          height: 1024,
-          num_outputs: 1,
-          scheduler: "K_EULER",
-          num_inference_steps: 30,  // Higher quality for anchor
-          guidance_scale: 9,        // Strong prompt following
-          seed,
+  const maxRetries = 3;
+  let lastError: Error | null = null;
+
+  for (let attempt = 1; attempt <= maxRetries; attempt++) {
+    try {
+      console.log(`[ANCHOR] Calling replicate.run... (attempt ${attempt}/${maxRetries})`);
+      const output = await replicate.run(
+        "stability-ai/sdxl:39ed52f2a78e934b3ba6e2a89f5b1c712de7dfea535525255b1aa35c5565e08b",
+        {
+          input: {
+            prompt,
+            negative_prompt: negativePrompt,
+            width: 1024,
+            height: 1024,
+            num_outputs: 1,
+            scheduler: "K_EULER",
+            num_inference_steps: 30,  // Higher quality for anchor
+            guidance_scale: 9,        // Strong prompt following
+            seed,
+          }
+        }
+      );
+
+      // DIAGNOSTIC: Log raw output with full detail
+      console.log('[ANCHOR] raw output type:', typeof output);
+      console.log('[ANCHOR] raw output isArray:', Array.isArray(output));
+
+      // Log more details about the output
+      if (Array.isArray(output) && output.length > 0) {
+        const first = output[0];
+        console.log('[ANCHOR] first element type:', typeof first);
+        console.log('[ANCHOR] first element constructor:', first?.constructor?.name);
+        console.log('[ANCHOR] first element keys:', first ? Object.keys(first) : 'N/A');
+        console.log('[ANCHOR] first element String():', String(first).substring(0, 200));
+        // Check for Symbol.toStringTag
+        if (first && typeof first === 'object') {
+          console.log('[ANCHOR] first element prototype:', Object.getPrototypeOf(first)?.constructor?.name);
         }
       }
-    );
 
-    // DIAGNOSTIC: Log raw output
-    console.log('[ANCHOR] raw output type:', typeof output);
-    console.log('[ANCHOR] raw output isArray:', Array.isArray(output));
-    try {
-      console.log('[ANCHOR] raw output:', JSON.stringify(output).substring(0, 1000));
-    } catch (e) {
-      console.log('[ANCHOR] raw output (not serializable):', output);
+      try {
+        console.log('[ANCHOR] raw output JSON:', JSON.stringify(output).substring(0, 1000));
+      } catch (e) {
+        console.log('[ANCHOR] raw output (not serializable):', output);
+      }
+
+      // Use robust URL extraction
+      const imageUrl = extractImageUrl(output);
+
+      if (!imageUrl) {
+        console.error(`[ANCHOR] Failed to extract URL from output (attempt ${attempt})`);
+        if (attempt < maxRetries) {
+          console.log(`[ANCHOR] Retrying in ${attempt * 3} seconds...`);
+          await new Promise(resolve => setTimeout(resolve, attempt * 3000));
+          continue;
+        }
+        throw new Error('Failed to generate character anchor image - no URL in output');
+      }
+
+      console.log(`[ANCHOR] Character Anchor generated: ${imageUrl}`);
+      console.log('==================================================\n');
+
+      return {
+        imageUrl,
+        seed,
+        prompt,
+        species,
+        name
+      };
+    } catch (error) {
+      console.error(`[ANCHOR] Error on attempt ${attempt}:`, error);
+      lastError = error as Error;
+      if (attempt < maxRetries) {
+        console.log(`[ANCHOR] Retrying in ${attempt * 3} seconds...`);
+        await new Promise(resolve => setTimeout(resolve, attempt * 3000));
+      }
     }
-
-    // Use robust URL extraction
-    const imageUrl = extractImageUrl(output);
-
-    if (!imageUrl) {
-      console.error('[ANCHOR] Failed to extract URL from output');
-      throw new Error('Failed to generate character anchor image - no URL in output');
-    }
-
-    console.log(`[ANCHOR] Character Anchor generated: ${imageUrl}`);
-    console.log('==================================================\n');
-
-    return {
-      imageUrl,
-      seed,
-      prompt,
-      species,
-      name
-    };
-  } catch (error) {
-    console.error('[ANCHOR] Error generating character anchor:', error);
-    throw error;
   }
+
+  // All retries exhausted
+  console.error('[ANCHOR] All retries exhausted for character anchor generation');
+  throw lastError || new Error('Failed to generate character anchor image after all retries');
 }
 
 /**
