@@ -88,44 +88,118 @@ export function renderPrompt(bible: CharacterBible, card: PageSceneCard, pageTex
   // 4. ACTION - What is the character doing?
   const action = extractActionFromText(lowerText, charName);
 
-  // 5. SUPPORTING CHARACTERS - Extract other characters mentioned in page text
+  // 5. MUST-INCLUDE OBJECTS - Extract key objects from story that MUST appear
+  const mustInclude = extractMustIncludeObjects(lowerText);
+  if (mustInclude) {
+    console.log(`[MUST INCLUDE]: ${mustInclude}`);
+  }
+
+  // 6. SUPPORTING CHARACTERS - Extract other characters mentioned in page text
   const supportingChars = extractSupportingCharacters(lowerText, charName);
   if (supportingChars) {
     console.log(`[SUPPORTING]: ${supportingChars}`);
   }
 
-  // 6. BUILD PROMPT - STYLE FIRST, then SPECIES (CRITICAL FOR SDXL)
-  // SDXL only pays attention to ~77 tokens, so STYLE + SPECIES must be first
+  // 7. BUILD PROMPT - STYLE + SPECIES + MUST-INCLUDE first (CRITICAL FOR SDXL)
+  // SDXL only pays attention to ~77 tokens, so important elements must be first
   let prompt: string;
 
   // CARTOON STYLE keywords - put at START of prompt for maximum effect
-  const STYLE = "cute cartoon 2D illustration, children's picture book, colorful vibrant, Disney Pixar style";
+  const STYLE = "cute cartoon 2D illustration, children's picture book, colorful vibrant";
 
   if (species && species !== 'animal') {
-    // ANIMAL CHARACTER - STYLE + SPECIES at START for maximum SDXL attention
+    // ANIMAL CHARACTER - STYLE + SPECIES + MUST-INCLUDE at START for maximum SDXL attention
     const SPECIES = species.toUpperCase();
     prompt = `${STYLE}, cute cartoon ${species}. ` +
-      `${SPECIES}. ${SPECIES}. ${SPECIES}. ` +
-      `Adorable cartoon ${species} character named ${charName}. ` +
+      `${SPECIES}. ${SPECIES}. ` +
+      (mustInclude ? `MUST INCLUDE: ${mustInclude}. ` : '') +
+      (supportingChars ? `WITH: ${supportingChars}. ` : '') +
       `Scene: ${scene}. ` +
-      `${charName} the cute cartoon ${species} is ${action}. ` +
-      (supportingChars ? `${supportingChars} ` : '') +
-      `Bright colors, soft rounded shapes, expressive eyes, friendly face, hand-drawn illustration style.`;
+      `${charName} the cartoon ${species} is ${action}. ` +
+      `Bright colors, expressive eyes, friendly face.`;
   } else {
     // Couldn't detect specific species - use generic cartoon animal
     prompt = `${STYLE}, cute cartoon animal. ` +
-      `A cute cartoon animal character (non-human, NOT a bird, NOT a chicken, NOT a hen). ` +
+      (mustInclude ? `MUST INCLUDE: ${mustInclude}. ` : '') +
+      (supportingChars ? `WITH: ${supportingChars}. ` : '') +
       `${charName} the friendly cartoon animal, ${action}. ` +
       `Scene: ${scene}. ` +
-      (supportingChars ? `${supportingChars} ` : '') +
-      `Children's picture book illustration, soft watercolor, vibrant colors. ` +
-      `NO humans, NO birds, NO chickens.`;
+      `Bright colors, expressive eyes.`;
   }
 
   console.log(`[FINAL PROMPT]: ${prompt.substring(0, 300)}...`);
   console.log(`====== END RENDER PROMPT DEBUG ======\n`);
 
   return prompt;
+}
+
+/**
+ * Extract MUST-INCLUDE objects from story text
+ * These are key objects that MUST appear in the image (rocket ship, flag, ocean, etc.)
+ */
+function extractMustIncludeObjects(text: string): string {
+  const objects: string[] = [];
+
+  // VEHICLES
+  if (text.includes('rocket') || text.includes('spaceship') || text.includes('ship')) {
+    objects.push('colorful cartoon rocket ship');
+  }
+
+  // WATER/OCEAN elements
+  if (text.includes('ocean') || text.includes('sea') || text.includes('underwater')) {
+    objects.push('blue ocean water with waves');
+  }
+  if (text.includes('splash') || text.includes('wave')) {
+    objects.push('water splashing');
+  }
+
+  // SPACE elements
+  if (text.includes('crater')) {
+    objects.push('moon craters');
+  }
+  if (text.includes('flag') || text.includes('planted')) {
+    objects.push('colorful flag');
+  }
+  if (text.includes('earth') && (text.includes('moon') || text.includes('space'))) {
+    objects.push('Earth visible in sky');
+  }
+
+  // NATURE elements
+  if (text.includes('waterfall')) {
+    objects.push('sparkling waterfall');
+  }
+  if (text.includes('rainbow')) {
+    objects.push('colorful rainbow');
+  }
+  if (text.includes('treasure') || text.includes('chest')) {
+    objects.push('treasure chest');
+  }
+
+  // SPECIAL objects
+  if (text.includes('crown')) {
+    objects.push('golden crown');
+  }
+  if (text.includes('wand') || text.includes('magic')) {
+    objects.push('magic wand with sparkles');
+  }
+  if (text.includes('balloon')) {
+    objects.push('colorful balloons');
+  }
+  if (text.includes('cake') || text.includes('birthday')) {
+    objects.push('birthday cake');
+  }
+  if (text.includes('present') || text.includes('gift')) {
+    objects.push('wrapped presents');
+  }
+  if (text.includes('telescope')) {
+    objects.push('telescope');
+  }
+  if (text.includes('map')) {
+    objects.push('treasure map');
+  }
+
+  // Limit to top 2 objects to keep prompt focused
+  return objects.slice(0, 2).join(', ');
 }
 
 /**
@@ -138,6 +212,7 @@ function extractSupportingCharacters(text: string, mainCharName: string): string
 
   // Named groups/characters (e.g., "Lunar Guardians", "Moon Friends", "Star Creatures")
   const namedGroups = [
+    { pattern: /moon rabbits?/i, desc: 'cute cartoon moon rabbits' },
     { pattern: /lunar guardians?/i, desc: 'cute cartoon Lunar Guardian creatures' },
     { pattern: /lunar friends?/i, desc: 'cute cartoon alien friends' },
     { pattern: /moon friends?/i, desc: 'cute cartoon moon creatures' },
