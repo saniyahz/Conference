@@ -28,20 +28,24 @@ async function generateImageWithRetry(
           const negativePrompt = customNegativePrompt ||
             `forest, trees, grass, castle, human child, people, land animals, houses, realistic, 3D render, anime, text in image, text, words, letters, writing, caption, label, watermark, signature, logo, typography, font, numbers, scary, creepy, horror, dark, evil, ugly, deformed, bad anatomy, bad proportions, photorealistic`
 
-          console.log(`\n========== IMAGE ${imageIndex + 1} DEBUG ==========`)
-          console.log(`Attempt ${attempt}/${maxRetries}`)
-          console.log(`\n--- FULL PROMPT ---`)
-          console.log(cleanPrompt)
-          console.log(`\n--- NEGATIVE PROMPT ---`)
-          console.log(negativePrompt)
-          console.log(`\n--- REPLICATE INPUT ---`)
-          console.log(JSON.stringify({
-            prompt: cleanPrompt.substring(0, 500) + '...',
-            negative_prompt: negativePrompt.substring(0, 200) + '...',
-            guidance_scale: 2,
-            num_inference_steps: 4
-          }, null, 2))
-          console.log(`===================================\n`)
+          // DIAGNOSTIC LOGGING - Step A
+          console.log(`\n╔══════════════════════════════════════════════════════════════╗`)
+          console.log(`║           IMAGE ${imageIndex + 1} DEBUG (Attempt ${attempt}/${maxRetries})             ║`)
+          console.log(`╠══════════════════════════════════════════════════════════════╣`)
+          console.log(`║ pageIndex: ${imageIndex}`)
+          console.log(`║ model: stability-ai/sdxl:39ed52f2a78e934b3ba6e2a89f5b1c712de7dfea535525255b1aa35c5565e08b`)
+          console.log(`║ seed: ${seed}`)
+          console.log(`║ guidance_scale: 8`)
+          console.log(`║ num_inference_steps: 20`)
+          console.log(`║ scheduler: K_EULER`)
+          console.log(`║ size: 1024x1024`)
+          console.log(`╠══════════════════════════════════════════════════════════════╣`)
+          console.log(`║ PROMPT (first 200 chars):`)
+          console.log(`║ ${cleanPrompt.substring(0, 200)}`)
+          console.log(`╠══════════════════════════════════════════════════════════════╣`)
+          console.log(`║ NEGATIVE PROMPT (first 200 chars):`)
+          console.log(`║ ${negativePrompt.substring(0, 200)}`)
+          console.log(`╚══════════════════════════════════════════════════════════════╝\n`)
 
           // Use standard SDXL - balanced settings for speed + quality
           const output = await replicate.run(
