@@ -267,6 +267,8 @@ CRITICAL: Every page must end with a COMPLETE sentence. Never cut off mid-senten
     // ==========================================
     // STEP 4: Render prompts using universal template
     // ==========================================
+    // CRITICAL: Use SAME seed for ALL pages to maintain character identity
+    // Different seeds = different character interpretations = drift
     const baseSeed = Math.floor(Math.random() * 1000000)
     const imagePrompts: string[] = []
     const negativePrompts: string[] = []
@@ -274,13 +276,16 @@ CRITICAL: Every page must end with a COMPLETE sentence. Never cut off mid-senten
 
     const isAnimalStory = characterBible.character_type === 'animal'
 
+    console.log(`\n[SEED STRATEGY] Using SAME seed ${baseSeed} for ALL pages (reduces identity drift)`)
+
     sceneCards.forEach((card, index) => {
       // Pass page text so renderPrompt can detect animals from story
       const pageText = parsedStory.pages[index]?.text || ''
       const prompt = renderPrompt(characterBible, card, pageText)
       // Pass species to negative prompt so it can block wrong animals
       const negativePrompt = renderNegativePrompt(card, isAnimalStory, characterBible.species)
-      const seed = generatePageSeedByNumber(card.page_number, baseSeed)
+      // SAME seed for all pages - critical for character consistency
+      const seed = baseSeed
 
       imagePrompts.push(prompt)
       negativePrompts.push(negativePrompt)

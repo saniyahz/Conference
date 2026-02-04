@@ -325,27 +325,65 @@ function extractMood(text: string): string {
 /**
  * Build visual fingerprint from CharacterBible
  * Returns comma-separated string of visual descriptors
+ *
+ * CRITICAL: This fingerprint must be SPECIFIC and LOCKED
+ * - Include exact colors (not "gray" but "light gray")
+ * - Include exact features (not "horn" but "small rounded horn")
+ * - Include eye color explicitly
  */
 export function buildVisualFingerprint(bible: CharacterBible): string {
-  // If bible has visual_fingerprint, use it
+  // If bible has visual_fingerprint, use it (with enhancements)
   if (bible.visual_fingerprint && bible.visual_fingerprint.length > 0) {
-    return bible.visual_fingerprint.join(', ');
+    const fingerprint = bible.visual_fingerprint.join(', ');
+    // Add species-specific locked features if not already present
+    const species = bible.species?.toLowerCase() || '';
+    if (species.includes('rhino') && !fingerprint.includes('horn')) {
+      return `${fingerprint}, small rounded horn, thick legs`;
+    }
+    return fingerprint;
   }
 
-  // Otherwise, build from appearance
+  // Otherwise, build from appearance with SPECIFIC details
   const parts: string[] = [];
 
+  // Species with body type
   if (bible.species) {
-    parts.push(`cute cartoon ${bible.species}`);
+    const species = bible.species.toLowerCase();
+    if (species.includes('rhino')) {
+      parts.push('cute baby rhinoceros');
+      parts.push('small rounded horn');
+      parts.push('thick sturdy legs');
+    } else {
+      parts.push(`cute cartoon ${bible.species}`);
+    }
   }
+
+  // Skin/fur color - make it specific
   if (bible.appearance?.skin_tone) {
-    parts.push(bible.appearance.skin_tone);
+    const tone = bible.appearance.skin_tone;
+    // Make generic colors more specific
+    if (tone === 'gray' || tone === 'grey') {
+      parts.push('light gray skin');
+    } else if (tone === 'brown') {
+      parts.push('warm brown skin');
+    } else {
+      parts.push(tone);
+    }
   }
+
+  // Eyes - always include color
   if (bible.appearance?.eyes) {
     parts.push(bible.appearance.eyes);
+  } else {
+    parts.push('big friendly eyes');
   }
+
+  // Face features
   if (bible.appearance?.face_features) {
     parts.push(bible.appearance.face_features);
+  } else {
+    parts.push('round cheeks');
+    parts.push('friendly smile');
   }
 
   return parts.join(', ') || `cute cartoon ${bible.species || 'animal'}`;
@@ -387,26 +425,31 @@ export function renderPrompt(bible: CharacterBible, card: PageSceneCard, pageTex
   console.log(`Action: ${sceneCard.action}`);
   console.log(`Must Include: ${sceneCard.must_include.join(', ')}`);
 
-  // BUILD PROMPT using Template A structure
+  // BUILD PROMPT using Template A structure with LOCKED IDENTITY
 
-  // 1. CHARACTER LOCK (highest attention)
-  const characterLock = `${charName} the cute cartoon ${species}, ${fingerprint}`;
+  // 1. CHARACTER LOCK (highest attention) - with identity consistency instruction
+  const characterLock = `${charName} the cute cartoon ${species}`;
 
-  // 2. MUST SHOW (high attention) - limit to top 4 items
+  // 2. FINGERPRINT LOCK - CRITICAL: These details must NOT change between pages
+  // Add explicit instruction to maintain consistency
+  const fingerprintLock = `CHARACTER FINGERPRINT (do not change): ${fingerprint}. ` +
+    `Same face shape, same eye color, same body proportions every time.`;
+
+  // 3. MUST SHOW (high attention) - limit to top 4 items
   const mustShowItems = sceneCard.must_include.slice(0, 4).join(', ');
   const mustShow = mustShowItems ? `showing ${mustShowItems}` : '';
 
-  // 3. SCENE (medium attention)
+  // 4. SCENE (medium attention)
   const scene = `Scene: ${sceneCard.setting}. ${sceneCard.action}`;
 
-  // 4. STYLE (end of attention window)
+  // 5. STYLE (end of attention window)
   const style = `${styleBase}, ${styleRender}`;
 
-  // 5. Outfit if present
-  const outfitStr = outfit ? `Wearing ${outfit}.` : '';
+  // 6. Outfit LOCK - same outfit every page
+  const outfitStr = outfit ? `Wearing ${outfit} (same outfit every page).` : '';
 
-  // Combine with attention-optimized order
-  let prompt = `${characterLock}. ${mustShow}. ${scene}. ${outfitStr} ${style}. No text.`;
+  // Combine with attention-optimized order - CHARACTER LOCK FIRST
+  let prompt = `${characterLock}. ${fingerprintLock} ${mustShow}. ${scene}. ${outfitStr} ${style}. No text.`;
 
   // Clean up extra spaces/periods
   prompt = prompt.replace(/\.\s*\./g, '.').replace(/\s+/g, ' ').trim();
@@ -447,10 +490,43 @@ export function renderNegativePrompt(card: PageSceneCard, isAnimal?: boolean, sp
   if (isAnimal) {
     base.push('human', 'person', 'boy', 'girl', 'child', 'man', 'woman', 'portrait', 'hands');
 
-    // Block common SDXL wrong substitutions
-    const wrongAnimals = ['chicken', 'hen', 'rooster', 'chick', 'penguin', 'bird', 'duck', 'owl'];
-    const filtered = wrongAnimals.filter(a => a !== species && !species?.includes(a));
+    // ANTI-DRIFT NEGATIVES: Block animals that SDXL commonly substitutes
+    // This is CRITICAL for character consistency
+    const antiDriftAnimals: Record<string, string[]> = {
+      // For rhinos, SDXL often drifts to cows/bulls (similar body shape)
+      'rhinoceros': ['cow', 'bull', 'calf', 'ox', 'buffalo', 'bison', 'horse', 'deer', 'goat', 'antelope', 'pig', 'hippo'],
+      'rhino': ['cow', 'bull', 'calf', 'ox', 'buffalo', 'bison', 'horse', 'deer', 'goat', 'antelope', 'pig', 'hippo'],
+      // For elephants
+      'elephant': ['hippo', 'rhino', 'mammoth', 'pig'],
+      // For dogs
+      'dog': ['wolf', 'fox', 'coyote', 'bear'],
+      'puppy': ['wolf', 'fox', 'coyote', 'bear', 'kitten'],
+      // For cats
+      'cat': ['lion', 'tiger', 'leopard', 'fox'],
+      'kitten': ['lion', 'tiger', 'puppy', 'fox'],
+      // For rabbits (often drift to cats/dogs)
+      'rabbit': ['cat', 'dog', 'mouse', 'hamster'],
+      'bunny': ['cat', 'dog', 'mouse', 'hamster'],
+      // For lions
+      'lion': ['dog', 'cat', 'wolf', 'bear'],
+      // For bears
+      'bear': ['dog', 'wolf', 'gorilla'],
+    };
+
+    // Get species-specific anti-drift negatives
+    const speciesKey = species?.toLowerCase() || '';
+    const speciesNegatives = antiDriftAnimals[speciesKey] || [];
+
+    // Also add generic wrong animals
+    const genericWrong = ['chicken', 'hen', 'rooster', 'chick', 'penguin', 'bird', 'duck', 'owl'];
+
+    // Combine and filter out the actual species
+    const allNegatives = [...new Set([...speciesNegatives, ...genericWrong])];
+    const filtered = allNegatives.filter(a => a !== species && !species?.includes(a));
+
     base.push(...filtered);
+
+    console.log(`[ANTI-DRIFT] Species: ${species}, blocking: ${filtered.join(', ')}`);
   }
 
   const negative = base.join(', ');
