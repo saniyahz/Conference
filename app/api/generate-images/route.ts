@@ -28,42 +28,41 @@ async function generateImageWithRetry(
           const negativePrompt = customNegativePrompt ||
             `forest, trees, grass, castle, human child, people, land animals, houses, realistic, 3D render, anime, text in image, text, words, letters, writing, caption, label, watermark, signature, logo, typography, font, numbers, scary, creepy, horror, dark, evil, ugly, deformed, bad anatomy, bad proportions, photorealistic`
 
-          // DIAGNOSTIC LOGGING - Step A
+          // Create ONE input object - this is EXACTLY what gets sent
+          const MODEL_VERSION = "stability-ai/sdxl:39ed52f2a78e934b3ba6e2a89f5b1c712de7dfea535525255b1aa35c5565e08b"
+          const input = {
+            prompt: cleanPrompt,
+            negative_prompt: negativePrompt,
+            width: 1024,
+            height: 1024,
+            num_outputs: 1,
+            scheduler: "K_EULER",
+            num_inference_steps: 20,
+            guidance_scale: 8,
+            seed: seed,
+          }
+
+          // DIAGNOSTIC LOGGING - Log the EXACT object being sent
           console.log(`\n╔══════════════════════════════════════════════════════════════╗`)
           console.log(`║           IMAGE ${imageIndex + 1} DEBUG (Attempt ${attempt}/${maxRetries})             ║`)
-          console.log(`╠══════════════════════════════════════════════════════════════╣`)
-          console.log(`║ pageIndex: ${imageIndex}`)
-          console.log(`║ model: stability-ai/sdxl:39ed52f2a78e934b3ba6e2a89f5b1c712de7dfea535525255b1aa35c5565e08b`)
-          console.log(`║ seed: ${seed}`)
-          console.log(`║ guidance_scale: 8`)
-          console.log(`║ num_inference_steps: 20`)
-          console.log(`║ scheduler: K_EULER`)
-          console.log(`║ size: 1024x1024`)
-          console.log(`╠══════════════════════════════════════════════════════════════╣`)
-          console.log(`║ PROMPT (first 200 chars):`)
-          console.log(`║ ${cleanPrompt.substring(0, 200)}`)
-          console.log(`╠══════════════════════════════════════════════════════════════╣`)
-          console.log(`║ NEGATIVE PROMPT (first 200 chars):`)
-          console.log(`║ ${negativePrompt.substring(0, 200)}`)
-          console.log(`╚══════════════════════════════════════════════════════════════╝\n`)
-
-          // Use standard SDXL - balanced settings for speed + quality
-          const output = await replicate.run(
-            "stability-ai/sdxl:39ed52f2a78e934b3ba6e2a89f5b1c712de7dfea535525255b1aa35c5565e08b",
-            {
-              input: {
-                prompt: cleanPrompt,
-                negative_prompt: negativePrompt,
-                width: 1024,
-                height: 1024,
-                num_outputs: 1,
-                scheduler: "K_EULER",
-                num_inference_steps: 20,   // Faster, still good
-                guidance_scale: 8,         // Balanced prompt following
-                seed: seed,
-              }
+          console.log(`╚══════════════════════════════════════════════════════════════╝`)
+          console.log(`FINAL INPUT SENT TO REPLICATE:`)
+          console.log(JSON.stringify({
+            model: MODEL_VERSION,
+            input: {
+              ...input,
+              prompt: input.prompt.substring(0, 300) + '...',
+              negative_prompt: input.negative_prompt.substring(0, 200) + '...',
             }
-          )
+          }, null, 2))
+          console.log(`\nFULL PROMPT: ${cleanPrompt}`)
+          console.log(`\nFULL NEGATIVE: ${negativePrompt}\n`)
+
+          // Use standard SDXL - pass the SAME input object we just logged
+          const output = await replicate.run(MODEL_VERSION, { input })
+
+          // Log raw output from Replicate
+          console.log(`IMAGE ${imageIndex + 1} RAW OUTPUT:`, JSON.stringify(output).substring(0, 500))
 
           // Handle output - SDXL returns array of URLs
           let imageUrl = ''
@@ -101,10 +100,12 @@ async function generateImageWithRetry(
           }
 
           if (imageUrl && imageUrl.startsWith('http')) {
-          return imageUrl
-        } else {
-          return ''
-        }
+            console.log(`IMAGE ${imageIndex + 1} FINAL URL: ${imageUrl}`)
+            return imageUrl
+          } else {
+            console.log(`IMAGE ${imageIndex + 1} FAILED - no valid URL`)
+            return ''
+          }
       } catch (error: any) {
         const is429 = error.message?.includes('429') || error.message?.includes('Too Many Requests')
         const isRateLimit = error.message?.includes('rate limit') || is429
