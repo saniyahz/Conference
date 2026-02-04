@@ -88,7 +88,13 @@ export function renderPrompt(bible: CharacterBible, card: PageSceneCard, pageTex
   // 4. ACTION - What is the character doing?
   const action = extractActionFromText(lowerText, charName);
 
-  // 5. BUILD PROMPT - STYLE FIRST, then SPECIES (CRITICAL FOR SDXL)
+  // 5. SUPPORTING CHARACTERS - Extract other characters mentioned in page text
+  const supportingChars = extractSupportingCharacters(lowerText, charName);
+  if (supportingChars) {
+    console.log(`[SUPPORTING]: ${supportingChars}`);
+  }
+
+  // 6. BUILD PROMPT - STYLE FIRST, then SPECIES (CRITICAL FOR SDXL)
   // SDXL only pays attention to ~77 tokens, so STYLE + SPECIES must be first
   let prompt: string;
 
@@ -103,6 +109,7 @@ export function renderPrompt(bible: CharacterBible, card: PageSceneCard, pageTex
       `Adorable cartoon ${species} character named ${charName}. ` +
       `Scene: ${scene}. ` +
       `${charName} the cute cartoon ${species} is ${action}. ` +
+      (supportingChars ? `${supportingChars} ` : '') +
       `Bright colors, soft rounded shapes, expressive eyes, friendly face, hand-drawn illustration style.`;
   } else {
     // Couldn't detect specific species - use generic cartoon animal
@@ -110,6 +117,7 @@ export function renderPrompt(bible: CharacterBible, card: PageSceneCard, pageTex
       `A cute cartoon animal character (non-human, NOT a bird, NOT a chicken, NOT a hen). ` +
       `${charName} the friendly cartoon animal, ${action}. ` +
       `Scene: ${scene}. ` +
+      (supportingChars ? `${supportingChars} ` : '') +
       `Children's picture book illustration, soft watercolor, vibrant colors. ` +
       `NO humans, NO birds, NO chickens.`;
   }
@@ -118,6 +126,63 @@ export function renderPrompt(bible: CharacterBible, card: PageSceneCard, pageTex
   console.log(`====== END RENDER PROMPT DEBUG ======\n`);
 
   return prompt;
+}
+
+/**
+ * Extract supporting characters mentioned in page text
+ * Returns a phrase like "with friendly dolphins" or "with the Lunar Guardians"
+ */
+function extractSupportingCharacters(text: string, mainCharName: string): string {
+  const found: string[] = [];
+  const mainLower = mainCharName.toLowerCase();
+
+  // Named groups/characters (e.g., "Lunar Guardians", "Moon Friends", "Star Creatures")
+  const namedGroups = [
+    { pattern: /lunar guardians?/i, desc: 'cute cartoon Lunar Guardian creatures' },
+    { pattern: /lunar friends?/i, desc: 'cute cartoon alien friends' },
+    { pattern: /moon friends?/i, desc: 'cute cartoon moon creatures' },
+    { pattern: /star creatures?/i, desc: 'friendly cartoon star beings' },
+    { pattern: /space friends?/i, desc: 'cute cartoon alien friends' },
+    { pattern: /his friends?|her friends?|their friends?/i, desc: 'cute cartoon animal friends' },
+  ];
+
+  for (const { pattern, desc } of namedGroups) {
+    if (pattern.test(text)) {
+      found.push(desc);
+      break; // Only add one group
+    }
+  }
+
+  // Common animals mentioned as supporting characters
+  const supportingAnimals = [
+    { pattern: /\bdolphins?\b/i, desc: 'playful cartoon dolphins' },
+    { pattern: /\bwhales?\b/i, desc: 'friendly cartoon whale' },
+    { pattern: /\bfish\b/i, desc: 'colorful cartoon fish' },
+    { pattern: /\bbutterfl(?:y|ies)\b/i, desc: 'colorful cartoon butterflies' },
+    { pattern: /\bbirds?\b/i, desc: 'cute cartoon birds' },
+    { pattern: /\brabbits?\b|\bbunnies?\b/i, desc: 'cute cartoon rabbits' },
+    { pattern: /\bsquirrels?\b/i, desc: 'friendly cartoon squirrel' },
+    { pattern: /\bdeer\b/i, desc: 'gentle cartoon deer' },
+    { pattern: /\blions?\b/i, desc: 'friendly cartoon lion' },
+    { pattern: /\belephants?\b/i, desc: 'cute cartoon elephant' },
+    { pattern: /\bmonkeys?\b/i, desc: 'playful cartoon monkeys' },
+    { pattern: /\bturtles?\b/i, desc: 'friendly cartoon turtle' },
+    { pattern: /\bfrogs?\b/i, desc: 'cute cartoon frog' },
+    { pattern: /\bowls?\b/i, desc: 'wise cartoon owl' },
+    { pattern: /\bbears?\b/i, desc: 'friendly cartoon bear' },
+    { pattern: /\bfoxes?\b|\bfox\b/i, desc: 'clever cartoon fox' },
+  ];
+
+  // Only add supporting animals if they're not the main character
+  for (const { pattern, desc } of supportingAnimals) {
+    if (pattern.test(text) && !pattern.test(mainLower)) {
+      found.push(desc);
+      if (found.length >= 2) break; // Limit to 2 supporting characters
+    }
+  }
+
+  if (found.length === 0) return '';
+  return `Together with ${found.join(' and ')}.`;
 }
 
 /**
@@ -184,13 +249,17 @@ function extractSceneFromText(text: string, fallbackSetting: string): string {
   }
 
   if (text.includes('moon surface') || text.includes('on the moon') || text.includes('lunar surface')) {
-    return 'Moon surface with craters, Earth visible in black starry sky';
+    return 'colorful cartoon moon surface with craters, bright Earth visible in starry black sky';
   }
   if (text.includes('exploring the moon') || text.includes('walked on the moon') || text.includes('stepped on the moon')) {
-    return 'Moon surface with craters and rocks, starry space background';
+    return 'colorful cartoon moon surface with craters and rocks, starry space background';
   }
   if (text.includes('landed on the moon') || text.includes('arriving at the moon')) {
-    return 'Rocket ship landed on moon surface with craters';
+    return 'colorful cartoon rocket ship landed on moon surface with craters';
+  }
+  // GENERAL MOON/LUNAR references - catch "the moon", "lunar guardians", etc.
+  if (text.includes('lunar') || (text.includes('moon') && !text.includes('moonlight'))) {
+    return 'colorful cartoon moon surface with craters and rocks, Earth visible in starry black sky, magical glowing atmosphere';
   }
   if (text.includes('mars') || text.includes('red planet')) {
     return 'Mars surface with red rocks and dusty terrain';
