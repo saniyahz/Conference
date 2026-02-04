@@ -24,9 +24,9 @@ async function generateImageWithRetry(
           const cleanPrompt = prompt
 
           // Use passed negative prompt OR fallback to default
-          // CRITICAL: Block humans AND common wrong animals (chicken/rooster keep appearing!)
+          // CRITICAL: Block humans AND ALL common wrong animals that SDXL substitutes
           const negativePrompt = customNegativePrompt ||
-            `human, human child, person, people, man, woman, boy, girl, child, chicken, rooster, hen, bird, realistic, photorealistic, 3D render, anime, text, words, letters, watermark, signature, logo, ugly, deformed, bad anatomy`
+            `human, person, child, boy, girl, man, woman, people, face, portrait, chicken, rooster, hen, bird, fox, cat, dog, bunny, rabbit, dragon, furry, feathers, beak, wings, text, watermark, logo, realistic, photorealistic, 3D render, anime`
 
           console.log(`\n========== IMAGE ${imageIndex + 1} DEBUG ==========`)
           console.log(`Attempt ${attempt}/${maxRetries}`)
@@ -38,12 +38,12 @@ async function generateImageWithRetry(
           console.log(JSON.stringify({
             prompt: cleanPrompt.substring(0, 500) + '...',
             negative_prompt: negativePrompt.substring(0, 200) + '...',
-            guidance_scale: 2,
-            num_inference_steps: 4
+            guidance_scale: 7.5,
+            num_inference_steps: 30
           }, null, 2))
           console.log(`===================================\n`)
 
-          // Use standard SDXL - balanced settings for speed + quality
+          // Use standard SDXL - HIGH QUALITY settings for correct character
           const output = await replicate.run(
             "stability-ai/sdxl:39ed52f2a78e934b3ba6e2a89f5b1c712de7dfea535525255b1aa35c5565e08b",
             {
@@ -54,8 +54,8 @@ async function generateImageWithRetry(
                 height: 1024,
                 num_outputs: 1,
                 scheduler: "K_EULER",
-                num_inference_steps: 20,   // Faster, still good
-                guidance_scale: 8,         // Balanced prompt following
+                num_inference_steps: 30,   // Higher for better prompt following
+                guidance_scale: 7.5,       // Strong prompt adherence
                 seed: seed,
               }
             }

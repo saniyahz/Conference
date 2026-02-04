@@ -60,12 +60,13 @@ export function renderPrompt(bible: CharacterBible, card: PageSceneCard, pageTex
   const isAnimalStory = bible.character_type === 'animal' || (species && species !== 'animal');
 
   if (isAnimalStory && species && species !== 'animal') {
-    // ANIMAL CHARACTER - Put species FIRST and REPEAT it
-    // This is critical for SDXL to understand
-    prompt = `${species}. A cute cartoon ${species} character. ${charName} the ${species}, an adorable ${species} with ${furColor} and ${eyeDesc}. The ${species} is ${action}. Scene: ${scene}. Style: Pixar Disney animation, soft lighting, vibrant colors, children's book illustration. NO humans, only the ${species}.`;
+    // ANIMAL CHARACTER - SPECIES x3 at START (critical for SDXL)
+    // Format: "SPECIES. SPECIES. SPECIES." then full description
+    const SPECIES = species.toUpperCase();
+    prompt = `${SPECIES}. ${SPECIES}. ${SPECIES}. A full-body ${species} named ${charName} (non-human animal), clearly a ${species}. Scene: ${scene}. Action: ${action}. Must include: ${species} features, ${furColor}. Children's picture book illustration, vibrant, clean lines.`;
   } else if (isAnimalStory) {
     // Animal story but couldn't detect specific species - use generic but NO HUMANS
-    prompt = `A cute cartoon animal character with ${furColor} and ${eyeDesc}. ${charName} the friendly animal, ${action}. Scene: ${scene}. Style: Pixar Disney animation, soft lighting, vibrant colors, children's book illustration. NO humans.`;
+    prompt = `ANIMAL. ANIMAL. ANIMAL. A cute cartoon animal character (non-human) with ${furColor} and ${eyeDesc}. ${charName} the friendly animal, ${action}. Scene: ${scene}. Children's picture book illustration, vibrant colors. NO humans.`;
   } else {
     // HUMAN character (only if explicitly human)
     prompt = `A cute cartoon child character with friendly face and ${eyeDesc}, ${charName}, ${action}. Scene: ${scene}. Style: Pixar Disney animation, soft lighting, vibrant colors, children's book illustration.`;
