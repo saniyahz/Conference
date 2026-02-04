@@ -1,8 +1,13 @@
 import { PageSceneCard, CharacterBible } from "./visual-types";
 
 /**
- * Generate a Page Scene Card from page text
- * GENERIC - extracts info directly from text, no hardcoded scenarios
+ * ENHANCED Page Scene Card Generator
+ *
+ * Improvements:
+ * 1. Better action extraction with emotional context
+ * 2. More detailed setting detection
+ * 3. Improved supporting character extraction
+ * 4. Better forbidden element logic
  */
 export function generatePageSceneCard(
   pageText: string,
@@ -13,16 +18,19 @@ export function generatePageSceneCard(
   const lowerText = pageText.toLowerCase();
 
   // Extract setting from the text
-  const setting = extractSetting(lowerText);
+  const setting = extractSetting(lowerText, pageText);
 
   // Extract key objects mentioned in the text
   const keyObjects = extractKeyObjects(lowerText);
 
-  // Extract supporting characters
-  const supportingCharacters = extractSupportingCharacters(lowerText, bible.name);
+  // Extract supporting characters (with named character detection)
+  const supportingCharacters = extractSupportingCharacters(pageText, bible.name);
 
-  // Build forbidden elements based on what's NOT in this scene
-  const forbiddenElements = buildForbiddenElements(lowerText);
+  // Build forbidden elements based on the scene type
+  const forbiddenElements = buildForbiddenElements(lowerText, setting);
+
+  // Determine shot type based on scene complexity
+  const shotType = determineShotType(lowerText, keyObjects.length);
 
   return {
     page_number: pageNumber,
@@ -32,92 +40,136 @@ export function generatePageSceneCard(
     main_action: extractAction(lowerText, bible.name),
     supporting_characters: supportingCharacters,
     key_objects: keyObjects,
-    required_elements: [...keyObjects, ...supportingCharacters],
+    required_elements: [...keyObjects.slice(0, 3), ...supportingCharacters.slice(0, 2)],
     forbidden_elements: forbiddenElements,
     camera: {
-      shot_type: keyObjects.length > 2 ? 'wide' : 'medium',
-      composition_notes: 'Main character clearly visible'
+      shot_type: shotType,
+      composition_notes: generateCompositionNotes(lowerText, shotType)
     }
   };
 }
 
 /**
- * Extract setting from page text - looks for WHERE the scene takes place
- * Priority: "in/at/through [location]" phrases > general keywords
+ * Extract setting from page text - Enhanced with better location detection
  */
-function extractSetting(text: string): string {
-  // PRIORITY 1: Look for explicit location phrases "in the X", "through the X", "at the X"
-  const locationPhrases = [
-    // Space/Moon - Priority (check these first for space adventures)
-    { pattern: /(?:soared|flew|fly|flying)\s+(?:over|across)\s+(?:the\s+)?crater/i, setting: 'Rocket ship flying over moon crater in space' },
-    { pattern: /(?:landed|landing)\s+(?:on|near|by)\s+(?:the\s+)?(?:other\s+side|crater)/i, setting: 'Moon surface near crater with rocket ship' },
-    { pattern: /(?:blasted\s+off|blast\s+off|took\s+off|launched)/i, setting: 'Rocket ship blasting off into space' },
-    { pattern: /crater/i, setting: 'Moon surface with craters and starry sky' },
+function extractSetting(text: string, originalText: string): string {
+  // PRIORITY 1: SPACE/CELESTIAL scenes
+  const spacePatterns = [
+    { pattern: /(?:soared|flew|flying)\s+(?:over|across)\s+(?:the\s+)?(?:crater|moon)/i, setting: 'Rocket ship interior viewing moon craters below' },
+    { pattern: /(?:landed|landing)\s+(?:on|near|by|safely)/i, setting: 'Moon surface with rocket ship landed' },
+    { pattern: /(?:blasted\s+off|blast\s+off|took\s+off|launched|rocketed)/i, setting: 'Rocket ship cockpit during launch' },
+    { pattern: /crater|lunar/i, setting: 'Moon surface with craters and starry sky' },
+    { pattern: /(?:walked|stepped|bounced)\s+(?:on\s+)?(?:the\s+)?moon/i, setting: 'Moon surface exploration' },
     { pattern: /(?:in|through|into)\s+(?:outer\s+)?space/i, setting: 'Outer space with stars and planets' },
-    { pattern: /(?:on|landed\s+on)\s+(?:the\s+)?(?:moon)/i, setting: 'Moon surface with craters' },
-    { pattern: /(?:on|landed\s+on)\s+(?:the\s+)?(?:mars|planet)/i, setting: 'Alien planet surface' },
-
-    // City/Town
-    { pattern: /(?:in|through|around)\s+(?:the\s+)?(?:city|town|village|streets?)/i, setting: 'City streets with buildings' },
-    { pattern: /(?:explored|walked|strolled)\s+(?:the\s+)?(?:city|town|streets?)/i, setting: 'City streets with buildings' },
-
-    // Indoor
-    { pattern: /(?:in|inside)\s+(?:the\s+)?(?:house|home|room|bedroom|kitchen)/i, setting: 'Cozy indoor room' },
-    { pattern: /(?:in|inside)\s+(?:the\s+)?(?:castle|palace|throne)/i, setting: 'Castle interior' },
-    { pattern: /(?:in|inside)\s+(?:the\s+)?(?:school|classroom)/i, setting: 'School classroom' },
-    { pattern: /(?:in|inside|back\s+to)\s+(?:the\s+)?(?:rocket|spaceship|ship)/i, setting: 'Inside a rocket ship cockpit' },
-    { pattern: /climbed\s+inside/i, setting: 'Inside a rocket ship cockpit' },
-
-    // Nature
-    { pattern: /(?:in|through|into)\s+(?:the\s+)?(?:forest|woods)/i, setting: 'Forest with tall trees' },
-    { pattern: /(?:in|at|by)\s+(?:the\s+)?(?:meadow|field|garden)/i, setting: 'Beautiful meadow with flowers' },
-    { pattern: /(?:in|at)\s+(?:the\s+)?(?:desert|dunes)/i, setting: 'Desert with sand dunes' },
-    { pattern: /(?:on|at)\s+(?:the\s+)?(?:mountain|hill|cliff)/i, setting: 'Mountain landscape' },
-    { pattern: /(?:at|on)\s+(?:the\s+)?(?:beach|shore)/i, setting: 'Beach with sand and waves' },
-
-    // Water
-    { pattern: /(?:under|beneath)\s+(?:the\s+)?(?:water|waves|sea|ocean)/i, setting: 'Underwater ocean scene' },
-    { pattern: /(?:in|into)\s+(?:the\s+)?(?:ocean|sea|lake|river)/i, setting: 'By the water' },
-
-    // Sky
-    { pattern: /(?:in|through|across)\s+(?:the\s+)?(?:sky|clouds)/i, setting: 'High in the sky with clouds' },
-    { pattern: /(?:flying|soaring)\s+(?:through|in)/i, setting: 'Flying through the sky' },
+    { pattern: /stars?\s+and\s+planets?|planets?\s+and\s+stars?/i, setting: 'Colorful outer space scene' },
+    { pattern: /looking\s+(?:at|up\s+at)\s+(?:the\s+)?(?:earth|stars|planets)/i, setting: 'Space view with celestial objects' },
   ];
 
-  // Check explicit location phrases first
-  for (const { pattern, setting } of locationPhrases) {
+  for (const { pattern, setting } of spacePatterns) {
     if (pattern.test(text)) {
       return setting;
     }
   }
 
-  // PRIORITY 2: Keyword-based fallback (but with lower priority)
-  const keywordPatterns = [
-    { keywords: ['city', 'street', 'town', 'village'], setting: 'City or town scene' },
-    { keywords: ['underwater', 'ocean floor', 'coral reef'], setting: 'Underwater ocean scene' },
-    { keywords: ['outer space', 'cosmos', 'galaxy'], setting: 'Outer space with stars' },
-    { keywords: ['forest', 'woods', 'trees'], setting: 'Forest scene' },
-    { keywords: ['meadow', 'garden', 'flowers'], setting: 'Garden or meadow' },
-    { keywords: ['desert', 'sand'], setting: 'Desert scene' },
-    { keywords: ['mountain', 'cliff'], setting: 'Mountain scene' },
-    { keywords: ['beach', 'shore', 'ocean'], setting: 'Beach scene' },
-    { keywords: ['home', 'house', 'room'], setting: 'Indoor room' },
-    { keywords: ['castle', 'palace'], setting: 'Castle scene' },
-    { keywords: ['sky', 'clouds', 'flying'], setting: 'Sky scene' },
+  // PRIORITY 2: VEHICLE INTERIOR scenes
+  if (text.includes('rocket') || text.includes('spaceship')) {
+    if (text.includes('inside') || text.includes('cockpit') || text.includes('climbed') || text.includes('window') || text.includes('buttons')) {
+      return 'Inside colorful rocket ship cockpit';
+    }
+    if (text.includes('next to') || text.includes('beside') || text.includes('in front')) {
+      return 'Standing by rocket ship on launch pad';
+    }
+  }
+
+  // PRIORITY 3: NATURE scenes
+  const naturePatterns = [
+    { pattern: /magical\s+forest|enchanted\s+(?:forest|woods)/i, setting: 'Magical enchanted forest with glowing elements' },
+    { pattern: /(?:deep|dark|tall)\s+(?:forest|woods)/i, setting: 'Deep forest with tall trees' },
+    { pattern: /forest|woods|trees/i, setting: 'Green forest with friendly trees' },
+    { pattern: /meadow|field\s+of\s+flowers/i, setting: 'Colorful flower meadow' },
+    { pattern: /garden/i, setting: 'Beautiful garden with flowers' },
+    { pattern: /waterfall/i, setting: 'Magical waterfall scene' },
+    { pattern: /river|stream|creek|brook/i, setting: 'Peaceful stream in nature' },
+    { pattern: /mountain|hilltop|cliff/i, setting: 'Mountain landscape' },
+    { pattern: /jungle|rainforest/i, setting: 'Lush tropical jungle' },
   ];
 
-  for (const { keywords, setting } of keywordPatterns) {
-    if (keywords.some(kw => text.includes(kw))) {
+  for (const { pattern, setting } of naturePatterns) {
+    if (pattern.test(text)) {
       return setting;
     }
   }
 
-  // Default
-  return 'Storybook scene';
+  // PRIORITY 4: WATER scenes
+  const waterPatterns = [
+    { pattern: /underwater|beneath\s+the\s+(?:water|waves|sea)/i, setting: 'Magical underwater world with coral' },
+    { pattern: /ocean\s+floor|sea\s+floor/i, setting: 'Deep ocean floor with marine life' },
+    { pattern: /coral\s+reef/i, setting: 'Colorful coral reef underwater' },
+    { pattern: /beach|shore|seaside/i, setting: 'Sunny beach with sand and waves' },
+    { pattern: /ocean|sea(?!\s*son)/i, setting: 'Ocean seascape' },
+    { pattern: /lake|pond/i, setting: 'Peaceful lake scene' },
+  ];
+
+  for (const { pattern, setting } of waterPatterns) {
+    if (pattern.test(text)) {
+      return setting;
+    }
+  }
+
+  // PRIORITY 5: INDOOR scenes
+  const indoorPatterns = [
+    { pattern: /bedroom|bed/i, setting: 'Cozy bedroom interior' },
+    { pattern: /kitchen/i, setting: 'Warm kitchen interior' },
+    { pattern: /living\s+room/i, setting: 'Cozy living room' },
+    { pattern: /(?:at\s+)?home|house/i, setting: 'Cozy home interior' },
+    { pattern: /castle|palace|throne/i, setting: 'Magical castle interior' },
+    { pattern: /school|classroom/i, setting: 'Colorful classroom' },
+    { pattern: /library/i, setting: 'Cozy library with books' },
+  ];
+
+  for (const { pattern, setting } of indoorPatterns) {
+    if (pattern.test(text)) {
+      return setting;
+    }
+  }
+
+  // PRIORITY 6: SKY scenes
+  if (text.includes('flying') || text.includes('sky') || text.includes('clouds')) {
+    if (text.includes('night')) {
+      return 'Night sky with stars and moon';
+    }
+    return 'Bright sky with fluffy clouds';
+  }
+
+  // PRIORITY 7: SPECIAL locations
+  const specialPatterns = [
+    { pattern: /cave|cavern/i, setting: 'Magical cave with glowing crystals' },
+    { pattern: /island/i, setting: 'Tropical island paradise' },
+    { pattern: /desert|sand\s+dune/i, setting: 'Golden desert landscape' },
+    { pattern: /village|town/i, setting: 'Friendly village scene' },
+    { pattern: /city|street/i, setting: 'Colorful city street' },
+    { pattern: /bakery|shop|store/i, setting: 'Cozy shop interior' },
+  ];
+
+  for (const { pattern, setting } of specialPatterns) {
+    if (pattern.test(text)) {
+      return setting;
+    }
+  }
+
+  // Default based on story intro/ending
+  if (text.includes('once upon') || text.includes('there was') || text.includes('lived')) {
+    return 'Cozy storybook home setting';
+  }
+  if (text.includes('the end') || text.includes('happily ever')) {
+    return 'Warm celebratory scene';
+  }
+
+  return 'Magical storybook scene';
 }
 
 /**
- * Extract key objects from text - GENERIC
+ * Extract key objects from text - Enhanced list
  */
 function extractKeyObjects(text: string): string[] {
   const objects: string[] = [];
@@ -125,138 +177,168 @@ function extractKeyObjects(text: string): string[] {
   const objectPatterns = [
     // Vehicles
     { keywords: ['rocket', 'spaceship'], name: 'rocket ship' },
-    { keywords: ['boat', 'ship', 'sailboat'], name: 'boat' },
-    { keywords: ['car', 'truck', 'bus'], name: 'vehicle' },
+    { keywords: ['boat', 'sailboat'], name: 'boat' },
     { keywords: ['airplane', 'plane'], name: 'airplane' },
-    { keywords: ['balloon'], name: 'balloon' },
+    { keywords: ['hot air balloon'], name: 'hot air balloon' },
+    { keywords: ['car', 'truck'], name: 'vehicle' },
+    { keywords: ['bicycle', 'bike'], name: 'bicycle' },
+
+    // Celestial
+    { keywords: ['moon'], name: 'moon' },
+    { keywords: ['stars', 'star'], name: 'stars' },
+    { keywords: ['planets', 'planet'], name: 'planets' },
+    { keywords: ['earth'], name: 'Earth' },
+    { keywords: ['sun'], name: 'sun' },
+    { keywords: ['rainbow'], name: 'rainbow' },
 
     // Nature
-    { keywords: ['rainbow'], name: 'rainbow' },
+    { keywords: ['flowers', 'flower'], name: 'flowers' },
+    { keywords: ['tree'], name: 'trees' },
     { keywords: ['waterfall'], name: 'waterfall' },
-    { keywords: ['river', 'stream'], name: 'river' },
+    { keywords: ['river', 'stream'], name: 'flowing water' },
+    { keywords: ['mountain'], name: 'mountains' },
 
     // Items
     { keywords: ['treasure', 'chest'], name: 'treasure chest' },
-    { keywords: ['crown'], name: 'crown' },
+    { keywords: ['crown'], name: 'golden crown' },
     { keywords: ['wand', 'magic wand'], name: 'magic wand' },
     { keywords: ['book'], name: 'book' },
     { keywords: ['map'], name: 'map' },
     { keywords: ['telescope'], name: 'telescope' },
-    { keywords: ['helmet'], name: 'helmet' },
-
-    // Celestial
-    { keywords: ['moon'], name: 'moon' },
-    { keywords: ['star', 'stars'], name: 'stars' },
-    { keywords: ['planet', 'planets'], name: 'planets' },
-    { keywords: ['sun'], name: 'sun' },
+    { keywords: ['helmet', 'space helmet'], name: 'helmet' },
+    { keywords: ['key'], name: 'key' },
+    { keywords: ['ball'], name: 'ball' },
+    { keywords: ['balloon'], name: 'balloons' },
+    { keywords: ['cake'], name: 'cake' },
+    { keywords: ['present', 'gift'], name: 'presents' },
   ];
 
   for (const pattern of objectPatterns) {
     if (pattern.keywords.some(kw => text.includes(kw))) {
-      objects.push(pattern.name);
+      if (!objects.includes(pattern.name)) {
+        objects.push(pattern.name);
+      }
     }
   }
 
-  return objects.slice(0, 4); // Max 4 objects
+  return objects.slice(0, 4);
 }
 
 /**
- * Extract supporting characters from text
- * Also detects "X and Y" patterns for multiple main characters
- * Detects friend names like "Susu and Piku"
+ * Extract supporting characters - Enhanced with named character detection
  */
 function extractSupportingCharacters(text: string, mainCharName: string): string[] {
   const characters: string[] = [];
   const mainLower = mainCharName.toLowerCase();
+  const lowerText = text.toLowerCase();
 
-  // Check for "Name and Name" pattern (multiple main characters)
-  const andPattern = new RegExp(`${mainCharName}\\s+and\\s+([A-Z][a-z]+)`, 'i');
-  const andMatch = text.match(andPattern);
-  if (andMatch) {
-    characters.push(andMatch[1]); // Add the second character
-  }
-
-  // Check for friend names pattern: "Name and Name cheered/laughed/etc"
-  // This catches "Susu and Piku cheered" style names
-  const friendNamesPattern = /\b([A-Z][a-z]{2,})\s+and\s+([A-Z][a-z]{2,})\s+(?:cheered|laughed|smiled|waved|played|watched|followed|joined|helped)/gi;
-  let friendMatch;
-  while ((friendMatch = friendNamesPattern.exec(text)) !== null) {
-    const name1 = friendMatch[1];
-    const name2 = friendMatch[2];
-    if (name1.toLowerCase() !== mainLower && !characters.includes(name1)) {
-      characters.push(name1);
-    }
-    if (name2.toLowerCase() !== mainLower && !characters.includes(name2)) {
-      characters.push(name2);
+  // Pattern 1: "Name the Animal" format
+  const namedAnimalRegex = /\b([A-Z][a-z]+)\s+the\s+(\w+)/g;
+  let match;
+  while ((match = namedAnimalRegex.exec(text)) !== null) {
+    const name = match[1];
+    const type = match[2].toLowerCase();
+    if (name.toLowerCase() !== mainLower) {
+      characters.push(`${name} the ${type}`);
     }
   }
 
-  const characterPatterns = [
+  // Pattern 2: "Name and Name" format (friends)
+  const friendsRegex = /\b([A-Z][a-z]{2,})\s+and\s+([A-Z][a-z]{2,})\b/g;
+  while ((match = friendsRegex.exec(text)) !== null) {
+    const name1 = match[1];
+    const name2 = match[2];
+    const skipWords = ['The', 'And', 'But', 'His', 'Her', 'They', 'With', 'Once', 'Then', 'Soon', 'But', 'For'];
+
+    if (!skipWords.includes(name1) && name1.toLowerCase() !== mainLower) {
+      if (!characters.some(c => c.includes(name1))) {
+        characters.push(name1);
+      }
+    }
+    if (!skipWords.includes(name2) && name2.toLowerCase() !== mainLower) {
+      if (!characters.some(c => c.includes(name2))) {
+        characters.push(name2);
+      }
+    }
+  }
+
+  // Pattern 3: Generic characters
+  const genericCharacters = [
     { keywords: ['friend', 'friends'], name: 'friends' },
     { keywords: ['family', 'parent', 'mother', 'father', 'mom', 'dad'], name: 'family' },
-
-    // Animals
-    { keywords: ['dog', 'puppy'], name: 'dog' },
-    { keywords: ['cat', 'kitten'], name: 'cat' },
-    { keywords: ['bird', 'birds'], name: 'birds' },
-    { keywords: ['rabbit', 'bunny'], name: 'rabbit' },
-    { keywords: ['bear'], name: 'bear' },
-    { keywords: ['fox'], name: 'fox' },
-    { keywords: ['owl'], name: 'owl' },
-    { keywords: ['butterfly', 'butterflies'], name: 'butterflies' },
-
-    // Sea creatures
-    { keywords: ['fish'], name: 'fish' },
-    { keywords: ['dolphin'], name: 'dolphins' },
-    { keywords: ['whale'], name: 'whale' },
-    { keywords: ['shark'], name: 'shark' },
-    { keywords: ['turtle'], name: 'turtle' },
-    { keywords: ['octopus'], name: 'octopus' },
-
-    // Fantasy
-    { keywords: ['dragon'], name: 'dragon' },
-    { keywords: ['unicorn'], name: 'unicorn' },
-    { keywords: ['fairy', 'fairies'], name: 'fairies' },
-    { keywords: ['alien', 'aliens'], name: 'aliens' },
-    { keywords: ['robot'], name: 'robot' },
+    { keywords: ['brother', 'sister'], name: 'sibling' },
   ];
 
-  for (const pattern of characterPatterns) {
-    // Don't add if it's the main character
-    if (mainCharName.toLowerCase().includes(pattern.keywords[0])) continue;
-
-    if (pattern.keywords.some(kw => text.includes(kw))) {
+  for (const pattern of genericCharacters) {
+    if (pattern.keywords.some(kw => lowerText.includes(kw)) && characters.length === 0) {
       characters.push(pattern.name);
     }
   }
 
-  return characters.slice(0, 3); // Max 3 supporting characters
+  return characters.slice(0, 3);
 }
 
 /**
  * Extract time/weather from text
  */
 function extractTimeWeather(text: string): string {
-  if (text.includes('night') || text.includes('dark') || text.includes('moon')) return 'nighttime';
+  // Time of day
+  if (text.includes('night') || text.includes('dark') || text.includes('midnight')) return 'nighttime';
   if (text.includes('morning') || text.includes('sunrise') || text.includes('dawn')) return 'morning';
   if (text.includes('sunset') || text.includes('evening') || text.includes('dusk')) return 'sunset';
-  if (text.includes('rain') || text.includes('storm')) return 'rainy';
-  if (text.includes('snow') || text.includes('winter')) return 'snowy';
+  if (text.includes('afternoon')) return 'afternoon';
+
+  // Weather
+  if (text.includes('rain') || text.includes('storm') || text.includes('thunder')) return 'rainy';
+  if (text.includes('snow') || text.includes('winter') || text.includes('cold')) return 'snowy';
+  if (text.includes('sunny') || text.includes('bright')) return 'sunny';
+  if (text.includes('cloudy') || text.includes('overcast')) return 'cloudy';
+
+  // Space (no traditional time/weather)
+  if (text.includes('space') || text.includes('moon') || text.includes('star')) return 'space';
+
   return 'daytime';
 }
 
 /**
- * Extract action from text - expanded list for space/adventure stories
+ * Extract main action from text - Enhanced with emotional context
  */
 function extractAction(text: string, characterName: string): string {
-  // Priority actions - more specific first
+  // Priority actions - most specific first
   const priorityActions = [
-    { keywords: ['blasted off', 'blast off'], action: 'blasting off in rocket' },
-    { keywords: ['soared over', 'soaring over'], action: 'soaring over' },
-    { keywords: ['flew over', 'flying over'], action: 'flying over' },
-    { keywords: ['landed safely', 'safe landing'], action: 'landing safely' },
-    { keywords: ['climbed inside', 'climbing inside'], action: 'climbing inside' },
-    { keywords: ['taking off', 'took off'], action: 'taking off' },
+    // Space actions
+    { keywords: ['blasted off', 'blast off', 'launched', 'rocketed'], action: 'launching into space' },
+    { keywords: ['soared over', 'soaring over', 'flew over'], action: 'soaring over' },
+    { keywords: ['landed safely', 'safe landing', 'touched down'], action: 'landing safely' },
+    { keywords: ['climbed inside', 'climbing inside', 'got into'], action: 'climbing inside' },
+    { keywords: ['walked on the moon', 'bouncing on'], action: 'walking on the moon' },
+    { keywords: ['exploring the moon', 'explored the moon'], action: 'exploring the moon' },
+
+    // Emotional actions
+    { keywords: ['hugged', 'hugging', 'embrace'], action: 'hugging warmly' },
+    { keywords: ['cheered', 'celebrated', 'hooray'], action: 'celebrating joyfully' },
+    { keywords: ['laughed', 'giggled', 'laughing'], action: 'laughing happily' },
+    { keywords: ['cried', 'crying', 'tears of joy'], action: 'showing emotion' },
+    { keywords: ['waved goodbye', 'said goodbye'], action: 'waving goodbye' },
+
+    // Physical actions
+    { keywords: ['running', 'ran fast', 'raced'], action: 'running excitedly' },
+    { keywords: ['jumping', 'leaped', 'bounced'], action: 'jumping with joy' },
+    { keywords: ['swimming', 'swam', 'diving'], action: 'swimming' },
+    { keywords: ['climbing', 'climbed up'], action: 'climbing' },
+    { keywords: ['flying', 'flew through'], action: 'flying' },
+    { keywords: ['dancing', 'danced'], action: 'dancing happily' },
+
+    // Discovery actions
+    { keywords: ['discovered', 'found something'], action: 'making a discovery' },
+    { keywords: ['exploring', 'explored'], action: 'exploring curiously' },
+    { keywords: ['searching', 'looking for'], action: 'searching carefully' },
+
+    // Social actions
+    { keywords: ['helping', 'helped'], action: 'helping kindly' },
+    { keywords: ['sharing', 'shared'], action: 'sharing generously' },
+    { keywords: ['meeting', 'met a'], action: 'meeting someone new' },
+    { keywords: ['playing', 'played with'], action: 'playing happily' },
   ];
 
   for (const { keywords, action } of priorityActions) {
@@ -265,15 +347,14 @@ function extractAction(text: string, characterName: string): string {
     }
   }
 
-  // General actions
-  const actions = [
+  // General actions fallback
+  const generalActions = [
     'flying', 'swimming', 'running', 'walking', 'jumping', 'dancing',
     'playing', 'exploring', 'climbing', 'sleeping', 'eating', 'reading',
-    'laughing', 'smiling', 'waving', 'hugging', 'looking', 'standing',
-    'soaring', 'blasting', 'landing', 'cheering', 'exclaiming', 'leading'
+    'laughing', 'smiling', 'waving', 'looking', 'standing', 'sitting'
   ];
 
-  for (const action of actions) {
+  for (const action of generalActions) {
     if (text.includes(action)) {
       return `${characterName} ${action}`;
     }
@@ -283,28 +364,78 @@ function extractAction(text: string, characterName: string): string {
 }
 
 /**
- * Build forbidden elements - exclude things NOT in this scene
+ * Build forbidden elements based on scene type
  */
-function buildForbiddenElements(text: string): string[] {
+function buildForbiddenElements(text: string, setting: string): string[] {
   const forbidden: string[] = [];
+  const settingLower = setting.toLowerCase();
 
-  // If in space, forbid earth elements
-  if (text.includes('space') || text.includes('cosmos') || text.includes('rocket')) {
-    if (!text.includes('forest')) forbidden.push('forest', 'trees');
-    if (!text.includes('ocean')) forbidden.push('ocean', 'water');
+  // Space scenes - no nature elements
+  if (settingLower.includes('space') || settingLower.includes('moon') || settingLower.includes('rocket') ||
+      settingLower.includes('star') || settingLower.includes('planet') || text.includes('crater')) {
+    forbidden.push('forest', 'trees', 'grass', 'flowers', 'water', 'ocean', 'fish');
   }
 
-  // If underwater, forbid land elements
-  if (text.includes('underwater') || text.includes('ocean')) {
-    forbidden.push('forest', 'trees', 'buildings');
+  // Underwater scenes - no land/sky elements
+  if (settingLower.includes('underwater') || settingLower.includes('ocean') || settingLower.includes('coral')) {
+    forbidden.push('forest', 'sky', 'clouds', 'space', 'stars', 'trees', 'land');
   }
 
-  // If forest/land, forbid space elements
-  if (text.includes('forest') || text.includes('meadow') || text.includes('garden')) {
-    forbidden.push('space', 'planets', 'rockets');
+  // Forest/nature scenes - no urban/space elements
+  if (settingLower.includes('forest') || settingLower.includes('meadow') || settingLower.includes('garden')) {
+    forbidden.push('space', 'rockets', 'planets', 'underwater', 'buildings', 'city');
   }
 
-  return forbidden;
+  // Indoor scenes - no outdoor nature
+  if (settingLower.includes('indoor') || settingLower.includes('room') || settingLower.includes('home') ||
+      settingLower.includes('castle') || settingLower.includes('school')) {
+    forbidden.push('outdoor wilderness', 'space', 'underwater', 'forest');
+  }
+
+  // Desert scenes
+  if (settingLower.includes('desert')) {
+    forbidden.push('water', 'ocean', 'forest', 'snow', 'ice');
+  }
+
+  // Winter/snow scenes
+  if (text.includes('snow') || text.includes('winter') || text.includes('ice')) {
+    forbidden.push('beach', 'tropical', 'desert', 'summer flowers');
+  }
+
+  return forbidden.slice(0, 6);
+}
+
+/**
+ * Determine shot type based on scene complexity
+ */
+function determineShotType(text: string, objectCount: number): "wide" | "medium" | "close-up" {
+  // Close-up for emotional moments
+  if (text.includes('hugged') || text.includes('cried') || text.includes('smiled') ||
+      text.includes('whispered') || text.includes('face')) {
+    return 'close-up';
+  }
+
+  // Wide shot for landscapes and group scenes
+  if (text.includes('soared') || text.includes('flew over') || text.includes('landscape') ||
+      text.includes('friends gathered') || objectCount > 3) {
+    return 'wide';
+  }
+
+  // Medium shot for most action scenes
+  return 'medium';
+}
+
+/**
+ * Generate composition notes based on scene
+ */
+function generateCompositionNotes(text: string, shotType: "wide" | "medium" | "close-up"): string {
+  if (shotType === 'close-up') {
+    return 'Character face clearly visible, emotional expression emphasized';
+  }
+  if (shotType === 'wide') {
+    return 'Full scene visible, character positioned using rule of thirds';
+  }
+  return 'Character prominently featured, balanced composition';
 }
 
 /**

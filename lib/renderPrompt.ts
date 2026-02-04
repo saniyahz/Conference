@@ -1,468 +1,514 @@
 import { CharacterBible, PageSceneCard } from "./visual-types";
 
 /**
- * UNIVERSAL PROMPT TEMPLATE
- * CHARACTER-FIRST approach - species must be the FIRST words in prompt
- * SDXL only pays attention to first ~77 tokens
+ * ENHANCED PROMPT RENDERER FOR STORYBOOK IMAGES
+ *
+ * Key improvements:
+ * 1. Scene-specific prompts that capture the story moment
+ * 2. Better SDXL optimization with composition and lighting
+ * 3. Character-first approach (species in first 20 tokens)
+ * 4. Emotional context from page text
+ * 5. Dynamic scene composition based on action
  */
+
 export function renderPrompt(bible: CharacterBible, card: PageSceneCard, pageText?: string): string {
   const text = pageText || '';
   const lowerText = text.toLowerCase();
 
-  // 1. CHARACTER SPECIES FIRST - This is the most important part!
-  const species = bible.species || 'animal';
-  const charName = bible.name;
+  // 1. CHARACTER DESCRIPTION (FIRST - most important for SDXL)
+  const characterDesc = buildCharacterDescription(bible);
 
-  // 2. Get character appearance details for consistency
-  const furColor = bible.appearance?.skin_tone || 'golden';
-  const eyeDesc = bible.appearance?.eyes || 'big sparkling eyes';
+  // 2. SCENE & ACTION - Extract what's happening in this specific page
+  const sceneAction = extractSceneAndAction(lowerText, card, bible.name);
 
-  // 3. SCENE - Extract from page text
-  const scene = extractSceneFromText(lowerText, card.setting);
+  // 3. ENVIRONMENT & SETTING - Detailed background
+  const environment = buildEnvironment(lowerText, card.setting);
 
-  // 4. SUPPORTING CHARACTERS - only named ones from text
-  const supporting = extractNamedCharactersFromText(lowerText, charName);
+  // 4. MOOD & ATMOSPHERE - Emotional context
+  const mood = extractMood(lowerText);
 
-  // 5. ACTION - What is the character doing?
-  const action = extractActionFromText(lowerText, charName);
+  // 5. SUPPORTING ELEMENTS - Other characters, objects
+  const supporting = extractSupportingElements(lowerText, bible.name);
 
-  // BUILD PROMPT - CHARACTER FIRST, with appearance, then scene + action
-  // More detailed format for better SDXL results
-  let prompt: string;
+  // 6. VISUAL STYLE - Consistent across all pages
+  const style = "Pixar Disney 3D animation style, soft volumetric lighting, vibrant saturated colors, children's picture book illustration, highly detailed, 8k quality";
 
-  if (bible.character_type === 'animal' && species !== 'animal') {
-    // ANIMAL CHARACTER - detailed appearance for consistency
-    prompt = `A cute cartoon ${species} with ${furColor} fur and ${eyeDesc}, ${charName} the adorable ${species}, ${action}, ${scene}. ${supporting}Pixar Disney 3D animation style, soft lighting, vibrant colors, children's book illustration.`;
-  } else {
-    // HUMAN or unknown - generic child with details
-    prompt = `A cute cartoon child with friendly face and big expressive eyes, ${charName}, ${action}, ${scene}. ${supporting}Pixar Disney 3D animation style, soft lighting, vibrant colors, children's book illustration.`;
-  }
+  // BUILD THE FINAL PROMPT
+  // Structure: [Character] [Action] [Environment] [Supporting] [Mood] [Style]
+  const prompt = `${characterDesc}, ${sceneAction}, ${environment}. ${supporting}${mood} ${style}`;
 
-  console.log(`[PROMPT] Page ${card.page_number}: ${prompt}`);
+  console.log(`[PROMPT] Page ${card.page_number}: ${prompt.substring(0, 200)}...`);
   return prompt;
 }
 
 /**
- * Extract action from page text - what is the character doing?
+ * Build character description - SPECIES FIRST for SDXL token attention
  */
-function extractActionFromText(text: string, charName: string): string {
-  // Priority actions with specific descriptions
-  if (text.includes('blasted off') || text.includes('blast off')) {
-    return 'inside rocket ship cockpit pressing buttons';
+function buildCharacterDescription(bible: CharacterBible): string {
+  const species = bible.species || 'animal';
+  const name = bible.name;
+  const furColor = bible.appearance?.skin_tone || 'soft';
+  const eyes = bible.appearance?.eyes || 'big expressive eyes';
+
+  if (bible.character_type === 'animal' && species !== 'animal') {
+    // Animal character - species first, then details
+    return `A cute cartoon ${species} character with ${furColor}, ${eyes}, ${name} the adorable ${species}`;
+  } else if (bible.character_type === 'human') {
+    // Human child character
+    const hair = bible.appearance?.hair || 'soft hair';
+    return `A cute cartoon child with ${furColor} skin and ${hair}, ${eyes}, ${name}`;
+  } else {
+    // Generic/creature
+    return `A cute cartoon ${species} character named ${name} with ${eyes}`;
   }
+}
+
+/**
+ * Extract scene and action - What is happening in this specific page
+ */
+function extractSceneAndAction(text: string, card: PageSceneCard, charName: string): string {
+  // SPACE/ROCKET scenes - very specific for SDXL
+  if (text.includes('blasted off') || text.includes('blast off') || text.includes('launched')) {
+    return `sitting excitedly in rocket ship cockpit, pressing colorful glowing buttons, looking out big window at stars, thrilled expression`;
+  }
+
   if (text.includes('soared over') || text.includes('flew over') || text.includes('flying over')) {
-    return 'looking out rocket window at the view below';
+    if (text.includes('crater') || text.includes('moon')) {
+      return `looking out rocket ship window in wonder, grey moon craters visible below, stars twinkling outside, amazed joyful expression`;
+    }
+    return `looking out rocket ship window at the view below, excited curious expression, hands on window`;
   }
-  if (text.includes('landed safely') || text.includes('landing')) {
-    return 'celebrating with happy expression';
-  }
-  if (text.includes('climbed inside') || text.includes('got inside')) {
-    return 'climbing into rocket ship';
-  }
-  if (text.includes('exploring')) return 'exploring with curious expression';
-  if (text.includes('running')) return 'running with joyful expression';
-  if (text.includes('swimming')) return 'swimming happily';
-  if (text.includes('flying')) return 'flying through the air';
-  if (text.includes('playing')) return 'playing happily';
-  if (text.includes('sleeping')) return 'sleeping peacefully';
-  if (text.includes('smiling') || text.includes('smiled')) return 'smiling warmly';
-  if (text.includes('laughing') || text.includes('laughed')) return 'laughing joyfully';
 
-  return 'with happy curious expression';
+  if (text.includes('landed safely') || text.includes('safe landing') || text.includes('touched down')) {
+    return `celebrating with arms raised in joy, standing next to landed rocket ship, triumphant happy expression`;
+  }
+
+  if (text.includes('climbed inside') || text.includes('got inside') || text.includes('stepped into')) {
+    return `climbing into colorful rocket ship with eager expression, one foot on ladder, looking back with excitement`;
+  }
+
+  if (text.includes('exploring') && (text.includes('moon') || text.includes('crater'))) {
+    return `walking on bumpy moon surface with curious expression, looking at craters, space helmet on, discovering`;
+  }
+
+  if (text.includes('walked on the moon') || text.includes('stepped on the moon') || text.includes('bouncing')) {
+    return `bouncing happily on moon surface, low gravity floating slightly, delighted expression, arms out for balance`;
+  }
+
+  if (text.includes('looking at') && (text.includes('earth') || text.includes('stars') || text.includes('planet'))) {
+    return `gazing up in wonder at the starry sky, awe-struck expression, pointing at something amazing`;
+  }
+
+  // EMOTION-based actions
+  if (text.includes('said goodbye') || text.includes('waved goodbye') || text.includes('waving')) {
+    return `waving goodbye with happy but slightly sad expression, warm smile, hand raised`;
+  }
+
+  if (text.includes('hugged') || text.includes('hugging') || text.includes('embrace')) {
+    return `hugging warmly with closed eyes and big smile, heartwarming moment, showing affection`;
+  }
+
+  if (text.includes('cheered') || text.includes('celebrated') || text.includes('hooray')) {
+    return `cheering with both arms up, huge joyful smile, jumping slightly, celebrating`;
+  }
+
+  if (text.includes('laughed') || text.includes('giggled') || text.includes('laughing')) {
+    return `laughing joyfully with eyes crinkled, head tilted back slightly, pure happiness`;
+  }
+
+  if (text.includes('smiled') || text.includes('happy')) {
+    return `smiling warmly with sparkling eyes, content happy expression`;
+  }
+
+  if (text.includes('scared') || text.includes('frightened') || text.includes('afraid')) {
+    return `looking slightly nervous but brave, wide eyes, determined expression despite fear`;
+  }
+
+  if (text.includes('surprised') || text.includes('amazed') || text.includes('gasped')) {
+    return `looking surprised with wide eyes and open mouth, hands on cheeks, delighted amazement`;
+  }
+
+  if (text.includes('thinking') || text.includes('wondered') || text.includes('curious')) {
+    return `looking thoughtful with finger on chin, curious tilted head, wondering expression`;
+  }
+
+  if (text.includes('sleeping') || text.includes('dreaming') || text.includes('asleep')) {
+    return `sleeping peacefully with gentle smile, eyes closed, cozy and content`;
+  }
+
+  // MOVEMENT-based actions
+  if (text.includes('running') || text.includes('ran')) {
+    return `running with joyful energy, legs in motion, happy determined expression`;
+  }
+
+  if (text.includes('flying') || text.includes('soaring')) {
+    return `flying through the air with arms spread wide, wind in fur/hair, exhilarated expression`;
+  }
+
+  if (text.includes('swimming') || text.includes('dove into') || text.includes('underwater')) {
+    return `swimming gracefully underwater, bubbles around, eyes open and curious`;
+  }
+
+  if (text.includes('climbing') || text.includes('climbed')) {
+    return `climbing with determination, focused expression, reaching upward`;
+  }
+
+  if (text.includes('jumping') || text.includes('leaped') || text.includes('bounced')) {
+    return `jumping high with joy, legs tucked, thrilled expression`;
+  }
+
+  if (text.includes('dancing') || text.includes('danced')) {
+    return `dancing happily with graceful movement, joyful expression, one leg lifted`;
+  }
+
+  if (text.includes('playing') || text.includes('played')) {
+    return `playing happily with cheerful expression, active and engaged`;
+  }
+
+  // DISCOVERY/ADVENTURE actions
+  if (text.includes('discovered') || text.includes('found') || text.includes('saw')) {
+    return `discovering something amazing with wide excited eyes, pointing, joyful surprise`;
+  }
+
+  if (text.includes('exploring') || text.includes('adventure')) {
+    return `exploring with curious expression, looking around in wonder, eager to discover`;
+  }
+
+  if (text.includes('searching') || text.includes('looking for')) {
+    return `searching carefully with focused expression, peering around, determined`;
+  }
+
+  // INTERACTION actions
+  if (text.includes('helped') || text.includes('helping')) {
+    return `helping kindly with warm caring expression, reaching out`;
+  }
+
+  if (text.includes('shared') || text.includes('gave')) {
+    return `sharing generously with happy kind expression, offering something`;
+  }
+
+  if (text.includes('met') || text.includes('meeting') || text.includes('new friend')) {
+    return `meeting a new friend with curious friendly expression, waving hello`;
+  }
+
+  // BEGINNING/ENDING scenes
+  if (text.includes('once upon') || text.includes('lived in') || text.includes('there was')) {
+    return `standing proudly in their home environment, friendly welcoming expression, introducing themselves`;
+  }
+
+  if (text.includes('the end') || text.includes('happily ever') || text.includes('and so')) {
+    return `looking content and happy, warm satisfied smile, peaceful ending moment`;
+  }
+
+  // Default based on card action if available
+  if (card.main_action && card.main_action.length > 5) {
+    return `${card.main_action.replace(charName, '').trim()}, engaged and expressive`;
+  }
+
+  // Ultimate fallback
+  return `in an engaging pose with expressive face, looking at viewer with friendly expression`;
 }
 
 /**
- * Extract scene/setting directly from page text
- * Looks for location keywords and builds appropriate scene description
+ * Build environment description based on text and setting
  */
-function extractSceneFromText(text: string, fallbackSetting: string): string {
-  // SPACE / CELESTIAL - Check most specific patterns first
-
-  // CRATER scenes (moon adventures) - VERY SPECIFIC for SDXL
-  if (text.includes('crater') || text.includes('lunar crater')) {
-    if (text.includes('soared over') || text.includes('fly across') || text.includes('flew over') || text.includes('flying over')) {
-      return 'in a colorful cartoon rocket ship flying over grey moon surface with large craters, black starry space background with Earth visible, dramatic angle';
+function buildEnvironment(text: string, fallbackSetting: string): string {
+  // SPACE ENVIRONMENTS
+  if (text.includes('crater') || text.includes('lunar')) {
+    if (text.includes('soared') || text.includes('flew') || text.includes('flying')) {
+      return `inside colorful cartoon rocket ship with large round windows, grey moon craters visible outside, black space with twinkling stars and distant blue Earth`;
     }
-    if (text.includes('landed') || text.includes('other side')) {
-      return 'on grey moon surface next to a colorful cartoon rocket ship, large crater nearby, black starry sky with stars twinkling';
+    if (text.includes('landed') || text.includes('standing')) {
+      return `on grey bumpy moon surface with large craters, colorful rocket ship landed nearby, black starry sky with bright stars and Earth in distance`;
     }
-    return 'on grey bumpy moon surface with craters all around, bright Earth visible in black starry sky';
+    return `grey moon surface with rocky craters, dark space sky filled with stars, Earth visible as blue marble`;
   }
 
-  // ROCKET LAUNCH / BLASTOFF scenes - INSIDE ROCKET
-  if (text.includes('blasted off') || text.includes('blast off') || text.includes('took off') || text.includes('launched')) {
-    if (text.includes('moon') || text.includes('crater') || text.includes('lunar')) {
-      return 'inside colorful cartoon rocket ship cockpit with big windows showing moon surface and stars outside, control panel with glowing buttons';
+  if (text.includes('blasted off') || text.includes('launched') || text.includes('take off')) {
+    return `inside bright colorful rocket ship cockpit, large windows showing stars and planets, glowing control panel with buttons and lights, cozy pilot seat`;
+  }
+
+  if (text.includes('outer space') || text.includes('through space') || text.includes('in space') || text.includes('galaxy')) {
+    return `colorful outer space background with swirling purple and blue nebulas, twinkling stars, colorful planets, magical cosmic atmosphere`;
+  }
+
+  if (text.includes('rocket') || text.includes('spaceship')) {
+    if (text.includes('inside') || text.includes('cockpit') || text.includes('window')) {
+      return `inside cozy cartoon rocket ship, big round windows showing space outside, colorful control panels with glowing buttons`;
     }
-    return 'inside colorful cartoon rocket ship cockpit with big windows showing stars and planets outside, control panel with buttons';
+    return `next to a colorful friendly-looking cartoon rocket ship, ready for adventure`;
   }
 
-  // SOARING / FLYING in space - EMPHASIZE ROCKET WINDOW VIEW
-  if (text.includes('soared') || text.includes('soaring')) {
-    if (text.includes('moon') || text.includes('crater')) {
-      return 'inside cartoon rocket ship looking out big round window at moon craters passing below, stars in black space';
-    }
-    return 'inside cartoon rocket ship with big window showing colorful outer space with stars and planets';
-  }
-
-  if (text.includes('moon surface') || text.includes('on the moon') || text.includes('lunar surface')) {
-    return 'Moon surface with craters, Earth visible in black starry sky';
-  }
-  if (text.includes('exploring the moon') || text.includes('walked on the moon') || text.includes('stepped on the moon')) {
-    return 'Moon surface with craters and rocks, starry space background';
-  }
-  if (text.includes('landed on the moon') || text.includes('arriving at the moon')) {
-    return 'Rocket ship landed on moon surface with craters';
-  }
-  if (text.includes('mars') || text.includes('red planet')) {
-    return 'Mars surface with red rocks and dusty terrain';
-  }
-  if (text.includes('soared through') || text.includes('through the galaxy') || text.includes('through space') || text.includes('through the stars') || text.includes('flying through')) {
-    return 'Rocket ship flying through colorful outer space with stars and planets';
-  }
-  if (text.includes('outer space') || text.includes('in space') || text.includes('into space') || text.includes('galaxy')) {
-    return 'Outer space with colorful nebulas, stars, and planets';
-  }
-
-  // NATURE
-  if (text.includes('waterfall')) {
-    return 'Magical waterfall in lush forest with sparkling water';
-  }
-  if (text.includes('stream') || text.includes('river') || text.includes('creek')) {
-    return 'Peaceful stream in nature with rocks and greenery';
-  }
+  // NATURE ENVIRONMENTS
   if (text.includes('forest') || text.includes('woods') || text.includes('trees')) {
-    return 'Magical forest with tall trees and dappled sunlight';
+    if (text.includes('magical') || text.includes('enchanted')) {
+      return `magical enchanted forest with glowing mushrooms, sparkling fireflies, tall friendly trees with dappled golden sunlight`;
+    }
+    return `beautiful green forest with tall trees, soft sunlight filtering through leaves, peaceful woodland atmosphere`;
   }
-  if (text.includes('meadow') || text.includes('field of flowers') || text.includes('garden')) {
-    return 'Beautiful meadow with colorful flowers';
+
+  if (text.includes('meadow') || text.includes('field') || text.includes('flowers')) {
+    return `colorful meadow filled with wildflowers, butterflies floating around, soft rolling hills, blue sky with fluffy white clouds`;
   }
-  if (text.includes('ocean') || text.includes('sea') || text.includes('underwater')) {
-    return 'Underwater ocean scene with coral and fish';
+
+  if (text.includes('garden')) {
+    return `beautiful garden with colorful flowers in bloom, stone path, butterflies and bees, warm sunny day`;
   }
-  if (text.includes('beach') || text.includes('shore') || text.includes('sand')) {
-    return 'Sunny beach with sand and gentle waves';
-  }
+
   if (text.includes('mountain') || text.includes('hill') || text.includes('cliff')) {
-    return 'Mountain landscape with scenic views';
+    return `scenic mountain landscape with green slopes, distant peaks, blue sky, majestic and peaceful`;
   }
 
-  // CAVES & UNDERGROUND (check BEFORE "cozy" since "cozy cave" exists)
-  if (text.includes('cave') || text.includes('cavern') || text.includes('crevice') || text.includes('chasm')) {
-    if (text.includes('moon') || text.includes('lunar')) {
-      return 'Dark moon cave with rocky walls and glowing crystals';
+  if (text.includes('waterfall')) {
+    return `magical waterfall cascading into crystal clear pool, lush green plants, rainbow in the mist, sparkling water`;
+  }
+
+  if (text.includes('river') || text.includes('stream') || text.includes('creek')) {
+    return `peaceful stream with smooth rocks, clear water, green plants along banks, gentle flowing water`;
+  }
+
+  // WATER ENVIRONMENTS
+  if (text.includes('underwater') || text.includes('ocean floor') || text.includes('beneath the waves')) {
+    return `magical underwater scene with colorful coral reef, tropical fish swimming by, bubbles rising, soft blue light`;
+  }
+
+  if (text.includes('ocean') || text.includes('sea')) {
+    if (text.includes('beach') || text.includes('shore')) {
+      return `sunny beach with golden sand, gentle waves, blue ocean, seashells scattered around`;
     }
-    return 'Magical cave with rocky walls and soft glowing light';
+    return `beautiful blue ocean with gentle waves, clear sky, peaceful water`;
   }
 
-  // INDOOR
-  if (text.includes('home') || text.includes('house') || text.includes('bedroom')) {
-    return 'Cozy home interior with warm lighting';
-  }
-  if (text.includes('castle') || text.includes('palace') || text.includes('throne')) {
-    return 'Magical castle interior';
-  }
-  if (text.includes('cozy') && !text.includes('cave')) {
-    return 'Cozy interior with warm lighting';
+  if (text.includes('beach') || text.includes('shore') || text.includes('sand')) {
+    return `sunny beach with soft golden sand, gentle turquoise waves, clear blue sky, tropical paradise`;
   }
 
-  // VEHICLES - ROCKET/SPACESHIP
-  if (text.includes('rocket') || text.includes('spaceship') || text.includes('ship')) {
-    if (text.includes('inside') || text.includes('cockpit') || text.includes('climbed inside') || text.includes('back to')) {
-      return 'inside colorful cartoon rocket ship cockpit with big windows, glowing control panel with buttons, cozy seats';
+  if (text.includes('lake') || text.includes('pond')) {
+    return `peaceful lake with still reflective water, trees along shore, lily pads floating, serene atmosphere`;
+  }
+
+  // SKY ENVIRONMENTS
+  if (text.includes('sky') || text.includes('clouds') || text.includes('flying')) {
+    if (text.includes('night') || text.includes('stars')) {
+      return `night sky filled with twinkling stars, crescent moon glowing, peaceful nighttime atmosphere`;
     }
-    return 'in colorful cartoon rocket ship flying through space with stars and planets visible through windows';
+    return `bright blue sky with fluffy white clouds, warm sunlight, birds flying in distance`;
   }
 
-  // WEATHER/TIME
+  if (text.includes('rainbow')) {
+    return `bright sky with beautiful colorful rainbow arching across, fluffy clouds, magical atmosphere`;
+  }
+
+  // INDOOR ENVIRONMENTS
+  if (text.includes('home') || text.includes('house') || text.includes('room')) {
+    if (text.includes('bedroom')) {
+      return `cozy bedroom with soft bed, toys around, warm lamp light, safe comfortable feeling`;
+    }
+    if (text.includes('kitchen')) {
+      return `warm kitchen with counters and colorful items, homey atmosphere, delicious smells`;
+    }
+    return `cozy home interior with warm lighting, comfortable furniture, safe welcoming atmosphere`;
+  }
+
+  if (text.includes('castle') || text.includes('palace')) {
+    return `magical castle interior with tall windows, colorful banners, golden light, grand but friendly`;
+  }
+
+  if (text.includes('school') || text.includes('classroom')) {
+    return `colorful classroom with desks and books, educational posters, friendly learning environment`;
+  }
+
+  // WEATHER/TIME variations
+  if (text.includes('night') || text.includes('nighttime') || text.includes('dark sky')) {
+    return `${fallbackSetting} at night, starry sky, soft moonlight, peaceful nocturnal atmosphere`;
+  }
+
   if (text.includes('sunset') || text.includes('evening')) {
-    return fallbackSetting + ' at golden sunset';
-  }
-  if (text.includes('night') || text.includes('starry')) {
-    return fallbackSetting + ' under starry night sky';
+    return `${fallbackSetting} at golden sunset, orange and pink sky, warm glowing light`;
   }
 
-  return fallbackSetting;
+  if (text.includes('sunrise') || text.includes('morning') || text.includes('dawn')) {
+    return `${fallbackSetting} at sunrise, soft pink and orange sky, fresh morning light`;
+  }
+
+  if (text.includes('rain') || text.includes('rainy')) {
+    return `${fallbackSetting} with gentle rain falling, puddles reflecting, cozy rainy day`;
+  }
+
+  if (text.includes('snow') || text.includes('winter') || text.includes('snowy')) {
+    return `${fallbackSetting} covered in soft white snow, snowflakes falling, magical winter wonderland`;
+  }
+
+  // SPECIAL LOCATIONS
+  if (text.includes('cave') || text.includes('cavern')) {
+    return `magical cave with glowing crystals on walls, soft mysterious light, rocky formations`;
+  }
+
+  if (text.includes('island')) {
+    return `tropical island with palm trees, sandy beach, blue water surrounding, paradise setting`;
+  }
+
+  if (text.includes('desert') || text.includes('sand dune')) {
+    return `golden desert with rolling sand dunes, clear blue sky, warm sunlight`;
+  }
+
+  if (text.includes('jungle') || text.includes('tropical')) {
+    return `lush tropical jungle with vines and big leaves, colorful exotic flowers, dappled sunlight`;
+  }
+
+  // Use fallback setting with enhancement
+  if (fallbackSetting && fallbackSetting !== 'Storybook scene') {
+    return `${fallbackSetting}, warm inviting atmosphere, beautiful background`;
+  }
+
+  return `magical storybook setting with warm colors, friendly atmosphere, soft lighting`;
 }
 
 /**
- * Extract named characters from text like "Benny the dog" or "Fufu the cat"
- * Also detects "[Name] and [Name]" patterns for friends with creative names
- * Returns string like "with Benny the dog and Fufu the cat, "
+ * Extract mood and atmosphere from page text
  */
-function extractNamedCharactersFromText(text: string, mainCharName: string): string {
-  const found: string[] = [];
+function extractMood(text: string): string {
+  // Exciting/Adventure
+  if (text.includes('adventure') || text.includes('excited') || text.includes('thrilling')) {
+    return `Exciting adventurous atmosphere, dynamic energy.`;
+  }
+
+  // Happy/Joyful
+  if (text.includes('happy') || text.includes('joy') || text.includes('delighted') || text.includes('wonderful')) {
+    return `Warm joyful atmosphere, happiness radiating.`;
+  }
+
+  // Peaceful/Calm
+  if (text.includes('peaceful') || text.includes('calm') || text.includes('quiet') || text.includes('gentle')) {
+    return `Peaceful serene atmosphere, soft calming energy.`;
+  }
+
+  // Magical/Wonder
+  if (text.includes('magical') || text.includes('wonder') || text.includes('amazing') || text.includes('incredible')) {
+    return `Magical wondrous atmosphere, sparkles of enchantment.`;
+  }
+
+  // Brave/Determined
+  if (text.includes('brave') || text.includes('courage') || text.includes('determined')) {
+    return `Brave determined atmosphere, inspiring energy.`;
+  }
+
+  // Warm/Cozy
+  if (text.includes('cozy') || text.includes('warm') || text.includes('comfortable') || text.includes('safe')) {
+    return `Cozy warm atmosphere, comforting feeling.`;
+  }
+
+  // Curious/Discovering
+  if (text.includes('curious') || text.includes('discover') || text.includes('explore') || text.includes('found')) {
+    return `Curious explorative atmosphere, sense of discovery.`;
+  }
+
+  // Friendship/Love
+  if (text.includes('friend') || text.includes('together') || text.includes('love') || text.includes('care')) {
+    return `Warm friendship atmosphere, loving energy.`;
+  }
+
+  // Triumphant/Success
+  if (text.includes('success') || text.includes('did it') || text.includes('triumph') || text.includes('won')) {
+    return `Triumphant celebratory atmosphere, victorious energy.`;
+  }
+
+  // Default warm children's book mood
+  return `Warm friendly atmosphere, inviting and safe.`;
+}
+
+/**
+ * Extract supporting elements - other characters, friends, objects
+ */
+function extractSupportingElements(text: string, mainCharName: string): string {
+  const elements: string[] = [];
   const mainLower = mainCharName.toLowerCase();
 
-  // Pattern 1: "[Name] the [animal]"
-  const namedAnimalPattern = /\b([A-Z][a-z]+)\s+the\s+(dog|cat|rabbit|bunny|bear|fox|owl|bird|mouse|squirrel|deer|porcupine|hedgehog|raccoon|beaver|frog|turtle|fish|penguin|lion|tiger|elephant|monkey|giraffe|zebra|hippo|koala|kangaroo|dolphin|whale|seal|otter|wolf|pig|cow|horse|sheep|goat|duck|chicken|butterfly|bee|dragon|unicorn)\b/gi;
+  // Named character patterns "Name the Animal" or "Name and Name"
+  const namedPattern = /\b([A-Z][a-z]+)\s+the\s+(dog|cat|rabbit|bunny|bear|fox|owl|bird|mouse|squirrel|deer|porcupine|hedgehog|raccoon|beaver|frog|turtle|fish|penguin|lion|tiger|elephant|monkey|giraffe|zebra|hippo|koala|kangaroo|dolphin|whale|seal|otter|wolf|pig|cow|horse|sheep|goat|duck|chicken|butterfly|bee|dragon|unicorn)\b/gi;
 
   let match;
-  while ((match = namedAnimalPattern.exec(text)) !== null) {
+  while ((match = namedPattern.exec(text)) !== null) {
     const name = match[1];
     const animal = match[2].toLowerCase();
-    // Skip if it's the main character
-    if (name.toLowerCase() === mainLower) continue;
-    found.push(`${name} the ${animal}`);
+    if (name.toLowerCase() !== mainLower) {
+      elements.push(`cute cartoon ${animal} friend ${name}`);
+    }
   }
 
-  // Pattern 2: "[Name] and [Name]" or "[Name], [Name] and [Name]" (friends with creative names)
-  // Common in children's stories: "Susu and Piku cheered" or "Luna, Max and Ruby played"
-  const friendNamesPattern = /\b([A-Z][a-z]{2,})\s+and\s+([A-Z][a-z]{2,})\b/g;
-  while ((match = friendNamesPattern.exec(text)) !== null) {
+  // "Name and Name" pattern for friends
+  const friendPattern = /\b([A-Z][a-z]{2,})\s+and\s+([A-Z][a-z]{2,})\b/g;
+  while ((match = friendPattern.exec(text)) !== null) {
     const name1 = match[1];
     const name2 = match[2];
-    // Skip main character, skip common words
-    const skipWords = ['the', 'and', 'but', 'his', 'her', 'they', 'them', 'this', 'that', 'with'];
-    if (name1.toLowerCase() !== mainLower && !skipWords.includes(name1.toLowerCase())) {
-      if (!found.some(f => f.includes(name1))) found.push(name1);
+    const skipWords = ['The', 'And', 'But', 'His', 'Her', 'They', 'With', 'Once', 'Then', 'Soon'];
+    if (!skipWords.includes(name1) && name1.toLowerCase() !== mainLower) {
+      if (!elements.some(e => e.includes(name1))) {
+        elements.push(`friend ${name1}`);
+      }
     }
-    if (name2.toLowerCase() !== mainLower && !skipWords.includes(name2.toLowerCase())) {
-      if (!found.some(f => f.includes(name2))) found.push(name2);
-    }
-  }
-
-  // Pattern 3: "his friends" or "her friends" or "three friends" - generic friends
-  if (text.includes('friends') && found.length === 0) {
-    found.push('friends');
-  }
-
-  if (found.length === 0) return '';
-  // Limit to 2 supporting characters to keep prompt short
-  const chars = [...new Set(found)].slice(0, 2);
-  return `with ${chars.join(' and ')}, `;
-}
-
-/**
- * Build main character description from bible
- */
-function buildMainCharacter(bible: CharacterBible): string {
-  const name = bible.name;
-
-  if (bible.character_type === 'animal' && bible.species) {
-    const fur = bible.appearance.skin_tone || 'soft fur';
-    return `${name} the cute cartoon ${bible.species} with ${fur}, big expressive eyes`;
-  }
-
-  // Human character
-  return `${name}, cute cartoon child with friendly face, big expressive eyes`;
-}
-
-/**
- * Extract supporting characters from page text
- */
-function extractSupportingFromText(text: string, mainCharName: string): string {
-  const found: string[] = [];
-  const mainLower = mainCharName.toLowerCase();
-
-  // COMPREHENSIVE ANIMAL MAP - ALL ANIMALS AND INSECTS
-  const animalMap: Record<string, string> = {
-    // PETS & DOMESTIC
-    'dog': 'cute cartoon dog', 'puppy': 'cute cartoon puppy', 'cat': 'cute cartoon cat',
-    'kitten': 'cute cartoon kitten', 'hamster': 'tiny cartoon hamster', 'guinea pig': 'cute cartoon guinea pig',
-    'gerbil': 'tiny cartoon gerbil', 'rabbit': 'cute cartoon rabbit', 'bunny': 'cute cartoon bunny',
-    'ferret': 'playful cartoon ferret', 'parrot': 'colorful cartoon parrot', 'parakeet': 'colorful cartoon parakeet',
-    'budgie': 'cute cartoon budgie', 'canary': 'tiny cartoon canary', 'cockatiel': 'cute cartoon cockatiel',
-    'cockatoo': 'fancy cartoon cockatoo', 'macaw': 'colorful cartoon macaw', 'goldfish': 'shiny cartoon goldfish',
-    'betta': 'colorful cartoon betta fish', 'turtle': 'gentle cartoon turtle', 'tortoise': 'wise cartoon tortoise',
-    'snake': 'friendly cartoon snake', 'lizard': 'cute cartoon lizard', 'gecko': 'tiny cartoon gecko',
-    'iguana': 'cool cartoon iguana', 'chameleon': 'colorful cartoon chameleon',
-    // FARM ANIMALS
-    'horse': 'majestic cartoon horse', 'pony': 'cute cartoon pony', 'donkey': 'friendly cartoon donkey',
-    'mule': 'sturdy cartoon mule', 'cow': 'friendly cartoon cow', 'bull': 'strong cartoon bull',
-    'calf': 'cute cartoon calf', 'pig': 'pink cartoon pig', 'piglet': 'tiny cartoon piglet',
-    'hog': 'big cartoon hog', 'boar': 'wild cartoon boar', 'sheep': 'fluffy cartoon sheep',
-    'lamb': 'baby cartoon lamb', 'goat': 'playful cartoon goat', 'chicken': 'cute cartoon chicken',
-    'hen': 'mother cartoon hen', 'rooster': 'proud cartoon rooster', 'chick': 'tiny cartoon chick',
-    'duck': 'cute cartoon duck', 'duckling': 'baby cartoon duckling', 'goose': 'friendly cartoon goose',
-    'gosling': 'baby cartoon gosling', 'turkey': 'funny cartoon turkey', 'llama': 'fluffy cartoon llama',
-    'alpaca': 'fuzzy cartoon alpaca', 'buffalo': 'big cartoon buffalo', 'bison': 'majestic cartoon bison',
-    'ox': 'strong cartoon ox', 'yak': 'shaggy cartoon yak',
-    // FOREST & WOODLAND
-    'fox': 'clever cartoon fox', 'wolf': 'friendly cartoon wolf', 'coyote': 'wild cartoon coyote',
-    'bear': 'friendly cartoon bear', 'deer': 'gentle cartoon deer', 'doe': 'gentle cartoon doe',
-    'fawn': 'baby cartoon fawn', 'buck': 'majestic cartoon buck', 'stag': 'noble cartoon stag',
-    'elk': 'majestic cartoon elk', 'moose': 'big cartoon moose', 'caribou': 'noble cartoon caribou',
-    'reindeer': 'magical cartoon reindeer', 'hare': 'speedy cartoon hare', 'squirrel': 'busy cartoon squirrel',
-    'chipmunk': 'tiny cartoon chipmunk', 'raccoon': 'mischievous cartoon raccoon', 'skunk': 'cute cartoon skunk',
-    'opossum': 'shy cartoon opossum', 'possum': 'shy cartoon possum', 'badger': 'grumpy cartoon badger',
-    'wolverine': 'fierce cartoon wolverine', 'weasel': 'sneaky cartoon weasel', 'mink': 'sleek cartoon mink',
-    'otter': 'playful cartoon otter', 'beaver': 'busy cartoon beaver', 'porcupine': 'spiky cartoon porcupine',
-    'hedgehog': 'cute cartoon hedgehog', 'mole': 'tiny cartoon mole', 'shrew': 'tiny cartoon shrew',
-    'vole': 'tiny cartoon vole', 'mouse': 'tiny cartoon mouse', 'mice': 'tiny cartoon mice',
-    'rat': 'clever cartoon rat', 'woodchuck': 'chubby cartoon woodchuck', 'groundhog': 'cute cartoon groundhog',
-    'bobcat': 'wild cartoon bobcat', 'lynx': 'sleek cartoon lynx', 'cougar': 'majestic cartoon cougar',
-    'panther': 'sleek cartoon panther', 'mountain lion': 'majestic cartoon mountain lion',
-    // JUNGLE & TROPICAL
-    'lion': 'majestic cartoon lion', 'tiger': 'majestic cartoon tiger', 'leopard': 'spotted cartoon leopard',
-    'jaguar': 'spotted cartoon jaguar', 'cheetah': 'fast cartoon cheetah', 'monkey': 'playful cartoon monkey',
-    'ape': 'strong cartoon ape', 'gorilla': 'gentle cartoon gorilla', 'chimpanzee': 'smart cartoon chimpanzee',
-    'orangutan': 'wise cartoon orangutan', 'baboon': 'funny cartoon baboon', 'lemur': 'cute cartoon lemur',
-    'sloth': 'sleepy cartoon sloth', 'anteater': 'long-nosed cartoon anteater', 'armadillo': 'armored cartoon armadillo',
-    'tapir': 'friendly cartoon tapir', 'capybara': 'chill cartoon capybara', 'toucan': 'colorful cartoon toucan',
-    'anaconda': 'big cartoon anaconda', 'python': 'long cartoon python', 'boa': 'friendly cartoon boa',
-    'crocodile': 'scaly cartoon crocodile', 'alligator': 'scaly cartoon alligator', 'caiman': 'small cartoon caiman',
-    // AFRICAN SAVANNA
-    'elephant': 'big cartoon elephant', 'giraffe': 'tall cartoon giraffe', 'zebra': 'striped cartoon zebra',
-    'hippo': 'big cartoon hippo', 'hippopotamus': 'big cartoon hippopotamus', 'rhino': 'strong cartoon rhino',
-    'rhinoceros': 'strong cartoon rhinoceros', 'gazelle': 'graceful cartoon gazelle', 'antelope': 'graceful cartoon antelope',
-    'impala': 'leaping cartoon impala', 'hyena': 'laughing cartoon hyena', 'jackal': 'clever cartoon jackal',
-    'meerkat': 'cute cartoon meerkat', 'warthog': 'funny cartoon warthog', 'ostrich': 'tall cartoon ostrich',
-    'flamingo': 'pink cartoon flamingo', 'vulture': 'soaring cartoon vulture',
-    // AUSTRALIAN
-    'kangaroo': 'bouncy cartoon kangaroo', 'wallaby': 'small cartoon wallaby', 'koala': 'cuddly cartoon koala',
-    'wombat': 'chubby cartoon wombat', 'platypus': 'unique cartoon platypus', 'echidna': 'spiky cartoon echidna',
-    'tasmanian devil': 'wild cartoon tasmanian devil', 'dingo': 'wild cartoon dingo', 'emu': 'tall cartoon emu',
-    'kookaburra': 'laughing cartoon kookaburra', 'lorikeet': 'colorful cartoon lorikeet', 'sugar glider': 'cute cartoon sugar glider',
-    'numbat': 'striped cartoon numbat', 'quokka': 'happy cartoon quokka',
-    // ARCTIC & POLAR
-    'polar bear': 'white cartoon polar bear', 'penguin': 'cute cartoon penguin', 'seal': 'sleek cartoon seal',
-    'sea lion': 'playful cartoon sea lion', 'walrus': 'big cartoon walrus', 'arctic fox': 'white cartoon arctic fox',
-    'snowy owl': 'white cartoon snowy owl', 'narwhal': 'magical cartoon narwhal', 'beluga': 'white cartoon beluga',
-    'orca': 'majestic cartoon orca', 'whale': 'big cartoon whale', 'puffin': 'colorful cartoon puffin',
-    'lemming': 'tiny cartoon lemming', 'musk ox': 'shaggy cartoon musk ox',
-    // OCEAN & MARINE
-    'dolphin': 'playful cartoon dolphin', 'porpoise': 'friendly cartoon porpoise', 'shark': 'cool cartoon shark',
-    'ray': 'flat cartoon ray', 'stingray': 'flat cartoon stingray', 'manta ray': 'majestic cartoon manta ray',
-    'eel': 'wiggly cartoon eel', 'octopus': 'smart cartoon octopus', 'squid': 'fast cartoon squid',
-    'jellyfish': 'glowing cartoon jellyfish', 'starfish': 'colorful cartoon starfish', 'seahorse': 'tiny cartoon seahorse',
-    'crab': 'sideways cartoon crab', 'lobster': 'red cartoon lobster', 'shrimp': 'tiny cartoon shrimp',
-    'clam': 'shy cartoon clam', 'oyster': 'pearly cartoon oyster', 'snail': 'slow cartoon snail',
-    'slug': 'slimy cartoon slug', 'fish': 'colorful cartoon fish', 'salmon': 'pink cartoon salmon',
-    'tuna': 'fast cartoon tuna', 'clownfish': 'orange cartoon clownfish', 'angelfish': 'pretty cartoon angelfish',
-    'swordfish': 'fast cartoon swordfish', 'manatee': 'gentle cartoon manatee', 'sea turtle': 'wise cartoon sea turtle',
-    'sea otter': 'floating cartoon sea otter', 'hermit crab': 'shy cartoon hermit crab', 'crayfish': 'red cartoon crayfish',
-    'prawn': 'small cartoon prawn', 'nautilus': 'spiral cartoon nautilus', 'dugong': 'gentle cartoon dugong',
-    // BIRDS
-    'bird': 'colorful cartoon bird', 'eagle': 'majestic cartoon eagle', 'hawk': 'sharp cartoon hawk',
-    'falcon': 'fast cartoon falcon', 'owl': 'wise cartoon owl', 'condor': 'soaring cartoon condor',
-    'crow': 'clever cartoon crow', 'raven': 'dark cartoon raven', 'magpie': 'shiny cartoon magpie',
-    'jay': 'blue cartoon jay', 'bluejay': 'blue cartoon bluejay', 'cardinal': 'red cartoon cardinal',
-    'robin': 'red-breasted cartoon robin', 'sparrow': 'tiny cartoon sparrow', 'finch': 'tiny cartoon finch',
-    'hummingbird': 'tiny cartoon hummingbird', 'woodpecker': 'busy cartoon woodpecker', 'pelican': 'big-beaked cartoon pelican',
-    'crane': 'elegant cartoon crane', 'heron': 'tall cartoon heron', 'stork': 'long-legged cartoon stork',
-    'swan': 'graceful cartoon swan', 'seagull': 'coastal cartoon seagull', 'albatross': 'soaring cartoon albatross',
-    'peacock': 'colorful cartoon peacock', 'pheasant': 'fancy cartoon pheasant', 'quail': 'small cartoon quail',
-    'pigeon': 'city cartoon pigeon', 'dove': 'peaceful cartoon dove', 'kingfisher': 'colorful cartoon kingfisher',
-    'lovebird': 'cute cartoon lovebird',
-    // REPTILES & AMPHIBIANS
-    'cobra': 'hooded cartoon cobra', 'viper': 'coiled cartoon viper', 'rattlesnake': 'rattling cartoon rattlesnake',
-    'komodo dragon': 'big cartoon komodo dragon', 'monitor lizard': 'big cartoon monitor lizard', 'skink': 'shiny cartoon skink',
-    'terrapin': 'spotted cartoon terrapin', 'gavial': 'long-nosed cartoon gavial', 'frog': 'happy cartoon frog',
-    'toad': 'bumpy cartoon toad', 'salamander': 'spotted cartoon salamander', 'newt': 'tiny cartoon newt',
-    'axolotl': 'smiling cartoon axolotl', 'tadpole': 'baby cartoon tadpole',
-    // INSECTS & BUGS
-    'butterfly': 'beautiful cartoon butterfly', 'moth': 'fuzzy cartoon moth', 'bee': 'busy cartoon bee',
-    'bumblebee': 'fuzzy cartoon bumblebee', 'honeybee': 'golden cartoon honeybee', 'wasp': 'striped cartoon wasp',
-    'hornet': 'big cartoon hornet', 'ant': 'tiny cartoon ant', 'termite': 'tiny cartoon termite',
-    'beetle': 'shiny cartoon beetle', 'ladybug': 'spotted cartoon ladybug', 'ladybird': 'spotted cartoon ladybird',
-    'firefly': 'glowing cartoon firefly', 'lightning bug': 'glowing cartoon lightning bug', 'dragonfly': 'colorful cartoon dragonfly',
-    'damselfly': 'delicate cartoon damselfly', 'grasshopper': 'jumping cartoon grasshopper', 'cricket': 'chirping cartoon cricket',
-    'locust': 'jumping cartoon locust', 'katydid': 'green cartoon katydid', 'mantis': 'praying cartoon mantis',
-    'praying mantis': 'praying cartoon mantis', 'stick insect': 'camouflage cartoon stick insect',
-    'walking stick': 'thin cartoon walking stick', 'leaf insect': 'leafy cartoon leaf insect',
-    'fly': 'buzzing cartoon fly', 'mosquito': 'tiny cartoon mosquito', 'gnat': 'tiny cartoon gnat',
-    'caterpillar': 'fuzzy cartoon caterpillar', 'worm': 'wiggly cartoon worm', 'earthworm': 'pink cartoon earthworm',
-    'silkworm': 'white cartoon silkworm', 'glowworm': 'glowing cartoon glowworm', 'inchworm': 'tiny cartoon inchworm',
-    'cockroach': 'brown cartoon cockroach', 'cicada': 'singing cartoon cicada', 'aphid': 'tiny cartoon aphid',
-    'flea': 'tiny cartoon flea', 'tick': 'tiny cartoon tick', 'stinkbug': 'smelly cartoon stinkbug',
-    'water strider': 'skating cartoon water strider', 'dung beetle': 'rolling cartoon dung beetle', 'scarab': 'golden cartoon scarab',
-    'weevil': 'long-nosed cartoon weevil',
-    // ARACHNIDS & OTHER CRAWLIES
-    'spider': 'web-spinning cartoon spider', 'tarantula': 'fuzzy cartoon tarantula', 'black widow': 'dark cartoon spider',
-    'scorpion': 'pinchy cartoon scorpion', 'daddy longlegs': 'leggy cartoon daddy longlegs',
-    'centipede': 'many-legged cartoon centipede', 'millipede': 'curly cartoon millipede',
-    'pillbug': 'rolling cartoon pillbug', 'roly poly': 'rolling cartoon roly poly', 'woodlouse': 'gray cartoon woodlouse',
-    // MYTHICAL & FANTASY
-    'dragon': 'friendly cartoon dragon', 'unicorn': 'magical cartoon unicorn', 'phoenix': 'fiery cartoon phoenix',
-    'griffin': 'majestic cartoon griffin', 'pegasus': 'winged cartoon pegasus', 'mermaid': 'beautiful cartoon mermaid',
-    'fairy': 'tiny cartoon fairy', 'fairies': 'tiny cartoon fairies', 'pixie': 'sparkly cartoon pixie',
-    'gnome': 'tiny cartoon gnome', 'troll': 'friendly cartoon troll', 'goblin': 'mischievous cartoon goblin',
-    'elf': 'pointy-eared cartoon elf', 'centaur': 'half-horse cartoon centaur', 'hydra': 'many-headed cartoon hydra',
-    'kraken': 'giant cartoon kraken', 'yeti': 'fluffy cartoon yeti', 'bigfoot': 'fuzzy cartoon bigfoot',
-    'dinosaur': 'friendly cartoon dinosaur', 't-rex': 'big cartoon t-rex', 'triceratops': 'horned cartoon triceratops',
-    'stegosaurus': 'plated cartoon stegosaurus', 'pterodactyl': 'flying cartoon pterodactyl', 'velociraptor': 'fast cartoon velociraptor',
-    'brontosaurus': 'long-necked cartoon brontosaurus',
-    // MISCELLANEOUS
-    'bat': 'flying cartoon bat', 'flying fox': 'big cartoon flying fox', 'panda': 'cute cartoon panda',
-    'red panda': 'fluffy cartoon red panda', 'binturong': 'fuzzy cartoon binturong', 'civet': 'spotted cartoon civet',
-    'mongoose': 'quick cartoon mongoose', 'aardvark': 'long-nosed cartoon aardvark', 'pangolin': 'scaly cartoon pangolin',
-    'okapi': 'striped cartoon okapi',
-    // ROBOTS & OTHER
-    'robot': 'friendly cartoon robot', 'alien': 'friendly cartoon alien', 'aliens': 'friendly cartoon aliens',
-  };
-
-  for (const [keyword, description] of Object.entries(animalMap)) {
-    // Don't include if it's the main character
-    if (mainLower.includes(keyword)) continue;
-    if (text.includes(keyword)) {
-      found.push(description);
+    if (!skipWords.includes(name2) && name2.toLowerCase() !== mainLower) {
+      if (!elements.some(e => e.includes(name2))) {
+        elements.push(`friend ${name2}`);
+      }
     }
   }
 
-  // People
-  if (text.includes('friend') && !found.includes('friends')) found.push('friends');
-  if (text.includes('family') || text.includes('parent') || text.includes('mother') || text.includes('father')) {
-    found.push('family members');
+  // Generic friends/family
+  if (text.includes('friends') && elements.length === 0) {
+    elements.push('friendly animal companions');
+  }
+  if (text.includes('family') || text.includes('parents') || text.includes('mother') || text.includes('father')) {
+    elements.push('loving family members nearby');
   }
 
-  if (found.length === 0) return '';
-  return `Also showing: ${[...new Set(found)].slice(0, 3).join(', ')}.`;
+  // Limit to 2 supporting elements
+  if (elements.length === 0) return '';
+  return `With ${elements.slice(0, 2).join(' and ')}. `;
 }
 
 /**
- * Extract key objects from page text
- */
-function extractObjectsFromText(text: string): string {
-  const found: string[] = [];
-
-  const objectMap: Record<string, string> = {
-    'rocket': 'rocket ship',
-    'spaceship': 'spaceship',
-    'telescope': 'telescope',
-    'star': 'twinkling stars',
-    'planet': 'colorful planets',
-    'moon': 'glowing moon',
-    'treasure': 'treasure chest',
-    'crown': 'golden crown',
-    'wand': 'magic wand',
-    'rainbow': 'rainbow',
-    'balloon': 'colorful balloons',
-    'cake': 'birthday cake',
-    'present': 'wrapped presents',
-    'book': 'magical book',
-    'map': 'treasure map',
-  };
-
-  for (const [keyword, description] of Object.entries(objectMap)) {
-    if (text.includes(keyword)) {
-      found.push(description);
-    }
-  }
-
-  if (found.length === 0) return '';
-  return `With ${[...new Set(found)].slice(0, 2).join(' and ')}.`;
-}
-
-
-/**
- * Negative prompt - excludes humans for animal stories, realistic style always
+ * Negative prompt - excludes unwanted elements
  */
 export function renderNegativePrompt(card: PageSceneCard, isAnimal?: boolean): string {
-  let base = "text, watermark, logo, photorealistic, realistic, photograph";
+  // Base negative prompt for SDXL quality
+  let negative = "text, watermark, logo, signature, words, letters, photorealistic, realistic, photograph, photo, ugly, deformed, disfigured, bad anatomy, bad proportions, extra limbs, mutated, blurry, low quality, artifacts, grainy";
 
-  // Always exclude humans for animal-only stories
+  // Exclude humans for animal-only stories
   if (isAnimal) {
-    base += ", human, person, boy, girl, child, man, woman";
+    negative += ", human, person, boy, girl, child, man, woman, people, humanoid";
   }
 
+  // Environment-specific exclusions
+  const setting = card.setting.toLowerCase();
+
+  if (setting.includes('space') || setting.includes('moon') || setting.includes('rocket') || setting.includes('star') || setting.includes('planet')) {
+    negative += ", forest, trees, grass, green plants, water, ocean, fish, underwater";
+  }
+
+  if (setting.includes('underwater') || setting.includes('ocean') || setting.includes('coral')) {
+    negative += ", forest, trees, sky, clouds, space, stars, land animals";
+  }
+
+  if (setting.includes('forest') || setting.includes('meadow') || setting.includes('garden')) {
+    negative += ", space, rockets, planets, underwater, fish, urban, buildings";
+  }
+
+  if (setting.includes('indoor') || setting.includes('room') || setting.includes('home') || setting.includes('house')) {
+    negative += ", outdoor, space, underwater, forest, nature";
+  }
+
+  // Add forbidden elements from card
   if (card.forbidden_elements && card.forbidden_elements.length > 0) {
-    return `${base}, ${card.forbidden_elements.slice(0, 5).join(', ')}`;
+    negative += `, ${card.forbidden_elements.slice(0, 5).join(', ')}`;
   }
 
-  return base;
+  return negative;
 }
 
+/**
+ * Generate consistent seed per page
+ */
 export function generatePageSeedByNumber(pageNumber: number, baseSeed: number): number {
   return baseSeed + (pageNumber * 77);
 }
