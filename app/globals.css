@@ -1,0 +1,118 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+:root {
+  --background: #ffffff;
+  --foreground: #171717;
+}
+
+body {
+  color: var(--foreground);
+  background: var(--background);
+  font-family: Arial, Helvetica, sans-serif;
+}
+
+@layer utilities {
+  .text-balance {
+    text-wrap: balance;
+  }
+}
+
+/* Custom scrollbar */
+::-webkit-scrollbar {
+  width: 8px;
+}
+
+::-webkit-scrollbar-track {
+  background: #f1f1f1;
+}
+
+::-webkit-scrollbar-thumb {
+  background: #888;
+  border-radius: 4px;
+}
+
+::-webkit-scrollbar-thumb:hover {
+  background: #555;
+}
+
+/* Custom animations for beaver mascot */
+
+/* Soft breathing animation - gentle idle state */
+@keyframes soft-breathe {
+  0%, 100% {
+    transform: scale(1);
+  }
+  50% {
+    transform: scale(1.02);
+  }
+}
+
+.animate-soft-breathe {
+  animation: soft-breathe 3s ease-in-out infinite;
+}
+
+/* Gentle swaying when recording - friendly listening motion */
+@keyframes gentle-sway {
+  0%, 100% {
+    transform: rotate(-2deg) translateY(0);
+  }
+  25% {
+    transform: rotate(0deg) translateY(-2px);
+  }
+  50% {
+    transform: rotate(2deg) translateY(0);
+  }
+  75% {
+    transform: rotate(0deg) translateY(-2px);
+  }
+}
+
+.animate-gentle-sway {
+  animation: gentle-sway 2s ease-in-out infinite;
+}
+
+/* Subtle pointing gesture animation */
+@keyframes point-gesture {
+  0%, 100% {
+    transform: translateX(0) rotate(0deg);
+  }
+  50% {
+    transform: translateX(3px) rotate(2deg);
+  }
+}
+
+.animate-point-gesture {
+  animation: point-gesture 1.5s ease-in-out infinite;
+}
+
+/* Sparkle twinkle animation */
+@keyframes twinkle {
+  0%, 100% {
+    opacity: 1;
+    transform: scale(1);
+  }
+  50% {
+    opacity: 0.5;
+    transform: scale(0.8);
+  }
+}
+
+.animate-twinkle {
+  animation: twinkle 1.2s ease-in-out infinite;
+}
+
+/* Old bounce animation - keeping for backwards compatibility */
+@keyframes bounce-slow {
+  0%, 100% {
+    transform: translateY(0);
+  }
+  50% {
+    transform: translateY(-8px);
+  }
+}
+
+.animate-bounce-slow {
+  animation: bounce-slow 2s ease-in-out infinite;
+}
