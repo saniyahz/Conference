@@ -1,4 +1,4 @@
-import { CharacterBible } from "./visual-types";
+import { CharacterBible, AnimalAppearance, HumanAppearance } from "./visual-types";
 
 /**
  * Character DNA from story generation input
@@ -18,30 +18,121 @@ export interface CharacterDNA {
 }
 
 /**
+ * ANIMAL-SPECIFIC BODY FEATURES BY SPECIES
+ * Prevents human attributes (skin_tone, hair) from leaking into animal characters
+ */
+const ANIMAL_FEATURES: Record<string, Partial<AnimalAppearance>> = {
+  // Large mammals with rough/leathery skin
+  'rhinoceros': { skin_texture: 'rough gray leathery skin', body_shape: 'large sturdy body with thick legs', horn: 'small curved horn on nose', ears: 'small rounded ears', tail: 'short thin tail' },
+  'rhino': { skin_texture: 'rough gray leathery skin', body_shape: 'large sturdy body with thick legs', horn: 'small curved horn on nose', ears: 'small rounded ears', tail: 'short thin tail' },
+  'elephant': { skin_texture: 'wrinkly gray thick skin', body_shape: 'massive round body', ears: 'huge floppy ears', tail: 'thin tail with tuft' },
+  'hippo': { skin_texture: 'smooth grayish-pink thick skin', body_shape: 'barrel-shaped body', ears: 'small rounded ears', tail: 'short stubby tail' },
+  'hippopotamus': { skin_texture: 'smooth grayish-pink thick skin', body_shape: 'barrel-shaped body', ears: 'small rounded ears', tail: 'short stubby tail' },
+
+  // Furry mammals
+  'dog': { skin_texture: 'soft fluffy fur', body_shape: 'friendly four-legged body', ears: 'floppy soft ears', tail: 'wagging tail' },
+  'puppy': { skin_texture: 'soft fluffy puppy fur', body_shape: 'small cute four-legged body', ears: 'floppy puppy ears', tail: 'tiny wagging tail' },
+  'cat': { skin_texture: 'soft sleek fur', body_shape: 'graceful four-legged body', ears: 'pointed triangular ears', tail: 'long fluffy tail' },
+  'kitten': { skin_texture: 'soft fuzzy kitten fur', body_shape: 'tiny cute four-legged body', ears: 'small pointed ears', tail: 'tiny fluffy tail' },
+  'rabbit': { skin_texture: 'soft fluffy fur', body_shape: 'round compact body', ears: 'long upright ears', tail: 'fluffy cotton ball tail' },
+  'bunny': { skin_texture: 'soft fluffy fur', body_shape: 'round compact body', ears: 'long upright ears', tail: 'fluffy cotton ball tail' },
+  'bear': { skin_texture: 'thick shaggy fur', body_shape: 'large round body', ears: 'small rounded ears', tail: 'short stubby tail' },
+  'fox': { skin_texture: 'soft fluffy fur', body_shape: 'slender agile body', ears: 'large pointed ears', tail: 'big bushy tail' },
+  'wolf': { skin_texture: 'thick wild fur', body_shape: 'strong muscular body', ears: 'pointed alert ears', tail: 'long bushy tail' },
+  'lion': { skin_texture: 'short golden fur', body_shape: 'powerful muscular body', ears: 'rounded ears', tail: 'long tail with tuft' },
+  'tiger': { skin_texture: 'short striped fur', body_shape: 'powerful muscular body', ears: 'rounded ears', markings: 'black stripes', tail: 'long striped tail' },
+  'monkey': { skin_texture: 'short brown fur', body_shape: 'agile climbing body', ears: 'rounded ears', tail: 'long curly tail' },
+  'panda': { skin_texture: 'fluffy black and white fur', body_shape: 'round chubby body', ears: 'round black ears', markings: 'black patches around eyes' },
+  'koala': { skin_texture: 'fuzzy gray fur', body_shape: 'round compact body', ears: 'big fluffy round ears', tail: 'no visible tail' },
+  'squirrel': { skin_texture: 'soft fluffy fur', body_shape: 'small nimble body', ears: 'tiny pointed ears', tail: 'big bushy tail' },
+  'mouse': { skin_texture: 'soft short fur', body_shape: 'tiny round body', ears: 'big round ears', tail: 'long thin tail' },
+  'hedgehog': { skin_texture: 'spiky quills on back soft belly', body_shape: 'small round body', ears: 'tiny rounded ears', tail: 'tiny stubby tail' },
+
+  // Marine animals
+  'dolphin': { skin_texture: 'smooth gray rubbery skin', body_shape: 'sleek streamlined body', tail: 'horizontal tail flukes' },
+  'whale': { skin_texture: 'smooth dark rubbery skin', body_shape: 'massive streamlined body', tail: 'huge horizontal tail flukes' },
+  'seal': { skin_texture: 'smooth spotted fur', body_shape: 'plump torpedo-shaped body', tail: 'flipper tail' },
+  'penguin': { skin_texture: 'smooth waterproof feathers', body_shape: 'round upright body', markings: 'black back white belly', tail: 'short stubby tail' },
+  'fish': { skin_texture: 'shiny colorful scales', body_shape: 'streamlined swimming body', tail: 'fan-shaped tail fin' },
+  'shark': { skin_texture: 'rough gray skin', body_shape: 'powerful streamlined body', tail: 'tall tail fin' },
+  'octopus': { skin_texture: 'soft squishy skin', body_shape: 'round head with eight tentacles' },
+  'turtle': { skin_texture: 'hard patterned shell', body_shape: 'round shelled body', tail: 'tiny stubby tail' },
+  'frog': { skin_texture: 'smooth moist green skin', body_shape: 'small squat body with long legs' },
+
+  // Birds
+  'owl': { skin_texture: 'soft fluffy feathers', body_shape: 'round feathered body', ears: 'feather tufts that look like ears', tail: 'short tail feathers' },
+  'eagle': { skin_texture: 'majestic brown feathers', body_shape: 'powerful feathered body', tail: 'broad tail feathers' },
+  'parrot': { skin_texture: 'colorful smooth feathers', body_shape: 'medium feathered body', tail: 'long colorful tail feathers' },
+  'duck': { skin_texture: 'smooth waterproof feathers', body_shape: 'plump feathered body', tail: 'short curly tail feathers' },
+  'chicken': { skin_texture: 'fluffy feathers', body_shape: 'round feathered body', tail: 'short tail feathers' },
+
+  // Reptiles
+  'snake': { skin_texture: 'smooth colorful scales', body_shape: 'long slithering body' },
+  'lizard': { skin_texture: 'bumpy scaly skin', body_shape: 'small four-legged body with long tail', tail: 'long thin tail' },
+  'crocodile': { skin_texture: 'rough bumpy scales', body_shape: 'long armored body', tail: 'powerful muscular tail' },
+  'dragon': { skin_texture: 'shiny colorful scales', body_shape: 'powerful winged body', tail: 'long spiky tail' },
+
+  // Insects
+  'butterfly': { skin_texture: 'delicate colorful wings', body_shape: 'tiny body with large wings' },
+  'bee': { skin_texture: 'fuzzy striped body', body_shape: 'small round body with wings', markings: 'yellow and black stripes' },
+  'ladybug': { skin_texture: 'shiny spotted shell', body_shape: 'tiny round body', markings: 'red with black spots' },
+
+  // Fantasy
+  'unicorn': { skin_texture: 'soft shimmering fur', body_shape: 'graceful horse-like body', horn: 'spiraling magical horn', tail: 'flowing magical tail' },
+};
+
+/**
  * Create a CHARACTER BIBLE from DNA
  * Generated ONCE per story and reused for every page
+ *
+ * CRITICAL: If character is an animal, do NOT output hair or skin_tone
+ * Use body_color, skin_texture, horn, etc. instead
  */
 export function createCharacterBible(dna: CharacterDNA): CharacterBible {
   const characterId = dna.name.toLowerCase().replace(/\s+/g, '_');
   const isAnimal = dna.type === 'animal';
   const isCreature = dna.type === 'creature';
 
-  // Extract species for animals (dog, cat, rabbit, etc.)
-  const species = isAnimal ? extractSpecies(dna.physical_form) : undefined;
+  // Extract species for animals (dog, cat, rabbit, rhinoceros, etc.)
+  const species = (isAnimal || isCreature) ? extractSpecies(dna.physical_form) : undefined;
 
+  if (isAnimal || isCreature) {
+    // ANIMAL CHARACTER - use animal-specific appearance
+    return {
+      character_id: characterId,
+      name: dna.name,
+      character_type: dna.type,
+      species: species,
+      age: "young",  // Don't use human age for animals
+      is_human: false,
+      appearance: createAnimalAppearance(species || 'animal', dna),
+      signature_outfit: dna.accessories !== 'none' ? dna.accessories : '',
+      personality: extractPersonality(dna.personality_visuals),
+      art_style: {
+        medium: "soft watercolor",
+        genre: "premium children's picture book",
+        mood: "warm, gentle, magical",
+        line_detail: "clean, whimsical",
+      },
+      consistency_rules: [
+        `${dna.name} is a ${species || 'animal'} - NOT a human.`,
+        `${dna.name} must look identical across all pages.`,
+        "Do not change appearance unless the story explicitly changes it.",
+        "Maintain the same art style and mood throughout the book.",
+      ],
+    };
+  }
+
+  // HUMAN CHARACTER - use human appearance
   return {
     character_id: characterId,
     name: dna.name,
-    character_type: dna.type,
-    species: species,  // "dog", "cat", "rabbit", etc.
-    age: isAnimal ? "friendly" : (dna.age || "6 years old"),
-    appearance: {
-      skin_tone: isAnimal ? extractFurColor(dna.color_palette, dna.material_or_texture) : extractSkinTone(dna.color_palette),
-      eyes: extractEyes(dna.facial_features),
-      hair: isAnimal ? extractFurDescription(dna.physical_form, dna.material_or_texture) : extractHair(dna.physical_form, dna.color_palette),
-      face_features: extractFaceFeatures(dna.facial_features),
-    },
-    signature_outfit: isAnimal ? (dna.accessories !== 'none' ? dna.accessories : '') : extractOutfit(dna.accessories),
+    character_type: 'human',
+    species: undefined,
+    age: dna.age || "6 years old",
+    is_human: true,
+    appearance: createHumanAppearance(dna),
+    signature_outfit: extractOutfit(dna.accessories),
     personality: extractPersonality(dna.personality_visuals),
     art_style: {
       medium: "soft watercolor",
@@ -57,117 +148,152 @@ export function createCharacterBible(dna: CharacterDNA): CharacterBible {
   };
 }
 
-// Extract fur color for animals
-function extractFurColor(colorPalette: string[], texture: string): string {
-  const colors = colorPalette.join(' ').toLowerCase();
-  if (colors.includes('golden') || colors.includes('yellow')) return 'golden fur';
-  if (colors.includes('brown')) return 'brown fur';
-  if (colors.includes('white')) return 'white fur';
-  if (colors.includes('black')) return 'black fur';
-  if (colors.includes('orange')) return 'orange fur';
-  if (colors.includes('gray') || colors.includes('grey')) return 'gray fur';
-  return 'soft fur';
+/**
+ * Create ANIMAL appearance - NO human attributes like hair or skin_tone
+ */
+function createAnimalAppearance(species: string, dna: CharacterDNA): AnimalAppearance {
+  const lowerSpecies = species.toLowerCase();
+  const defaults = ANIMAL_FEATURES[lowerSpecies] || {};
+
+  // Extract body color from DNA color palette
+  const bodyColor = extractBodyColor(dna.color_palette, dna.material_or_texture);
+
+  return {
+    body_color: bodyColor,
+    skin_texture: defaults.skin_texture || extractSkinTexture(dna.material_or_texture, lowerSpecies),
+    eyes: extractAnimalEyes(dna.facial_features),
+    horn: defaults.horn,
+    ears: defaults.ears || 'small ears',
+    markings: defaults.markings || extractMarkings(dna.unique_identifiers),
+    body_shape: defaults.body_shape || 'cute cartoon body',
+    tail: defaults.tail,
+  };
 }
 
-// Extract fur description for animals
-function extractFurDescription(physicalForm: string, texture: string): string {
-  const form = physicalForm.toLowerCase();
+/**
+ * Create HUMAN appearance
+ */
+function createHumanAppearance(dna: CharacterDNA): HumanAppearance {
+  return {
+    skin_tone: extractSkinTone(dna.color_palette),
+    eyes: extractHumanEyes(dna.facial_features),
+    hair: extractHair(dna.physical_form, dna.color_palette),
+    face_features: extractFaceFeatures(dna.facial_features),
+  };
+}
+
+/**
+ * Extract body color for animals (NOT skin_tone)
+ */
+function extractBodyColor(colorPalette: string[], texture: string): string {
+  const colors = colorPalette.join(' ').toLowerCase();
+
+  if (colors.includes('gray') || colors.includes('grey')) return 'gray';
+  if (colors.includes('golden') || colors.includes('yellow')) return 'golden';
+  if (colors.includes('brown')) return 'brown';
+  if (colors.includes('white')) return 'white';
+  if (colors.includes('black')) return 'black';
+  if (colors.includes('orange')) return 'orange';
+  if (colors.includes('pink')) return 'pink';
+  if (colors.includes('blue')) return 'blue';
+  if (colors.includes('green')) return 'green';
+  if (colors.includes('red')) return 'red';
+
+  return 'gray'; // Default for many animals
+}
+
+/**
+ * Extract skin texture based on species type
+ */
+function extractSkinTexture(texture: string, species: string): string {
   const tex = texture.toLowerCase();
 
-  if (tex.includes('fluffy') || form.includes('fluffy')) return 'fluffy soft fur';
-  if (tex.includes('smooth')) return 'smooth shiny coat';
-  if (tex.includes('curly')) return 'curly soft fur';
-  return 'soft fur';
+  // Leathery animals
+  if (['rhino', 'rhinoceros', 'elephant', 'hippo', 'hippopotamus'].includes(species)) {
+    return 'rough leathery skin';
+  }
+
+  // Furry animals
+  if (tex.includes('fluffy') || tex.includes('fur')) return 'soft fluffy fur';
+  if (tex.includes('smooth')) return 'smooth skin';
+  if (tex.includes('scaly') || tex.includes('scales')) return 'shiny scales';
+  if (tex.includes('feather')) return 'soft feathers';
+
+  return 'soft fur'; // Default
 }
 
-// Extract species from physical form (dog, cat, rabbit, etc.)
+/**
+ * Extract eyes for animals
+ */
+function extractAnimalEyes(facialFeatures: string): string {
+  const features = facialFeatures.toLowerCase();
+
+  let eyeColor = 'brown';
+  if (features.includes('blue eye')) eyeColor = 'blue';
+  else if (features.includes('green eye')) eyeColor = 'green';
+  else if (features.includes('golden eye')) eyeColor = 'golden';
+  else if (features.includes('black eye')) eyeColor = 'black';
+
+  return `big friendly ${eyeColor} eyes`;
+}
+
+/**
+ * Extract eyes for humans
+ */
+function extractHumanEyes(facialFeatures: string): string {
+  const features = facialFeatures.toLowerCase();
+  let eyeColor = 'brown';
+  if (features.includes('blue eye')) eyeColor = 'blue';
+  else if (features.includes('green eye')) eyeColor = 'green';
+  else if (features.includes('hazel')) eyeColor = 'hazel';
+
+  return `big expressive ${eyeColor} eyes`;
+}
+
+/**
+ * Extract any unique markings
+ */
+function extractMarkings(uniqueIdentifiers: string): string | undefined {
+  if (!uniqueIdentifiers || uniqueIdentifiers === 'none') return undefined;
+  return uniqueIdentifiers;
+}
+
+// Extract species from physical form (comprehensive list)
 function extractSpecies(physicalForm: string): string {
   const form = physicalForm.toLowerCase();
 
-  // COMPREHENSIVE LIST OF ALL ANIMALS AND INSECTS
   const animals = [
-    // PETS & DOMESTIC
-    'dog', 'puppy', 'cat', 'kitten', 'hamster', 'guinea pig', 'gerbil', 'rabbit', 'bunny',
-    'ferret', 'parrot', 'parakeet', 'budgie', 'canary', 'cockatiel', 'cockatoo', 'macaw',
-    'goldfish', 'betta', 'turtle', 'tortoise', 'snake', 'lizard', 'gecko', 'iguana', 'chameleon',
-
-    // FARM ANIMALS
-    'horse', 'pony', 'donkey', 'mule', 'cow', 'bull', 'calf', 'pig', 'piglet', 'hog', 'boar',
-    'sheep', 'lamb', 'goat', 'kid', 'chicken', 'hen', 'rooster', 'chick', 'duck', 'duckling',
-    'goose', 'gosling', 'turkey', 'llama', 'alpaca', 'buffalo', 'bison', 'ox', 'yak',
-
-    // FOREST & WOODLAND
-    'fox', 'wolf', 'coyote', 'bear', 'deer', 'doe', 'fawn', 'buck', 'stag', 'elk', 'moose',
-    'caribou', 'reindeer', 'rabbit', 'hare', 'squirrel', 'chipmunk', 'raccoon', 'skunk',
-    'opossum', 'possum', 'badger', 'wolverine', 'weasel', 'ferret', 'mink', 'otter',
-    'beaver', 'porcupine', 'hedgehog', 'mole', 'shrew', 'vole', 'mouse', 'rat', 'woodchuck',
-    'groundhog', 'bobcat', 'lynx', 'cougar', 'mountain lion', 'panther',
-
-    // JUNGLE & TROPICAL
-    'lion', 'tiger', 'leopard', 'jaguar', 'cheetah', 'monkey', 'ape', 'gorilla', 'chimpanzee',
-    'orangutan', 'baboon', 'lemur', 'sloth', 'anteater', 'armadillo', 'tapir', 'capybara',
-    'toucan', 'parrot', 'macaw', 'anaconda', 'python', 'boa', 'crocodile', 'alligator',
-    'caiman', 'iguana', 'chameleon', 'tree frog', 'poison dart frog',
-
-    // AFRICAN SAVANNA
-    'elephant', 'giraffe', 'zebra', 'hippo', 'hippopotamus', 'rhino', 'rhinoceros',
-    'wildebeest', 'gnu', 'gazelle', 'antelope', 'impala', 'springbok', 'oryx', 'kudu',
-    'hyena', 'jackal', 'meerkat', 'warthog', 'ostrich', 'vulture', 'flamingo',
-
-    // AUSTRALIAN
-    'kangaroo', 'wallaby', 'koala', 'wombat', 'platypus', 'echidna', 'tasmanian devil',
-    'dingo', 'emu', 'kookaburra', 'cockatoo', 'lorikeet', 'sugar glider', 'numbat', 'quokka',
-
-    // ARCTIC & POLAR
-    'polar bear', 'penguin', 'seal', 'sea lion', 'walrus', 'arctic fox', 'snowy owl',
-    'narwhal', 'beluga', 'orca', 'whale', 'puffin', 'lemming', 'musk ox', 'caribou',
-
-    // OCEAN & MARINE
-    'whale', 'dolphin', 'porpoise', 'shark', 'ray', 'stingray', 'manta ray', 'eel',
-    'octopus', 'squid', 'jellyfish', 'starfish', 'seahorse', 'crab', 'lobster', 'shrimp',
-    'clam', 'oyster', 'mussel', 'scallop', 'snail', 'slug', 'sea turtle', 'manatee',
-    'dugong', 'sea otter', 'fish', 'salmon', 'tuna', 'clownfish', 'angelfish', 'swordfish',
-
-    // BIRDS
-    'bird', 'eagle', 'hawk', 'falcon', 'owl', 'vulture', 'condor', 'crow', 'raven',
-    'magpie', 'jay', 'bluejay', 'cardinal', 'robin', 'sparrow', 'finch', 'canary',
-    'hummingbird', 'woodpecker', 'toucan', 'pelican', 'flamingo', 'crane', 'heron',
-    'stork', 'swan', 'duck', 'goose', 'seagull', 'albatross', 'penguin', 'peacock',
-    'pheasant', 'quail', 'pigeon', 'dove', 'parakeet', 'lovebird', 'kingfisher',
-
-    // REPTILES & AMPHIBIANS
-    'snake', 'python', 'cobra', 'viper', 'rattlesnake', 'boa', 'anaconda',
-    'lizard', 'gecko', 'iguana', 'chameleon', 'komodo dragon', 'monitor lizard', 'skink',
-    'turtle', 'tortoise', 'terrapin', 'crocodile', 'alligator', 'caiman', 'gavial',
-    'frog', 'toad', 'salamander', 'newt', 'axolotl', 'tadpole',
-
-    // INSECTS & BUGS
-    'butterfly', 'moth', 'bee', 'bumblebee', 'honeybee', 'wasp', 'hornet',
-    'ant', 'termite', 'beetle', 'ladybug', 'ladybird', 'firefly', 'lightning bug',
-    'dragonfly', 'damselfly', 'grasshopper', 'cricket', 'locust', 'katydid',
-    'mantis', 'praying mantis', 'stick insect', 'walking stick', 'leaf insect',
-    'fly', 'housefly', 'fruit fly', 'mosquito', 'gnat', 'midge',
-    'caterpillar', 'worm', 'earthworm', 'silkworm', 'glowworm', 'inchworm',
-    'cockroach', 'cicada', 'aphid', 'flea', 'tick', 'louse', 'bedbug', 'stinkbug',
-    'water strider', 'water beetle', 'dung beetle', 'scarab', 'weevil',
-
-    // ARACHNIDS & OTHER CRAWLIES
-    'spider', 'tarantula', 'black widow', 'scorpion', 'tick', 'mite', 'daddy longlegs',
-    'centipede', 'millipede', 'pillbug', 'roly poly', 'woodlouse', 'sowbug',
-
-    // CRUSTACEANS & MOLLUSKS
-    'crab', 'hermit crab', 'lobster', 'crayfish', 'crawfish', 'shrimp', 'prawn', 'barnacle',
-    'snail', 'slug', 'clam', 'oyster', 'mussel', 'scallop', 'squid', 'octopus', 'nautilus',
-
-    // MYTHICAL & FANTASY
-    'dragon', 'unicorn', 'phoenix', 'griffin', 'pegasus', 'mermaid', 'fairy', 'pixie',
-    'gnome', 'troll', 'goblin', 'elf', 'dwarf', 'centaur', 'minotaur', 'hydra',
-    'kraken', 'yeti', 'bigfoot', 'werewolf', 'vampire bat', 'dinosaur', 't-rex',
-    'triceratops', 'stegosaurus', 'pterodactyl', 'velociraptor', 'brontosaurus',
-
-    // MISCELLANEOUS
-    'bat', 'flying fox', 'panda', 'red panda', 'binturong', 'civet', 'mongoose',
-    'aardvark', 'pangolin', 'okapi', 'tapir', 'manatee', 'dugong', 'narwhal',
+    // Large mammals (check longer names first)
+    'rhinoceros', 'hippopotamus', 'elephant', 'giraffe',
+    // Then shorter versions
+    'rhino', 'hippo',
+    // Pets & Domestic
+    'dog', 'puppy', 'cat', 'kitten', 'hamster', 'guinea pig', 'rabbit', 'bunny',
+    'parrot', 'goldfish', 'turtle', 'tortoise', 'snake', 'lizard', 'gecko',
+    // Farm
+    'horse', 'pony', 'donkey', 'cow', 'pig', 'sheep', 'goat', 'chicken', 'duck', 'goose',
+    // Forest
+    'fox', 'wolf', 'bear', 'deer', 'squirrel', 'raccoon', 'beaver', 'hedgehog', 'mouse', 'owl',
+    // Jungle
+    'lion', 'tiger', 'leopard', 'monkey', 'gorilla', 'sloth', 'toucan', 'crocodile',
+    // African
+    'zebra', 'cheetah', 'hyena', 'meerkat', 'ostrich', 'flamingo',
+    // Australian
+    'kangaroo', 'koala', 'platypus', 'emu',
+    // Arctic
+    'polar bear', 'penguin', 'seal', 'walrus', 'arctic fox',
+    // Ocean
+    'whale', 'dolphin', 'shark', 'octopus', 'jellyfish', 'seahorse', 'crab', 'fish',
+    // Birds
+    'eagle', 'hawk', 'falcon', 'crow', 'robin', 'hummingbird', 'peacock', 'swan',
+    // Reptiles & Amphibians
+    'frog', 'toad', 'salamander', 'chameleon',
+    // Insects
+    'butterfly', 'bee', 'ladybug', 'dragonfly', 'ant', 'caterpillar',
+    // Fantasy
+    'dragon', 'unicorn', 'phoenix', 'griffin', 'dinosaur',
+    // Other
+    'panda', 'red panda', 'bat',
   ];
 
   for (const animal of animals) {
@@ -185,42 +311,78 @@ function extractSpecies(physicalForm: string): string {
 export function createSimpleBible(
   name: string,
   characterType: 'human' | 'animal' | 'object' | 'creature' | 'other' = 'human',
-  species?: string,  // For animals: "dog", "cat", etc.
-  furOrSkin: string = "warm brown",
-  hairOrFur: string = "black curly hair"
+  species?: string,
+  bodyColor: string = "gray",
 ): CharacterBible {
-  const isAnimal = characterType === 'animal';
+  const isAnimal = characterType === 'animal' || characterType === 'creature';
 
+  if (isAnimal) {
+    const speciesLower = (species || 'animal').toLowerCase();
+    const defaults = ANIMAL_FEATURES[speciesLower] || {};
+
+    return {
+      character_id: name.toLowerCase().replace(/\s+/g, '_'),
+      name,
+      character_type: characterType,
+      species: species || 'animal',
+      age: "young",
+      is_human: false,
+      appearance: {
+        body_color: bodyColor,
+        skin_texture: defaults.skin_texture || 'soft fur',
+        eyes: "big friendly eyes",
+        horn: defaults.horn,
+        ears: defaults.ears,
+        markings: defaults.markings,
+        body_shape: defaults.body_shape || 'cute cartoon body',
+        tail: defaults.tail,
+      } as AnimalAppearance,
+      signature_outfit: "",
+      personality: ["curious", "joyful", "brave"],
+      art_style: {
+        medium: "soft watercolor",
+        genre: "premium children's picture book",
+        mood: "warm, gentle, magical",
+        line_detail: "clean, whimsical",
+      },
+      consistency_rules: [
+        `${name} is a ${species || 'animal'} - NOT a human.`,
+        `${name} must look identical across all pages.`,
+        "Maintain the same art style and mood throughout the book.",
+      ],
+    };
+  }
+
+  // Human character
   return {
     character_id: name.toLowerCase().replace(/\s+/g, '_'),
     name,
-    character_type: characterType,
-    species: isAnimal ? (species || 'animal') : undefined,
-    age: isAnimal ? "friendly" : "6 years old",
+    character_type: 'human',
+    species: undefined,
+    age: "6 years old",
+    is_human: true,
     appearance: {
-      skin_tone: isAnimal ? `${furOrSkin} fur` : `${furOrSkin} skin`,
+      skin_tone: "warm brown skin",
       eyes: "big expressive eyes",
-      hair: hairOrFur,
+      hair: "curly black hair",
       face_features: "friendly smile, cute face",
-    },
-    signature_outfit: isAnimal ? "" : "colorful casual clothes",
+    } as HumanAppearance,
+    signature_outfit: "colorful casual clothes",
     personality: ["curious", "joyful", "brave"],
     art_style: {
       medium: "soft watercolor",
       genre: "premium children's picture book",
       mood: "warm, gentle, magical",
-      line_detail: "clean, whimsical",
+      line_detail: "clean, whimsimal",
     },
     consistency_rules: [
       `${name} must look identical across all pages.`,
-      "Do not change appearance unless the story explicitly changes it.",
       "Maintain the same art style and mood throughout the book.",
     ],
   };
 }
 
-// Helper functions
-
+// Helper functions for human appearance
 function extractSkinTone(colorPalette: string[]): string {
   const colors = colorPalette.join(' ').toLowerCase();
   if (colors.includes('dark brown') || colors.includes('deep brown')) return 'deep brown skin';
@@ -231,33 +393,20 @@ function extractSkinTone(colorPalette: string[]): string {
   return 'warm brown skin';
 }
 
-function extractEyes(facialFeatures: string): string {
-  const features = facialFeatures.toLowerCase();
-  let eyeColor = 'brown';
-  if (features.includes('blue eye')) eyeColor = 'blue';
-  else if (features.includes('green eye')) eyeColor = 'green';
-  else if (features.includes('hazel')) eyeColor = 'hazel';
-
-  return `big expressive ${eyeColor} eyes`;
-}
-
 function extractHair(physicalForm: string, colorPalette: string[]): string {
   const form = physicalForm.toLowerCase();
   const colors = colorPalette.join(' ').toLowerCase();
 
-  // Hair style
   let hairStyle = 'soft';
   if (form.includes('curly') || form.includes('afro') || form.includes('coily')) hairStyle = 'curly';
   else if (form.includes('straight')) hairStyle = 'straight';
   else if (form.includes('wavy')) hairStyle = 'wavy';
   else if (form.includes('braided') || form.includes('braid')) hairStyle = 'braided';
 
-  // Hair length
   let hairLength = '';
   if (form.includes('long')) hairLength = 'long ';
   else if (form.includes('short')) hairLength = 'short ';
 
-  // Hair color
   let hairColor = 'black';
   if (colors.includes('blonde') || colors.includes('golden')) hairColor = 'golden blonde';
   else if (colors.includes('red') || colors.includes('ginger')) hairColor = 'red';
@@ -298,7 +447,6 @@ function extractPersonality(personalityVisuals: string): string[] {
   if (visuals.includes('kind') || visuals.includes('gentle')) traits.push('kind');
   if (visuals.includes('adventur')) traits.push('adventurous');
 
-  // Default traits if none found
   if (traits.length === 0) {
     return ['curious', 'joyful', 'brave'];
   }

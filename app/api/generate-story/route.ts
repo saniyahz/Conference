@@ -194,8 +194,7 @@ CRITICAL: Every page must end with a COMPLETE sentence. Never cut off mid-senten
           charName,
           'animal',
           species,
-          'soft',
-          'soft fur'
+          'gray'  // bodyColor - skin_texture comes from ANIMAL_FEATURES
         )
       } else {
         // Fallback: search for any animal keyword in story or prompt
@@ -209,8 +208,7 @@ CRITICAL: Every page must end with a COMPLETE sentence. Never cut off mid-senten
             charName,
             'animal',
             detectedAnimal,
-            'golden',
-            'soft fluffy fur'
+            'golden'  // bodyColor - skin_texture comes from ANIMAL_FEATURES
           )
         } else {
           characterBible = createSimpleBible(extractNameFromPrompt(prompt) || 'Hero')
@@ -241,13 +239,15 @@ CRITICAL: Every page must end with a COMPLETE sentence. Never cut off mid-senten
     const negativePrompts: string[] = []
     const seeds: number[] = []
 
-    const isAnimalStory = characterBible.character_type === 'animal'
+    const isAnimalStory = characterBible.character_type === 'animal' && !characterBible.is_human
+    const characterSpecies = characterBible.species
 
     sceneCards.forEach((card, index) => {
       // Pass page text so renderPrompt can detect animals from story
       const pageText = parsedStory.pages[index]?.text || ''
       const prompt = renderPrompt(characterBible, card, pageText)
-      const negativePrompt = renderNegativePrompt(card, isAnimalStory)
+      // CRITICAL: Pass species for species-specific negative prompts (prevents rhino → cow drift)
+      const negativePrompt = renderNegativePrompt(card, isAnimalStory, characterSpecies)
       const seed = generatePageSeedByNumber(card.page_number, baseSeed)
 
       imagePrompts.push(prompt)
@@ -268,7 +268,7 @@ CRITICAL: Every page must end with a COMPLETE sentence. Never cut off mid-senten
       rendering: {
         size: '1024x1024',
         num_images_per_page: 1,
-        seed_strategy: 'page_number_based',
+        seed_strategy: 'consistent_per_story',  // Same seed for all pages = consistent character
       },
     }
 

@@ -24,15 +24,23 @@ export function generatePageSceneCard(
   // Build forbidden elements based on what's NOT in this scene
   const forbiddenElements = buildForbiddenElements(lowerText);
 
+  // Build foreground elements (character + immediate objects they interact with)
+  const foregroundElements = buildForegroundElements(bible, keyObjects, lowerText);
+
+  // Build background elements (environment, setting, distant objects)
+  const backgroundElements = buildBackgroundElements(setting, supportingCharacters, lowerText);
+
   return {
     page_number: pageNumber,
     scene_id: `page_${pageNumber}`,
     setting,
     time_weather: extractTimeWeather(lowerText),
     main_action: extractAction(lowerText, bible.name),
+    foreground_must_include: foregroundElements,
+    background_must_include: backgroundElements,
     supporting_characters: supportingCharacters,
     key_objects: keyObjects,
-    required_elements: [...keyObjects, ...supportingCharacters],
+    required_elements: [...keyObjects, ...supportingCharacters], // Legacy
     forbidden_elements: forbiddenElements,
     camera: {
       shot_type: keyObjects.length > 2 ? 'wide' : 'medium',
@@ -280,6 +288,72 @@ function extractAction(text: string, characterName: string): string {
   }
 
   return `${characterName} in the scene`;
+}
+
+/**
+ * Build foreground elements - character + immediate objects they interact with
+ * These should be the FIRST things mentioned in prompt (SDXL priority)
+ */
+function buildForegroundElements(bible: CharacterBible, keyObjects: string[], text: string): string[] {
+  const foreground: string[] = [];
+
+  // 1. Main character is ALWAYS in foreground
+  if (bible.character_type === 'animal' && bible.species) {
+    foreground.push(`${bible.name} the ${bible.species}`);
+  } else {
+    foreground.push(bible.name);
+  }
+
+  // 2. Objects the character is directly interacting with
+  const interactionKeywords = ['holding', 'carrying', 'using', 'riding', 'inside', 'on', 'with'];
+  for (const obj of keyObjects) {
+    // Check if character is interacting with this object
+    const isInteracting = interactionKeywords.some(kw =>
+      text.includes(kw) && text.includes(obj)
+    );
+    if (isInteracting) {
+      foreground.push(obj);
+    }
+  }
+
+  // 3. Vehicles/containers the character is IN (rocket, boat, etc.)
+  if (text.includes('inside') || text.includes('cockpit') || text.includes('climbed in')) {
+    if (text.includes('rocket') || text.includes('spaceship')) {
+      foreground.push('rocket ship cockpit');
+    }
+  }
+
+  return foreground;
+}
+
+/**
+ * Build background elements - environment, setting, distant objects
+ * These go AFTER the foreground in the prompt
+ */
+function buildBackgroundElements(setting: string, supportingCharacters: string[], text: string): string[] {
+  const background: string[] = [];
+
+  // 1. Setting/environment is always background
+  background.push(setting);
+
+  // 2. Celestial objects (distant)
+  if (text.includes('stars') || text.includes('starry')) background.push('stars');
+  if (text.includes('moon') && !text.includes('on the moon')) background.push('moon in sky');
+  if (text.includes('earth') || text.includes('planet')) background.push('Earth visible');
+  if (text.includes('sun')) background.push('sun');
+
+  // 3. Environmental features
+  if (text.includes('crater') && !text.includes('in crater')) background.push('craters');
+  if (text.includes('cloud')) background.push('clouds');
+  if (text.includes('mountain') && !text.includes('on mountain')) background.push('mountains');
+  if (text.includes('tree') && !text.includes('in tree')) background.push('trees');
+
+  // 4. Supporting characters (usually in background unless specified)
+  for (const char of supportingCharacters.slice(0, 2)) {
+    background.push(char);
+  }
+
+  return background;
 }
 
 /**

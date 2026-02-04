@@ -1,4 +1,4 @@
-import { CharacterBible, PageSceneCard } from "./visual-types";
+import { CharacterBible, PageSceneCard, HumanAppearance, AnimalAppearance, getSpeciesNegatives } from "./visual-types";
 
 /**
  * UNIVERSAL PROMPT TEMPLATE
@@ -13,33 +13,93 @@ export function renderPrompt(bible: CharacterBible, card: PageSceneCard, pageTex
   const species = bible.species || 'animal';
   const charName = bible.name;
 
-  // 2. Get character appearance details for consistency
-  const furColor = bible.appearance?.skin_tone || 'golden';
-  const eyeDesc = bible.appearance?.eyes || 'big sparkling eyes';
-
-  // 3. SCENE - Extract from page text
+  // 2. SCENE - Extract from page text
   const scene = extractSceneFromText(lowerText, card.setting);
 
-  // 4. SUPPORTING CHARACTERS - only named ones from text
+  // 3. SUPPORTING CHARACTERS - only named ones from text
   const supporting = extractNamedCharactersFromText(lowerText, charName);
 
-  // 5. ACTION - What is the character doing?
+  // 4. ACTION - What is the character doing?
   const action = extractActionFromText(lowerText, charName);
 
   // BUILD PROMPT - CHARACTER FIRST, with appearance, then scene + action
-  // More detailed format for better SDXL results
   let prompt: string;
 
-  if (bible.character_type === 'animal' && species !== 'animal') {
-    // ANIMAL CHARACTER - detailed appearance for consistency
-    prompt = `A cute cartoon ${species} with ${furColor} fur and ${eyeDesc}, ${charName} the adorable ${species}, ${action}, ${scene}. ${supporting}Pixar Disney 3D animation style, soft lighting, vibrant colors, children's book illustration.`;
+  if (bible.character_type === 'animal' && species !== 'animal' && !bible.is_human) {
+    // ANIMAL CHARACTER - Use AnimalAppearance fields (NO human attributes!)
+    const animalAppearance = bible.appearance as AnimalAppearance;
+    const bodyDesc = buildAnimalDescription(animalAppearance, species);
+    prompt = `A cute cartoon ${species}, ${bodyDesc}, ${charName} the adorable ${species}, ${action}, ${scene}. ${supporting}Pixar Disney 3D animation style, soft lighting, vibrant colors, children's book illustration.`;
   } else {
-    // HUMAN or unknown - generic child with details
-    prompt = `A cute cartoon child with friendly face and big expressive eyes, ${charName}, ${action}, ${scene}. ${supporting}Pixar Disney 3D animation style, soft lighting, vibrant colors, children's book illustration.`;
+    // HUMAN CHARACTER - Use HumanAppearance fields
+    const humanAppearance = bible.appearance as HumanAppearance;
+    const humanDesc = buildHumanDescription(humanAppearance);
+    prompt = `A cute cartoon child, ${humanDesc}, ${charName}, ${action}, ${scene}. ${supporting}Pixar Disney 3D animation style, soft lighting, vibrant colors, children's book illustration.`;
   }
 
   console.log(`[PROMPT] Page ${card.page_number}: ${prompt}`);
   return prompt;
+}
+
+/**
+ * Build animal description from AnimalAppearance - NO HUMAN ATTRIBUTES
+ */
+function buildAnimalDescription(appearance: AnimalAppearance, species: string): string {
+  const parts: string[] = [];
+
+  // Body color and texture FIRST (most important for species consistency)
+  if (appearance.body_color) {
+    parts.push(`${appearance.body_color} colored`);
+  }
+  if (appearance.skin_texture) {
+    parts.push(appearance.skin_texture);
+  }
+
+  // Eyes
+  if (appearance.eyes) {
+    parts.push(appearance.eyes);
+  }
+
+  // Species-specific features
+  if (appearance.horn) {
+    parts.push(appearance.horn);
+  }
+  if (appearance.ears) {
+    parts.push(appearance.ears);
+  }
+  if (appearance.body_shape) {
+    parts.push(appearance.body_shape);
+  }
+  if (appearance.markings) {
+    parts.push(appearance.markings);
+  }
+  if (appearance.tail) {
+    parts.push(appearance.tail);
+  }
+
+  return parts.join(', ') || `cute cartoon ${species}`;
+}
+
+/**
+ * Build human description from HumanAppearance
+ */
+function buildHumanDescription(appearance: HumanAppearance): string {
+  const parts: string[] = [];
+
+  if (appearance.skin_tone) {
+    parts.push(appearance.skin_tone);
+  }
+  if (appearance.hair) {
+    parts.push(appearance.hair);
+  }
+  if (appearance.eyes) {
+    parts.push(appearance.eyes);
+  }
+  if (appearance.face_features) {
+    parts.push(appearance.face_features);
+  }
+
+  return parts.join(', ') || 'friendly face and big expressive eyes';
 }
 
 /**
@@ -229,7 +289,7 @@ function extractNamedCharactersFromText(text: string, mainCharName: string): str
 
   if (found.length === 0) return '';
   // Limit to 2 supporting characters to keep prompt short
-  const chars = [...new Set(found)].slice(0, 2);
+  const chars = Array.from(new Set(found)).slice(0, 2);
   return `with ${chars.join(' and ')}, `;
 }
 
@@ -239,13 +299,18 @@ function extractNamedCharactersFromText(text: string, mainCharName: string): str
 function buildMainCharacter(bible: CharacterBible): string {
   const name = bible.name;
 
-  if (bible.character_type === 'animal' && bible.species) {
-    const fur = bible.appearance.skin_tone || 'soft fur';
-    return `${name} the cute cartoon ${bible.species} with ${fur}, big expressive eyes`;
+  if (bible.character_type === 'animal' && bible.species && !bible.is_human) {
+    // Use AnimalAppearance fields
+    const animalApp = bible.appearance as AnimalAppearance;
+    const bodyColor = animalApp.body_color || 'gray';
+    const texture = animalApp.skin_texture || 'soft fur';
+    return `${name} the cute cartoon ${bible.species} with ${bodyColor} ${texture}, big expressive eyes`;
   }
 
-  // Human character
-  return `${name}, cute cartoon child with friendly face, big expressive eyes`;
+  // Human character - use HumanAppearance fields
+  const humanApp = bible.appearance as HumanAppearance;
+  const hair = humanApp.hair || 'friendly hair';
+  return `${name}, cute cartoon child with ${hair}, big expressive eyes`;
 }
 
 /**
@@ -407,7 +472,7 @@ function extractSupportingFromText(text: string, mainCharName: string): string {
   }
 
   if (found.length === 0) return '';
-  return `Also showing: ${[...new Set(found)].slice(0, 3).join(', ')}.`;
+  return `Also showing: ${Array.from(new Set(found)).slice(0, 3).join(', ')}.`;
 }
 
 /**
@@ -441,28 +506,45 @@ function extractObjectsFromText(text: string): string {
   }
 
   if (found.length === 0) return '';
-  return `With ${[...new Set(found)].slice(0, 2).join(' and ')}.`;
+  return `With ${Array.from(new Set(found)).slice(0, 2).join(' and ')}.`;
 }
 
 
 /**
- * Negative prompt - excludes humans for animal stories, realistic style always
+ * Negative prompt - excludes humans for animal stories + species-specific negatives
+ * This is CRITICAL to prevent SDXL from drifting to similar animals
  */
-export function renderNegativePrompt(card: PageSceneCard, isAnimal?: boolean): string {
-  let base = "text, watermark, logo, photorealistic, realistic, photograph";
+export function renderNegativePrompt(card: PageSceneCard, isAnimal?: boolean, species?: string): string {
+  let base = "text, watermark, logo, photorealistic, realistic, photograph, ugly, deformed, bad anatomy, bad proportions";
 
-  // Always exclude humans for animal-only stories
+  // CRITICAL: Always exclude humans for animal-only stories
   if (isAnimal) {
-    base += ", human, person, boy, girl, child, man, woman";
+    base += ", human, person, boy, girl, child, man, woman, people, hands, fingers";
   }
 
+  // CRITICAL: Add species-specific negatives to prevent drift
+  // For example, rhino stories should exclude: cow, bull, hippo, elephant
+  if (species) {
+    const speciesNegatives = getSpeciesNegatives(species);
+    if (speciesNegatives.length > 0) {
+      base += `, ${speciesNegatives.join(', ')}`;
+    }
+  }
+
+  // Add scene-specific forbidden elements
   if (card.forbidden_elements && card.forbidden_elements.length > 0) {
-    return `${base}, ${card.forbidden_elements.slice(0, 5).join(', ')}`;
+    base += `, ${card.forbidden_elements.slice(0, 5).join(', ')}`;
   }
 
   return base;
 }
 
+/**
+ * Generate seed for a page - uses SAME seed for all pages to maintain character consistency
+ * The prompt differences handle scene variation, seed handles character appearance
+ */
 export function generatePageSeedByNumber(pageNumber: number, baseSeed: number): number {
-  return baseSeed + (pageNumber * 77);
+  // CRITICAL: Return same seed for all pages to maintain character consistency
+  // Different seeds cause character drift (rhino becomes cow/bull/hippo)
+  return baseSeed;
 }

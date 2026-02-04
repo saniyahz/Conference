@@ -173,12 +173,13 @@ export async function POST(request: NextRequest) {
       console.log(`\n========== GENERATING IMAGE ${i + 1}/${imagePrompts.length} ==========`)
 
       try {
-        // ENGINE RULE B: Use unique seed per page
-        // If seeds array provided (from scene_id hash), use it; otherwise compute from base
-        const pageSeed = seeds && seeds[i] ? seeds[i] : storySeed + (i * 77)
+        // CRITICAL: Use ONE seed per story for character consistency
+        // Same seed = same character appearance across all pages
+        // Only use provided seeds array if explicitly passed (for regeneration scenarios)
+        const pageSeed = seeds && seeds[i] ? seeds[i] : storySeed
         usedSeeds.push(pageSeed)
 
-        console.log(`Page ${i + 1} seed: ${pageSeed}`)
+        console.log(`Page ${i + 1} seed: ${pageSeed} (same seed for character consistency)`)
         console.log(`Setting: ${prompt.match(/Setting: (.+)/)?.[1]?.substring(0, 50) || 'N/A'}`)
 
         const imageUrl = await generateImageWithRetry(replicate, prompt, negativePrompt, i, imagePrompts.length, pageSeed)
