@@ -175,8 +175,30 @@ CRITICAL: Every page must end with a COMPLETE sentence. Never cut off mid-senten
 
     // Create Character Bible (ONCE for entire book)
     let characterBible;
+
+    // VALIDATION: Check if LLM's CHARACTER_DNA has correct type
+    // Sometimes LLM outputs type:"human" even for animal stories
     if (parsedStory.characterDNA) {
-      characterBible = createCharacterBible(parsedStory.characterDNA)
+      const dna = parsedStory.characterDNA
+      const physicalForm = (dna.physical_form || '').toLowerCase()
+      const lowerPrompt = prompt.toLowerCase()
+
+      // Check if this should actually be an animal
+      const detectedAnimal = ALL_ANIMALS.find(animal =>
+        physicalForm.includes(animal) || lowerPrompt.includes(animal)
+      )
+
+      if (detectedAnimal && dna.type !== 'animal') {
+        console.log(`[CHARACTER VALIDATION] LLM said type="${dna.type}" but detected animal "${detectedAnimal}" - overriding to animal`)
+        dna.type = 'animal'
+        // Make sure physical_form includes the species
+        if (!physicalForm.includes(detectedAnimal)) {
+          dna.physical_form = `${detectedAnimal} ${dna.physical_form}`
+        }
+      }
+
+      characterBible = createCharacterBible(dna)
+      console.log(`[CHARACTER] Created from DNA: type=${characterBible.character_type}, species=${characterBible.species}`)
     } else {
       // Fallback: detect main character from FIRST PAGE of generated story
       const firstPageText = parsedStory.pages[0]?.text || ''
@@ -219,7 +241,9 @@ CRITICAL: Every page must end with a COMPLETE sentence. Never cut off mid-senten
         // Other
         'Panda', 'Red Panda', 'Bat', 'Bird'
       ].join('|')
-      const nameTheAnimalMatch = firstPageText.match(new RegExp(`\\b([A-Z][a-z]+)\\s+(?:the|was a|is a)\\s+(${animalPatternList})\\b`, 'i'))
+      // Pattern needs to allow adjectives like "curious", "brave", "little" between "was a" and animal
+      // e.g., "Rai Rai was a curious rhinoceros" or "Luna the brave fox"
+      const nameTheAnimalMatch = firstPageText.match(new RegExp(`\\b([A-Z][a-z]+(?:\\s+[A-Z][a-z]+)?)\\s+(?:the|was a|is a|was an|is an)\\s+(?:\\w+\\s+)?(${animalPatternList})\\b`, 'i'))
 
       if (nameTheAnimalMatch) {
         const charName = nameTheAnimalMatch[1]
