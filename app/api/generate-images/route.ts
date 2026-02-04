@@ -72,19 +72,35 @@ async function generateImageWithRetry(
           let imageUrl = ''
 
           // Robust output normalization - handle all Replicate output formats
+          // CRITICAL: Replicate SDK returns FileOutput objects with toString() method
+          // We must ALWAYS convert to string before using
           if (Array.isArray(output) && output.length > 0) {
             const firstOutput = output[0]
-            if (typeof firstOutput === 'string') {
-              imageUrl = firstOutput
-            } else if (firstOutput && typeof firstOutput === 'object') {
-              // Try common URL properties
-              imageUrl = firstOutput.url || firstOutput.output || firstOutput.href || String(firstOutput)
+            // ALWAYS convert to string first - FileOutput has toString() that returns URL
+            const urlStr = String(firstOutput)
+            if (urlStr && urlStr.startsWith('http')) {
+              imageUrl = urlStr
+            } else if (typeof firstOutput === 'object' && firstOutput !== null) {
+              // Fallback: Try common URL properties
+              const fo = firstOutput as any
+              const possibleUrl = fo.url || fo.output || fo.href
+              if (possibleUrl) {
+                imageUrl = String(possibleUrl)
+              }
             }
           } else if (typeof output === 'string') {
             imageUrl = output
           } else if (output && typeof output === 'object') {
-            // Handle object with URL property
-            imageUrl = (output as any).url || (output as any).output || String(output)
+            // Handle object with URL property or toString()
+            const urlStr = String(output)
+            if (urlStr && urlStr.startsWith('http')) {
+              imageUrl = urlStr
+            } else {
+              const possibleUrl = (output as any).url || (output as any).output
+              if (possibleUrl) {
+                imageUrl = String(possibleUrl)
+              }
+            }
           }
 
           console.log(`[IMAGE ${imageIndex + 1}] Extracted URL: ${imageUrl ? imageUrl.substring(0, 80) + '...' : 'EMPTY'}`)

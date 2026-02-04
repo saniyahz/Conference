@@ -34,33 +34,46 @@ export function renderPrompt(bible: CharacterBible, card: PageSceneCard, pageTex
   console.log(`Bible character_type: ${bible.character_type}`);
   console.log(`Page text (first 100 chars): ${text.substring(0, 100)}`);
 
-  // 1. AGGRESSIVE SPECIES DETECTION - Check page text FIRST, override bible
+  // 1. SPECIES DETECTION - BIBLE FIRST, then page text as fallback
+  // CRITICAL: The main character's species from bible takes PRIORITY
+  // Do NOT override with random animals mentioned in page text!
   let species: string = 'animal';
 
-  // Method 1: Direct search in page text for animal words (MOST RELIABLE)
-  for (const animal of PRIORITY_ANIMALS) {
-    if (lowerText.includes(animal)) {
-      species = animal;
-      console.log(`[DETECTION] Found "${animal}" directly in page text`);
-      break;
-    }
-  }
-
-  // Method 2: Pattern match "Name the Animal" (e.g., "Riri the rhinoceros")
-  const namePattern = text.match(/\b\w+\s+the\s+(\w+)/i);
-  if (namePattern) {
-    const possibleSpecies = namePattern[1].toLowerCase();
-    console.log(`[DETECTION] Name pattern found: "${namePattern[0]}" -> species: "${possibleSpecies}"`);
-    if (PRIORITY_ANIMALS.includes(possibleSpecies)) {
-      species = possibleSpecies;
-      console.log(`[DETECTION] Using pattern-matched species: ${species}`);
-    }
-  }
-
-  // Method 3: Fall back to bible species if still 'animal'
-  if (species === 'animal' && bible.species && bible.species !== 'animal') {
+  // Method 1: Use bible character_type or species (HIGHEST PRIORITY)
+  // This is the MAIN CHARACTER's species - always use this first!
+  if (bible.character_type && bible.character_type !== 'human' && bible.character_type !== 'animal') {
+    species = bible.character_type;
+    console.log(`[DETECTION] Using bible character_type: ${species}`);
+  } else if (bible.species && bible.species !== 'animal') {
     species = bible.species;
     console.log(`[DETECTION] Using bible species: ${species}`);
+  }
+
+  // Method 2: ONLY if bible has no species, try pattern "Name the Animal"
+  if (species === 'animal') {
+    const namePattern = text.match(new RegExp(`${charName}\\s+the\\s+(\\w+)`, 'i'));
+    if (namePattern) {
+      const possibleSpecies = namePattern[1].toLowerCase();
+      console.log(`[DETECTION] Name pattern found: "${namePattern[0]}" -> species: "${possibleSpecies}"`);
+      if (PRIORITY_ANIMALS.includes(possibleSpecies)) {
+        species = possibleSpecies;
+        console.log(`[DETECTION] Using pattern-matched species: ${species}`);
+      }
+    }
+  }
+
+  // Method 3: ONLY if still no species, scan page text for ANY animal
+  // NOTE: This is last resort - don't let random animals in story override main character!
+  if (species === 'animal') {
+    for (const animal of PRIORITY_ANIMALS) {
+      // Use word boundary to avoid matching "hen" in "then"
+      const regex = new RegExp(`\\b${animal}\\b`, 'i');
+      if (regex.test(lowerText)) {
+        species = animal;
+        console.log(`[DETECTION] Found "${animal}" in page text (fallback)`);
+        break;
+      }
+    }
   }
 
   console.log(`[FINAL SPECIES]: "${species}"`);
