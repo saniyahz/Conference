@@ -247,15 +247,16 @@ function extractSceneFromText(text: string, fallbackSetting: string): string {
 
 /**
  * Extract named characters from text like "Benny the dog" or "Fufu the cat"
- * Also detects "[Name] and [Name]" patterns for friends with creative names
- * Returns string like "with Benny the dog and Fufu the cat, "
+ * Also detects group animals like "pride of lions" or "pack of wolves"
+ * Returns string like "with Benny the dog and cute cartoon lions, "
  */
 function extractNamedCharactersFromText(text: string, mainCharName: string): string {
   const found: string[] = [];
   const mainLower = mainCharName.toLowerCase();
+  const lowerText = text.toLowerCase();
 
   // Pattern 1: "[Name] the [animal]"
-  const namedAnimalPattern = /\b([A-Z][a-z]+)\s+the\s+(dog|cat|rabbit|bunny|bear|fox|owl|bird|mouse|squirrel|deer|porcupine|hedgehog|raccoon|beaver|frog|turtle|fish|penguin|lion|tiger|elephant|monkey|giraffe|zebra|hippo|koala|kangaroo|dolphin|whale|seal|otter|wolf|pig|cow|horse|sheep|goat|duck|chicken|butterfly|bee|dragon|unicorn)\b/gi;
+  const namedAnimalPattern = /\b([A-Z][a-z]+)\s+the\s+(dog|cat|rabbit|bunny|bear|fox|owl|bird|mouse|squirrel|deer|porcupine|hedgehog|raccoon|beaver|frog|turtle|fish|penguin|lion|tiger|elephant|monkey|giraffe|zebra|hippo|koala|kangaroo|dolphin|whale|seal|otter|wolf|pig|cow|horse|sheep|goat|duck|chicken|butterfly|bee|dragon|unicorn|rhino|rhinoceros)\b/gi;
 
   let match;
   while ((match = namedAnimalPattern.exec(text)) !== null) {
@@ -266,13 +267,64 @@ function extractNamedCharactersFromText(text: string, mainCharName: string): str
     found.push(`${name} the ${animal}`);
   }
 
-  // Pattern 2: "[Name] and [Name]" or "[Name], [Name] and [Name]" (friends with creative names)
-  // Common in children's stories: "Susu and Piku cheered" or "Luna, Max and Ruby played"
+  // Pattern 2: Group animals - "pride of lions", "pack of wolves", "herd of elephants"
+  const groupAnimalPatterns: [RegExp, string][] = [
+    [/pride of lions/i, 'cute cartoon lions'],
+    [/pack of wolves/i, 'cute cartoon wolves'],
+    [/herd of elephants/i, 'cute cartoon elephants'],
+    [/flock of birds/i, 'cute cartoon birds'],
+    [/school of fish/i, 'cute cartoon fish'],
+    [/pod of dolphins/i, 'cute cartoon dolphins'],
+    [/group of (lions|wolves|bears|elephants|monkeys|penguins)/i, 'cute cartoon $1'],
+  ];
+
+  for (const [pattern, replacement] of groupAnimalPatterns) {
+    if (pattern.test(lowerText)) {
+      const result = replacement.replace('$1', lowerText.match(pattern)?.[1] || '');
+      if (!found.includes(result)) found.push(result);
+    }
+  }
+
+  // Pattern 3: Direct animal mentions without names (singular or plural)
+  const animalKeywords: [string, string][] = [
+    ['lions', 'cute cartoon lions'],
+    ['lion', 'cute cartoon lion'],
+    ['wolves', 'cute cartoon wolves'],
+    ['wolf', 'cute cartoon wolf'],
+    ['bears', 'cute cartoon bears'],
+    ['bear', 'cute cartoon bear'],
+    ['dolphins', 'cute cartoon dolphins'],
+    ['dolphin', 'cute cartoon dolphin'],
+    ['elephants', 'cute cartoon elephants'],
+    ['elephant', 'cute cartoon elephant'],
+    ['monkeys', 'cute cartoon monkeys'],
+    ['monkey', 'cute cartoon monkey'],
+    ['tigers', 'cute cartoon tigers'],
+    ['tiger', 'cute cartoon tiger'],
+    ['giraffes', 'cute cartoon giraffes'],
+    ['giraffe', 'cute cartoon giraffe'],
+    ['zebras', 'cute cartoon zebras'],
+    ['zebra', 'cute cartoon zebra'],
+    ['penguins', 'cute cartoon penguins'],
+    ['penguin', 'cute cartoon penguin'],
+  ];
+
+  for (const [keyword, description] of animalKeywords) {
+    // Check if the keyword appears (but not as part of main character name)
+    if (lowerText.includes(keyword) && !mainLower.includes(keyword)) {
+      // Don't add if we already have a similar entry
+      const hasAlready = found.some(f => f.toLowerCase().includes(keyword.replace(/s$/, '')));
+      if (!hasAlready) {
+        found.push(description);
+      }
+    }
+  }
+
+  // Pattern 4: "[Name] and [Name]" or "[Name], [Name] and [Name]" (friends with creative names)
   const friendNamesPattern = /\b([A-Z][a-z]{2,})\s+and\s+([A-Z][a-z]{2,})\b/g;
   while ((match = friendNamesPattern.exec(text)) !== null) {
     const name1 = match[1];
     const name2 = match[2];
-    // Skip main character, skip common words
     const skipWords = ['the', 'and', 'but', 'his', 'her', 'they', 'them', 'this', 'that', 'with'];
     if (name1.toLowerCase() !== mainLower && !skipWords.includes(name1.toLowerCase())) {
       if (!found.some(f => f.includes(name1))) found.push(name1);
@@ -282,7 +334,7 @@ function extractNamedCharactersFromText(text: string, mainCharName: string): str
     }
   }
 
-  // Pattern 3: "his friends" or "her friends" or "three friends" - generic friends
+  // Pattern 5: "his friends" or "her friends" - only if nothing else found
   if (text.includes('friends') && found.length === 0) {
     found.push('friends');
   }
@@ -511,8 +563,8 @@ function extractObjectsFromText(text: string): string {
 
 
 /**
- * Negative prompt - excludes humans for animal stories + species-specific negatives
- * This is CRITICAL to prevent SDXL from drifting to similar animals
+ * Negative prompt - excludes humans for animal stories + species-specific negatives + scene negatives
+ * This is CRITICAL to prevent SDXL from drifting to wrong animals or scenes
  */
 export function renderNegativePrompt(card: PageSceneCard, isAnimal?: boolean, species?: string): string {
   let base = "text, watermark, logo, photorealistic, realistic, photograph, ugly, deformed, bad anatomy, bad proportions";
@@ -531,12 +583,57 @@ export function renderNegativePrompt(card: PageSceneCard, isAnimal?: boolean, sp
     }
   }
 
+  // CRITICAL: Add scene-based negatives to prevent wrong settings
+  const sceneNegatives = getSceneNegatives(card.setting);
+  if (sceneNegatives.length > 0) {
+    base += `, ${sceneNegatives.join(', ')}`;
+  }
+
   // Add scene-specific forbidden elements
   if (card.forbidden_elements && card.forbidden_elements.length > 0) {
     base += `, ${card.forbidden_elements.slice(0, 5).join(', ')}`;
   }
 
   return base;
+}
+
+/**
+ * Get negatives based on scene type - block incompatible settings
+ * If scene is SPACE/MOON, block underwater/ocean
+ * If scene is UNDERWATER, block space/moon
+ * If scene is FOREST, block underwater/space
+ */
+function getSceneNegatives(setting: string): string[] {
+  const lowerSetting = setting.toLowerCase();
+
+  // SPACE/MOON scenes - block underwater/ocean
+  if (lowerSetting.includes('space') || lowerSetting.includes('moon') ||
+      lowerSetting.includes('rocket') || lowerSetting.includes('stars') ||
+      lowerSetting.includes('planet') || lowerSetting.includes('crater') ||
+      lowerSetting.includes('galaxy') || lowerSetting.includes('cosmos')) {
+    return ['underwater', 'ocean', 'sea', 'fish', 'coral', 'seaweed', 'aquarium', 'water', 'swimming'];
+  }
+
+  // UNDERWATER/OCEAN scenes - block space/land
+  if (lowerSetting.includes('underwater') || lowerSetting.includes('ocean') ||
+      lowerSetting.includes('sea') || lowerSetting.includes('coral')) {
+    return ['space', 'moon', 'rocket', 'stars', 'planet', 'crater'];
+  }
+
+  // FOREST/LAND scenes - block underwater
+  if (lowerSetting.includes('forest') || lowerSetting.includes('meadow') ||
+      lowerSetting.includes('savanna') || lowerSetting.includes('jungle') ||
+      lowerSetting.includes('garden') || lowerSetting.includes('field')) {
+    return ['underwater', 'ocean', 'sea', 'fish', 'coral', 'seaweed', 'aquarium'];
+  }
+
+  // INDOOR/COCKPIT scenes - block outdoor nature
+  if (lowerSetting.includes('cockpit') || lowerSetting.includes('inside rocket') ||
+      lowerSetting.includes('interior') || lowerSetting.includes('room')) {
+    return ['underwater', 'ocean', 'sea', 'fish', 'outdoor wilderness'];
+  }
+
+  return [];
 }
 
 /**
