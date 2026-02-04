@@ -230,7 +230,8 @@ CRITICAL: Every page must end with a COMPLETE sentence. Never cut off mid-senten
       const lowerPrompt = prompt.toLowerCase()
 
       // Try to find "Name the Animal" pattern in story text first
-      const nameTheAnimalMatch = firstPageText.match(/\b([A-Z][a-z]+)\s+the\s+(Porcupine|Cat|Dog|Elephant|Rabbit|Bear|Fox|Lion|Tiger|Mouse|Squirrel|Deer|Owl|Bird|Penguin|Monkey|Giraffe|Zebra|Hippo|Koala|Kangaroo|Dolphin|Whale|Seal|Otter|Wolf|Pig|Cow|Horse|Sheep|Goat|Duck|Chicken|Butterfly|Bee|Dragon|Unicorn|Frog|Turtle|Fish|Hedgehog|Raccoon|Beaver|Panda|Hamster|Guinea Pig|Parrot|Snake|Lizard)\b/i)
+      // Also handle "Name was a [animal]" pattern
+      const nameTheAnimalMatch = firstPageText.match(/\b([A-Z][a-z]+)\s+(?:the|was a|is a)\s+(Rhinoceros|Rhino|Porcupine|Cat|Dog|Elephant|Rabbit|Bear|Fox|Lion|Tiger|Mouse|Squirrel|Deer|Owl|Bird|Penguin|Monkey|Giraffe|Zebra|Hippo|Hippopotamus|Koala|Kangaroo|Dolphin|Whale|Seal|Otter|Wolf|Pig|Cow|Horse|Sheep|Goat|Duck|Chicken|Butterfly|Bee|Dragon|Unicorn|Frog|Turtle|Fish|Hedgehog|Raccoon|Beaver|Panda|Hamster|Guinea Pig|Parrot|Snake|Lizard)\b/i)
 
       if (nameTheAnimalMatch) {
         const charName = nameTheAnimalMatch[1]

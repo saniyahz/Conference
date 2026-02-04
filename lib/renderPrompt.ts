@@ -27,9 +27,12 @@ export function renderPrompt(bible: CharacterBible, card: PageSceneCard, pageTex
 
   if (bible.character_type === 'animal' && species !== 'animal' && !bible.is_human) {
     // ANIMAL CHARACTER - Use AnimalAppearance fields (NO human attributes!)
+    // CRITICAL: Repeat species 3+ times in prompt for SDXL to lock onto it
     const animalAppearance = bible.appearance as AnimalAppearance;
     const bodyDesc = buildAnimalDescription(animalAppearance, species);
-    prompt = `A cute cartoon ${species}, ${bodyDesc}, ${charName} the adorable ${species}, ${action}, ${scene}. ${supporting}Pixar Disney 3D animation style, soft lighting, vibrant colors, children's book illustration.`;
+
+    // SDXL needs HEAVY species repetition to maintain character
+    prompt = `${species} ${species} ${species}, A cute cartoon ${species} character, ${bodyDesc}, ${charName} the ${species}, the same ${species} as before, ${action}, ${scene}. ${supporting}Pixar Disney 3D animation style, soft lighting, vibrant colors, children's book illustration, ${species} character.`;
   } else {
     // HUMAN CHARACTER - Use HumanAppearance fields
     const humanAppearance = bible.appearance as HumanAppearance;
