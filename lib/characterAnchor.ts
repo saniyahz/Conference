@@ -163,45 +163,66 @@ export async function generateCharacterAnchor(
 
   for (let attempt = 1; attempt <= maxRetries; attempt++) {
     try {
-      console.log(`[ANCHOR] Calling replicate.run... (attempt ${attempt}/${maxRetries})`);
-      const output = await replicate.run(
-        "stability-ai/sdxl:39ed52f2a78e934b3ba6e2a89f5b1c712de7dfea535525255b1aa35c5565e08b",
-        {
-          input: {
-            prompt,
-            negative_prompt: negativePrompt,
-            width: 1024,
-            height: 1024,
-            num_outputs: 1,
-            scheduler: "K_EULER",
-            num_inference_steps: 30,  // Higher quality for anchor
-            guidance_scale: 9,        // Strong prompt following
-            seed,
-          }
+      console.log(`[ANCHOR] Creating prediction... (attempt ${attempt}/${maxRetries})`);
+
+      // Use predictions API directly for better visibility
+      const prediction = await replicate.predictions.create({
+        version: "39ed52f2a78e934b3ba6e2a89f5b1c712de7dfea535525255b1aa35c5565e08b",
+        input: {
+          prompt,
+          negative_prompt: negativePrompt,
+          width: 1024,
+          height: 1024,
+          num_outputs: 1,
+          scheduler: "K_EULER",
+          num_inference_steps: 30,
+          guidance_scale: 9,
+          seed,
         }
-      );
+      });
+
+      console.log('[ANCHOR] Prediction created:', prediction.id);
+      console.log('[ANCHOR] Initial status:', prediction.status);
+
+      // Poll for completion
+      let completedPrediction = prediction;
+      let pollCount = 0;
+      const maxPolls = 60; // 60 * 2s = 2 minutes max
+
+      while (completedPrediction.status !== 'succeeded' && completedPrediction.status !== 'failed' && completedPrediction.status !== 'canceled') {
+        pollCount++;
+        if (pollCount > maxPolls) {
+          throw new Error('Prediction timed out after 2 minutes');
+        }
+        console.log(`[ANCHOR] Polling... (${pollCount}/${maxPolls}) status: ${completedPrediction.status}`);
+        await new Promise(resolve => setTimeout(resolve, 2000)); // 2 second poll interval
+        completedPrediction = await replicate.predictions.get(prediction.id);
+      }
+
+      console.log('[ANCHOR] Final status:', completedPrediction.status);
+      console.log('[ANCHOR] Prediction error:', completedPrediction.error);
+      console.log('[ANCHOR] Prediction logs:', completedPrediction.logs?.substring(0, 500));
+
+      if (completedPrediction.status === 'failed') {
+        throw new Error(`Prediction failed: ${completedPrediction.error || 'Unknown error'}`);
+      }
+
+      if (completedPrediction.status === 'canceled') {
+        throw new Error('Prediction was canceled');
+      }
+
+      const output = completedPrediction.output;
 
       // DIAGNOSTIC: Log raw output with full detail
       console.log('[ANCHOR] raw output type:', typeof output);
       console.log('[ANCHOR] raw output isArray:', Array.isArray(output));
+      console.log('[ANCHOR] raw output:', JSON.stringify(output).substring(0, 1000));
 
       // Log more details about the output
       if (Array.isArray(output) && output.length > 0) {
         const first = output[0];
         console.log('[ANCHOR] first element type:', typeof first);
-        console.log('[ANCHOR] first element constructor:', first?.constructor?.name);
-        console.log('[ANCHOR] first element keys:', first ? Object.keys(first) : 'N/A');
-        console.log('[ANCHOR] first element String():', String(first).substring(0, 200));
-        // Check for Symbol.toStringTag
-        if (first && typeof first === 'object') {
-          console.log('[ANCHOR] first element prototype:', Object.getPrototypeOf(first)?.constructor?.name);
-        }
-      }
-
-      try {
-        console.log('[ANCHOR] raw output JSON:', JSON.stringify(output).substring(0, 1000));
-      } catch (e) {
-        console.log('[ANCHOR] raw output (not serializable):', output);
+        console.log('[ANCHOR] first element value:', String(first).substring(0, 200));
       }
 
       // Use robust URL extraction
