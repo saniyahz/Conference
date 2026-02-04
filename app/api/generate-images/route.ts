@@ -8,6 +8,12 @@ const replicate = new Replicate({
 // Helper function to sleep/delay
 const sleep = (ms: number) => new Promise(resolve => setTimeout(resolve, ms))
 
+// Rate limit configuration
+// Replicate free tier: 6 requests per minute = 10 seconds between requests minimum
+const BASE_DELAY_BETWEEN_IMAGES = 10000 // 10 seconds to stay under rate limit
+const RATE_LIMIT_INITIAL_WAIT = 15000 // 15 seconds on first rate limit
+const RATE_LIMIT_MAX_WAIT = 60000 // 60 seconds max wait
+
 // Helper function to generate a single image with retry logic
 async function generateImageWithRetry(
   replicate: Replicate,
@@ -16,8 +22,10 @@ async function generateImageWithRetry(
   imageIndex: number,
   imagePromptsLength: number,
   seed: number,
-  maxRetries = 2
+  maxRetries = 4 // Increased retries for rate limiting
 ): Promise<string> {
+  let rateLimitWait = RATE_LIMIT_INITIAL_WAIT
+
   for (let attempt = 1; attempt <= maxRetries; attempt++) {
     try {
           // Use the prompt as-is - it's already structured properly
@@ -102,23 +110,28 @@ async function generateImageWithRetry(
           return ''
         }
       } catch (error: any) {
-        const is429 = error.message?.includes('429') || error.message?.includes('Too Many Requests')
-        const isRateLimit = error.message?.includes('rate limit') || is429
+        const errorMessage = error.message || String(error)
+        const is429 = errorMessage.includes('429') || errorMessage.includes('Too Many Requests')
+        const isRateLimit = errorMessage.includes('rate limit') || is429
+
+        console.log(`Image ${imageIndex + 1} attempt ${attempt} failed: ${errorMessage.substring(0, 100)}`)
 
         if (isRateLimit && attempt < maxRetries) {
-          // Wait for rate limits
-          const waitTime = attempt === 1 ? 5000 : 10000
-          console.log(`Rate limited, waiting ${waitTime}ms before retry...`)
-          await sleep(waitTime)
+          // Exponential backoff for rate limits
+          console.log(`Rate limited, waiting ${rateLimitWait}ms before retry...`)
+          await sleep(rateLimitWait)
+          // Increase wait time for next potential rate limit (exponential backoff)
+          rateLimitWait = Math.min(rateLimitWait * 1.5, RATE_LIMIT_MAX_WAIT)
           continue
         } else if (attempt < maxRetries) {
-          // For other errors, quick retry
-          console.log(`Error on attempt ${attempt}, retrying in 3s...`)
-          await sleep(3000)
+          // For other errors, quick retry with small backoff
+          const waitTime = 3000 * attempt
+          console.log(`Error on attempt ${attempt}, retrying in ${waitTime}ms...`)
+          await sleep(waitTime)
           continue
         } else {
           // Max retries reached
-          console.log(`Max retries reached for image ${imageIndex + 1}`)
+          console.log(`Max retries (${maxRetries}) reached for image ${imageIndex + 1}`)
           return ''
         }
       }
@@ -176,9 +189,10 @@ export async function POST(request: NextRequest) {
         imageUrls.push('') // Push empty string for failed images
       }
 
-      // Short delay between images
+      // Delay between images to avoid rate limiting (6 requests/minute limit)
       if (i < imagePrompts.length - 1) {
-        await sleep(1000)
+        console.log(`Waiting ${BASE_DELAY_BETWEEN_IMAGES / 1000}s before next image...`)
+        await sleep(BASE_DELAY_BETWEEN_IMAGES)
       }
     }
 
