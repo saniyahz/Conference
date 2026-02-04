@@ -184,7 +184,42 @@ CRITICAL: Every page must end with a COMPLETE sentence. Never cut off mid-senten
       const lowerPrompt = prompt.toLowerCase()
 
       // Try to find "Name the Animal" pattern in story text first
-      const nameTheAnimalMatch = firstPageText.match(/\b([A-Z][a-z]+)\s+the\s+(Porcupine|Cat|Dog|Elephant|Rabbit|Bear|Fox|Lion|Tiger|Mouse|Squirrel|Deer|Owl|Bird|Penguin|Monkey|Giraffe|Zebra|Hippo|Koala|Kangaroo|Dolphin|Whale|Seal|Otter|Wolf|Pig|Cow|Horse|Sheep|Goat|Duck|Chicken|Butterfly|Bee|Dragon|Unicorn|Frog|Turtle|Fish|Hedgehog|Raccoon|Beaver|Panda|Hamster|Guinea Pig|Parrot|Snake|Lizard)\b/i)
+      // EXPANDED list to include ALL common animals
+      const animalPatternList = [
+        // African Savanna
+        'Rhinoceros', 'Rhino', 'Elephant', 'Giraffe', 'Zebra', 'Lion', 'Hippo', 'Hippopotamus',
+        'Cheetah', 'Leopard', 'Gazelle', 'Antelope', 'Hyena', 'Meerkat', 'Warthog', 'Ostrich',
+        // Pets & Domestic
+        'Dog', 'Puppy', 'Cat', 'Kitten', 'Rabbit', 'Bunny', 'Hamster', 'Guinea Pig', 'Parrot',
+        'Goldfish', 'Turtle', 'Tortoise', 'Snake', 'Lizard', 'Gecko', 'Ferret',
+        // Farm Animals
+        'Horse', 'Pony', 'Donkey', 'Cow', 'Bull', 'Pig', 'Piglet', 'Sheep', 'Lamb', 'Goat',
+        'Chicken', 'Hen', 'Rooster', 'Duck', 'Duckling', 'Goose', 'Turkey', 'Llama', 'Alpaca',
+        // Forest & Woodland
+        'Fox', 'Wolf', 'Bear', 'Deer', 'Fawn', 'Elk', 'Moose', 'Squirrel', 'Chipmunk',
+        'Raccoon', 'Skunk', 'Badger', 'Beaver', 'Porcupine', 'Hedgehog', 'Mouse', 'Rat', 'Owl',
+        // Jungle & Tropical
+        'Tiger', 'Jaguar', 'Monkey', 'Gorilla', 'Chimpanzee', 'Orangutan', 'Sloth', 'Toucan',
+        // Australian
+        'Kangaroo', 'Koala', 'Wombat', 'Platypus', 'Dingo', 'Emu',
+        // Arctic & Polar
+        'Polar Bear', 'Penguin', 'Seal', 'Walrus', 'Arctic Fox', 'Whale', 'Orca',
+        // Ocean & Marine
+        'Dolphin', 'Shark', 'Octopus', 'Jellyfish', 'Seahorse', 'Crab', 'Lobster', 'Fish',
+        'Clownfish', 'Starfish', 'Sea Turtle', 'Manatee', 'Otter',
+        // Birds
+        'Eagle', 'Hawk', 'Falcon', 'Crow', 'Raven', 'Robin', 'Sparrow', 'Hummingbird',
+        'Woodpecker', 'Pelican', 'Flamingo', 'Swan', 'Peacock', 'Pigeon', 'Dove',
+        // Reptiles & Amphibians
+        'Frog', 'Toad', 'Salamander', 'Crocodile', 'Alligator', 'Chameleon', 'Iguana',
+        // Insects
+        'Butterfly', 'Bee', 'Ladybug', 'Dragonfly', 'Caterpillar', 'Ant', 'Grasshopper',
+        // Mythical
+        'Dragon', 'Unicorn', 'Phoenix', 'Griffin', 'Pegasus',
+        // Other
+        'Panda', 'Red Panda', 'Bat', 'Bird'
+      ].join('|')
+      const nameTheAnimalMatch = firstPageText.match(new RegExp(`\\b([A-Z][a-z]+)\\s+(?:the|was a|is a)\\s+(${animalPatternList})\\b`, 'i'))
 
       if (nameTheAnimalMatch) {
         const charName = nameTheAnimalMatch[1]

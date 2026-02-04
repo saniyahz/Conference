@@ -3,499 +3,440 @@ import { CharacterBible, PageSceneCard } from "./visual-types";
 /**
  * ENHANCED PROMPT RENDERER FOR STORYBOOK IMAGES
  *
- * Key improvements:
- * 1. Scene-specific prompts that capture the story moment
- * 2. Better SDXL optimization with composition and lighting
- * 3. Character-first approach (species in first 20 tokens)
- * 4. Emotional context from page text
- * 5. Dynamic scene composition based on action
+ * KEY FIX: SDXL needs species EXTREMELY strongly emphasized
+ * - Species name must appear 3-4 times in first 50 tokens
+ * - Animal-specific features (horn, trunk, stripes) must be included
+ * - Page text must be analyzed for specific elements (aliens, objects, etc.)
  */
 
+// Animal-specific visual features for accurate generation
+const ANIMAL_FEATURES: Record<string, string> = {
+  // African Savanna
+  'rhinoceros': 'grey rough skin, large horn on nose, thick body, small ears, powerful legs',
+  'rhino': 'grey rough skin, large horn on nose, thick body, small ears, powerful legs',
+  'elephant': 'grey wrinkled skin, long trunk, big floppy ears, tusks, thick legs',
+  'giraffe': 'long neck, spotted pattern, small horns, long legs, brown and yellow patches',
+  'zebra': 'black and white stripes, horse-like body, mane, long face',
+  'lion': 'golden fur, fluffy mane around face, powerful body, long tail with tuft',
+  'hippo': 'grey pink skin, wide mouth, barrel body, small ears, stubby legs',
+
+  // Pets & Common
+  'dog': 'fluffy fur, wagging tail, floppy ears, wet nose, friendly face',
+  'puppy': 'fluffy soft fur, small body, big eyes, floppy ears, wagging tail',
+  'cat': 'soft fur, pointed ears, whiskers, long tail, cute paws',
+  'kitten': 'fluffy soft fur, small body, big eyes, tiny paws, whiskers',
+  'rabbit': 'fluffy fur, long floppy ears, cotton tail, pink nose, soft paws',
+  'bunny': 'fluffy fur, long floppy ears, cotton tail, pink nose, soft paws',
+  'hamster': 'fluffy round body, tiny ears, chubby cheeks, small paws, short tail',
+
+  // Forest & Woodland
+  'fox': 'orange red fur, fluffy tail, pointed ears, white chest, black paws',
+  'bear': 'thick fluffy fur, round ears, big paws, strong body, cute face',
+  'deer': 'brown fur, white spots, long legs, big gentle eyes, small tail',
+  'owl': 'feathered body, big round eyes, beak, wings, fluffy face',
+  'squirrel': 'fluffy bushy tail, small ears, tiny paws, brown fur, cute face',
+  'raccoon': 'grey fur, black mask around eyes, striped tail, small paws',
+  'hedgehog': 'spiky back, soft belly, small face, tiny paws, button nose',
+  'porcupine': 'spiky quills on back, round body, small face, tiny paws',
+  'beaver': 'brown fur, flat paddle tail, big front teeth, webbed feet',
+  'wolf': 'grey fur, pointed ears, bushy tail, yellow eyes, strong body',
+
+  // Farm Animals
+  'pig': 'pink skin, curly tail, snout nose, floppy ears, round body',
+  'cow': 'spotted body, horns, udder, big gentle eyes, long tail',
+  'horse': 'long mane, strong body, long tail, hooves, long face',
+  'sheep': 'fluffy wool coat, soft face, small ears, hooves',
+  'goat': 'short fur, small horns, beard, rectangular pupils, hooves',
+  'chicken': 'feathers, red comb on head, beak, wings, yellow legs',
+  'duck': 'feathers, orange beak, webbed feet, wings, round body',
+
+  // Jungle & Tropical
+  'monkey': 'brown fur, long tail, human-like hands, expressive face, big ears',
+  'tiger': 'orange fur with black stripes, powerful body, long tail, whiskers',
+  'leopard': 'spotted golden fur, sleek body, long tail, whiskers',
+  'sloth': 'shaggy fur, long arms, slow moving, peaceful face, curved claws',
+  'toucan': 'large colorful beak, black feathers, white chest, bright eyes',
+  'parrot': 'colorful feathers, curved beak, wings, long tail feathers',
+
+  // Ocean & Marine
+  'dolphin': 'smooth grey skin, curved dorsal fin, smiling mouth, flippers',
+  'whale': 'huge body, smooth skin, tail flukes, water spout, gentle eyes',
+  'octopus': 'eight tentacles with suckers, round head, big eyes, soft body',
+  'fish': 'scales, fins, tail, gills, round eyes',
+  'shark': 'grey skin, dorsal fin, sharp teeth, streamlined body, powerful tail',
+  'turtle': 'shell on back, flippers, small head, gentle eyes, scaly skin',
+  'seahorse': 'curled tail, horse-like head, small fins, bumpy body',
+  'crab': 'hard shell, big claws, eight legs, stalked eyes',
+  'jellyfish': 'translucent bell body, long flowing tentacles, graceful movement',
+
+  // Birds
+  'penguin': 'black and white feathers, orange beak, flippers, waddle feet',
+  'eagle': 'brown feathers, hooked beak, powerful wings, sharp talons',
+  'swan': 'white feathers, long curved neck, orange beak, graceful',
+  'flamingo': 'pink feathers, long curved neck, long thin legs, hooked beak',
+
+  // Arctic & Polar
+  'polar bear': 'white thick fur, black nose, powerful body, big paws',
+  'arctic fox': 'white fluffy fur, small ears, bushy tail, cute face',
+  'walrus': 'brown wrinkled skin, long tusks, whiskers, flippers',
+  'seal': 'smooth grey fur, flippers, whiskers, big dark eyes',
+
+  // Australian
+  'kangaroo': 'brown fur, long tail, big back legs, pouch, upright posture',
+  'koala': 'grey fluffy fur, big round ears, black nose, eucalyptus eater',
+  'platypus': 'brown fur, duck bill, beaver tail, webbed feet',
+  'wombat': 'brown fur, short legs, round body, small ears',
+
+  // Mythical
+  'dragon': 'scales, wings, long tail, horns, fire breathing, powerful',
+  'unicorn': 'white coat, rainbow mane, magical horn on forehead, sparkles',
+  'phoenix': 'golden red feathers, flaming wings, majestic, glowing',
+
+  // Insects
+  'butterfly': 'colorful patterned wings, antennae, small body, graceful',
+  'bee': 'fuzzy yellow and black body, wings, antennae, holding flower',
+  'ladybug': 'red shell with black spots, small legs, antennae, round',
+  'caterpillar': 'long segmented body, many tiny legs, fuzzy, colorful',
+  'dragonfly': 'long body, four transparent wings, big eyes, hovering',
+
+  // Reptiles & Amphibians
+  'frog': 'green smooth skin, big bulging eyes, long legs, webbed feet',
+  'snake': 'long scaled body, forked tongue, no legs, patterns on skin',
+  'lizard': 'scaly skin, four legs, long tail, small head',
+  'crocodile': 'green scaly skin, long snout, sharp teeth, powerful tail',
+
+  // Other
+  'panda': 'black and white fur, round body, black eye patches, eating bamboo',
+  'bat': 'wings, furry body, big ears, small eyes, hanging upside down',
+  'mouse': 'small grey body, big round ears, long thin tail, whiskers',
+  'rat': 'grey fur, long tail, pointed nose, small ears, whiskers',
+};
+
 export function renderPrompt(bible: CharacterBible, card: PageSceneCard, pageText?: string): string {
-  const text = pageText || '';
-  const lowerText = text.toLowerCase();
+  const text = pageText?.toLowerCase() || '';
+  const isAnimal = bible.character_type === 'animal';
+  const species = bible.species || 'animal';
+  const name = bible.name;
 
-  // 1. CHARACTER DESCRIPTION (FIRST - most important for SDXL)
-  const characterDesc = buildCharacterDescription(bible);
+  // 1. CHARACTER DESCRIPTION - Species FIRST and REPEATED for SDXL
+  const characterDesc = buildStrongCharacterDescription(bible, isAnimal, species, name);
 
-  // 2. SCENE & ACTION - Extract what's happening in this specific page
-  const sceneAction = extractSceneAndAction(lowerText, card, bible.name);
+  // 2. PAGE-SPECIFIC ACTION & ELEMENTS - Extract from actual page text
+  const pageAction = extractPageSpecificAction(text, name, species);
 
-  // 3. ENVIRONMENT & SETTING - Detailed background
-  const environment = buildEnvironment(lowerText, card.setting);
+  // 3. PAGE-SPECIFIC ELEMENTS - Aliens, objects, etc. from story text
+  const pageElements = extractPageElements(text);
 
-  // 4. MOOD & ATMOSPHERE - Emotional context
-  const mood = extractMood(lowerText);
+  // 4. ENVIRONMENT - Based on page text
+  const environment = buildEnvironment(text, card.setting);
 
-  // 5. SUPPORTING ELEMENTS - Other characters, objects
-  const supporting = extractSupportingElements(lowerText, bible.name);
+  // 5. MOOD
+  const mood = extractMood(text);
 
-  // 6. VISUAL STYLE - Consistent across all pages
-  const style = "Pixar Disney 3D animation style, soft volumetric lighting, vibrant saturated colors, children's picture book illustration, highly detailed, 8k quality";
+  // 6. ART STYLE - Consistent children's book style
+  const style = "Pixar Disney 3D animation style, soft volumetric lighting, vibrant saturated colors, children's picture book illustration, highly detailed, professional quality";
 
-  // BUILD THE FINAL PROMPT
-  // Structure: [Character] [Action] [Environment] [Supporting] [Mood] [Style]
-  const prompt = `${characterDesc}, ${sceneAction}, ${environment}. ${supporting}${mood} ${style}`;
+  // BUILD FINAL PROMPT
+  let prompt = `${characterDesc}, ${pageAction}, ${environment}`;
 
-  console.log(`[PROMPT] Page ${card.page_number}: ${prompt.substring(0, 200)}...`);
+  // Add page-specific elements if found
+  if (pageElements) {
+    prompt += `. ${pageElements}`;
+  }
+
+  prompt += `. ${mood} ${style}`;
+
+  console.log(`[PROMPT] Page ${card.page_number}: ${prompt.substring(0, 300)}...`);
   return prompt;
 }
 
 /**
- * Build character description - SPECIES FIRST for SDXL token attention
+ * Build STRONG character description with species repeated multiple times
  */
-function buildCharacterDescription(bible: CharacterBible): string {
-  const species = bible.species || 'animal';
-  const name = bible.name;
-  const furColor = bible.appearance?.skin_tone || 'soft';
-  const eyes = bible.appearance?.eyes || 'big expressive eyes';
+function buildStrongCharacterDescription(bible: CharacterBible, isAnimal: boolean, species: string, name: string): string {
+  if (isAnimal && species !== 'animal') {
+    // Get animal-specific features
+    const features = ANIMAL_FEATURES[species.toLowerCase()] || 'soft fur, expressive face, cute features';
 
-  if (bible.character_type === 'animal' && species !== 'animal') {
-    // Animal character - species first, then details
-    return `A cute cartoon ${species} character with ${furColor}, ${eyes}, ${name} the adorable ${species}`;
+    // CRITICAL: Repeat species name multiple times for SDXL to understand
+    // Format: "A [species], cute cartoon [species] character, [name] the [species], with [features]"
+    return `A ${species}, cute cartoon ${species} character, ${name} the adorable ${species}, anthropomorphic ${species} with ${features}, big expressive cartoon eyes`;
   } else if (bible.character_type === 'human') {
-    // Human child character
+    const skinTone = bible.appearance?.skin_tone || 'warm skin';
     const hair = bible.appearance?.hair || 'soft hair';
-    return `A cute cartoon child with ${furColor} skin and ${hair}, ${eyes}, ${name}`;
+    return `A cute cartoon child, ${name} the young child, with ${skinTone} and ${hair}, big expressive cartoon eyes, friendly smile`;
   } else {
-    // Generic/creature
-    return `A cute cartoon ${species} character named ${name} with ${eyes}`;
+    return `A cute cartoon character named ${name}, with big expressive eyes and friendly expression`;
   }
 }
 
 /**
- * Extract scene and action - What is happening in this specific page
+ * Extract action specifically from the page text
  */
-function extractSceneAndAction(text: string, card: PageSceneCard, charName: string): string {
-  // SPACE/ROCKET scenes - very specific for SDXL
-  if (text.includes('blasted off') || text.includes('blast off') || text.includes('launched')) {
-    return `sitting excitedly in rocket ship cockpit, pressing colorful glowing buttons, looking out big window at stars, thrilled expression`;
+function extractPageSpecificAction(text: string, charName: string, species: string): string {
+  // SPACE ACTIONS
+  if (text.includes('stumbled upon') && text.includes('rocket')) {
+    return `discovering a shiny rocket ship with amazed expression, eyes sparkling with excitement, reaching toward the rocket`;
+  }
+  if (text.includes('climbed aboard') || text.includes('put on') && text.includes('spacesuit')) {
+    return `wearing a colorful spacesuit and helmet, climbing into rocket ship cockpit, excited expression`;
+  }
+  if (text.includes('blasted off') || text.includes('roar of engines') || text.includes('soared into')) {
+    return `inside rocket ship cockpit, pressing buttons, looking out window at stars, thrilled expression`;
+  }
+  if (text.includes('traveled through the stars') || text.includes('earth get smaller')) {
+    return `looking out rocket ship window in wonder, watching stars and planets pass by, amazed expression`;
+  }
+  if (text.includes('landed') && text.includes('moon')) {
+    return `stepping out onto moon surface, looking around at grey dusty ground, curious excited expression`;
+  }
+  if (text.includes('stepped out onto') || text.includes('dusty') && text.includes('ground')) {
+    return `standing on grey moon surface near landed rocket, looking around with wonder, space helmet on`;
+  }
+  if (text.includes('aliens') || text.includes('alien')) {
+    return `meeting friendly cartoon aliens, surprised but happy expression, waving hello`;
+  }
+  if (text.includes('crater') && (text.includes('explored') || text.includes('exploring'))) {
+    return `exploring moon craters, bouncing in low gravity, delighted curious expression`;
+  }
+  if (text.includes('flew') && text.includes('around')) {
+    return `flying in rocket ship with new friends, looking out window joyfully`;
+  }
+  if (text.includes('waved goodbye') || text.includes('said goodbye')) {
+    return `waving goodbye to alien friends, happy but slightly sad, warm smile`;
+  }
+  if (text.includes('headed home') || text.includes('back to earth')) {
+    return `in rocket ship heading home, looking back at moon through window, peaceful happy expression`;
+  }
+  if (text.includes('landed safely') || text.includes('back in the savannah')) {
+    return `standing next to landed rocket, back home, happy satisfied expression`;
+  }
+  if (text.includes('couldn\'t wait') && text.includes('next adventure')) {
+    return `looking up at night sky full of stars, dreaming of more adventures, hopeful excited expression`;
   }
 
-  if (text.includes('soared over') || text.includes('flew over') || text.includes('flying over')) {
-    if (text.includes('crater') || text.includes('moon')) {
-      return `looking out rocket ship window in wonder, grey moon craters visible below, stars twinkling outside, amazed joyful expression`;
-    }
-    return `looking out rocket ship window at the view below, excited curious expression, hands on window`;
+  // EMOTION-BASED ACTIONS
+  if (text.includes('sparkled with excitement') || text.includes('eyes sparkled')) {
+    return `eyes sparkling with pure excitement, huge smile, bouncing with anticipation`;
+  }
+  if (text.includes('surprised but happy') || text.includes('surprised')) {
+    return `looking surprised with wide eyes and open mouth, then breaking into happy smile`;
+  }
+  if (text.includes('laughed') || text.includes('laughing')) {
+    return `laughing joyfully, head tilted back, pure happiness`;
+  }
+  if (text.includes('hugged') || text.includes('hugging')) {
+    return `hugging warmly, eyes closed with content smile`;
+  }
+  if (text.includes('proud') || text.includes('brave')) {
+    return `standing tall and proud, confident happy expression`;
   }
 
-  if (text.includes('landed safely') || text.includes('safe landing') || text.includes('touched down')) {
-    return `celebrating with arms raised in joy, standing next to landed rocket ship, triumphant happy expression`;
+  // DISCOVERY ACTIONS
+  if (text.includes('discovered') || text.includes('found')) {
+    return `discovering something amazing, wide excited eyes, pointing`;
+  }
+  if (text.includes('exploring') || text.includes('explore')) {
+    return `exploring with curious expression, looking around in wonder`;
+  }
+  if (text.includes('looking around') || text.includes('looked around')) {
+    return `looking around curiously, taking in all the sights`;
   }
 
-  if (text.includes('climbed inside') || text.includes('got inside') || text.includes('stepped into')) {
-    return `climbing into colorful rocket ship with eager expression, one foot on ladder, looking back with excitement`;
+  // MOVEMENT ACTIONS
+  if (text.includes('bouncing') || text.includes('bounced')) {
+    return `bouncing happily, weightless and joyful`;
   }
-
-  if (text.includes('exploring') && (text.includes('moon') || text.includes('crater'))) {
-    return `walking on bumpy moon surface with curious expression, looking at craters, space helmet on, discovering`;
+  if (text.includes('flying') || text.includes('flew')) {
+    return `flying through the air, arms spread wide, exhilarated`;
   }
-
-  if (text.includes('walked on the moon') || text.includes('stepped on the moon') || text.includes('bouncing')) {
-    return `bouncing happily on moon surface, low gravity floating slightly, delighted expression, arms out for balance`;
-  }
-
-  if (text.includes('looking at') && (text.includes('earth') || text.includes('stars') || text.includes('planet'))) {
-    return `gazing up in wonder at the starry sky, awe-struck expression, pointing at something amazing`;
-  }
-
-  // EMOTION-based actions
-  if (text.includes('said goodbye') || text.includes('waved goodbye') || text.includes('waving')) {
-    return `waving goodbye with happy but slightly sad expression, warm smile, hand raised`;
-  }
-
-  if (text.includes('hugged') || text.includes('hugging') || text.includes('embrace')) {
-    return `hugging warmly with closed eyes and big smile, heartwarming moment, showing affection`;
-  }
-
-  if (text.includes('cheered') || text.includes('celebrated') || text.includes('hooray')) {
-    return `cheering with both arms up, huge joyful smile, jumping slightly, celebrating`;
-  }
-
-  if (text.includes('laughed') || text.includes('giggled') || text.includes('laughing')) {
-    return `laughing joyfully with eyes crinkled, head tilted back slightly, pure happiness`;
-  }
-
-  if (text.includes('smiled') || text.includes('happy')) {
-    return `smiling warmly with sparkling eyes, content happy expression`;
-  }
-
-  if (text.includes('scared') || text.includes('frightened') || text.includes('afraid')) {
-    return `looking slightly nervous but brave, wide eyes, determined expression despite fear`;
-  }
-
-  if (text.includes('surprised') || text.includes('amazed') || text.includes('gasped')) {
-    return `looking surprised with wide eyes and open mouth, hands on cheeks, delighted amazement`;
-  }
-
-  if (text.includes('thinking') || text.includes('wondered') || text.includes('curious')) {
-    return `looking thoughtful with finger on chin, curious tilted head, wondering expression`;
-  }
-
-  if (text.includes('sleeping') || text.includes('dreaming') || text.includes('asleep')) {
-    return `sleeping peacefully with gentle smile, eyes closed, cozy and content`;
-  }
-
-  // MOVEMENT-based actions
   if (text.includes('running') || text.includes('ran')) {
-    return `running with joyful energy, legs in motion, happy determined expression`;
+    return `running with joyful energy, happy expression`;
+  }
+  if (text.includes('walking') || text.includes('walked')) {
+    return `walking with curious purpose, looking around`;
   }
 
-  if (text.includes('flying') || text.includes('soaring')) {
-    return `flying through the air with arms spread wide, wind in fur/hair, exhilarated expression`;
+  // Default based on text content
+  if (text.includes('happy') || text.includes('joy')) {
+    return `looking happy and content, warm friendly smile`;
   }
 
-  if (text.includes('swimming') || text.includes('dove into') || text.includes('underwater')) {
-    return `swimming gracefully underwater, bubbles around, eyes open and curious`;
-  }
-
-  if (text.includes('climbing') || text.includes('climbed')) {
-    return `climbing with determination, focused expression, reaching upward`;
-  }
-
-  if (text.includes('jumping') || text.includes('leaped') || text.includes('bounced')) {
-    return `jumping high with joy, legs tucked, thrilled expression`;
-  }
-
-  if (text.includes('dancing') || text.includes('danced')) {
-    return `dancing happily with graceful movement, joyful expression, one leg lifted`;
-  }
-
-  if (text.includes('playing') || text.includes('played')) {
-    return `playing happily with cheerful expression, active and engaged`;
-  }
-
-  // DISCOVERY/ADVENTURE actions
-  if (text.includes('discovered') || text.includes('found') || text.includes('saw')) {
-    return `discovering something amazing with wide excited eyes, pointing, joyful surprise`;
-  }
-
-  if (text.includes('exploring') || text.includes('adventure')) {
-    return `exploring with curious expression, looking around in wonder, eager to discover`;
-  }
-
-  if (text.includes('searching') || text.includes('looking for')) {
-    return `searching carefully with focused expression, peering around, determined`;
-  }
-
-  // INTERACTION actions
-  if (text.includes('helped') || text.includes('helping')) {
-    return `helping kindly with warm caring expression, reaching out`;
-  }
-
-  if (text.includes('shared') || text.includes('gave')) {
-    return `sharing generously with happy kind expression, offering something`;
-  }
-
-  if (text.includes('met') || text.includes('meeting') || text.includes('new friend')) {
-    return `meeting a new friend with curious friendly expression, waving hello`;
-  }
-
-  // BEGINNING/ENDING scenes
-  if (text.includes('once upon') || text.includes('lived in') || text.includes('there was')) {
-    return `standing proudly in their home environment, friendly welcoming expression, introducing themselves`;
-  }
-
-  if (text.includes('the end') || text.includes('happily ever') || text.includes('and so')) {
-    return `looking content and happy, warm satisfied smile, peaceful ending moment`;
-  }
-
-  // Default based on card action if available
-  if (card.main_action && card.main_action.length > 5) {
-    return `${card.main_action.replace(charName, '').trim()}, engaged and expressive`;
-  }
-
-  // Ultimate fallback
-  return `in an engaging pose with expressive face, looking at viewer with friendly expression`;
+  return `in an engaging pose, expressive and friendly`;
 }
 
 /**
- * Build environment description based on text and setting
+ * Extract page-specific elements like aliens, objects, etc.
+ */
+function extractPageElements(text: string): string {
+  const elements: string[] = [];
+
+  // ALIENS
+  if (text.includes('aliens') || text.includes('alien')) {
+    if (text.includes('big, round eyes') || text.includes('wiggly arms')) {
+      elements.push('cute friendly cartoon aliens with big round eyes and long wiggly arms approaching');
+    } else if (text.includes('small')) {
+      elements.push('small cute friendly cartoon aliens nearby');
+    } else {
+      elements.push('friendly cartoon alien creatures');
+    }
+  }
+
+  // ROCKET SHIP
+  if (text.includes('rocket ship') || text.includes('rocket')) {
+    if (text.includes('shiny') || text.includes('silver')) {
+      elements.push('shiny silver rocket ship with big red button');
+    } else if (text.includes('cockpit') || text.includes('inside')) {
+      elements.push('colorful rocket ship cockpit with glowing buttons and big windows');
+    } else {
+      elements.push('colorful cartoon rocket ship');
+    }
+  }
+
+  // SPACE ELEMENTS
+  if (text.includes('stars') && text.includes('planet')) {
+    elements.push('beautiful stars and colorful planets in background');
+  } else if (text.includes('stars')) {
+    elements.push('twinkling stars in background');
+  }
+
+  if (text.includes('earth') && (text.includes('smaller') || text.includes('view'))) {
+    elements.push('Earth visible in distance as blue marble');
+  }
+
+  if (text.includes('asteroid')) {
+    elements.push('sparkling asteroids floating nearby');
+  }
+
+  if (text.includes('crater')) {
+    elements.push('large grey moon craters');
+  }
+
+  // MOON SURFACE
+  if (text.includes('moon') && (text.includes('surface') || text.includes('dusty') || text.includes('ground'))) {
+    elements.push('grey dusty moon surface');
+  }
+
+  // SAVANNAH
+  if (text.includes('savannah')) {
+    elements.push('African savannah with golden grass and acacia trees');
+  }
+
+  // FRIENDS/OTHERS
+  if (text.includes('new friends') || text.includes('friends')) {
+    elements.push('friendly companions nearby');
+  }
+
+  return elements.join(', ');
+}
+
+/**
+ * Build environment from page text
  */
 function buildEnvironment(text: string, fallbackSetting: string): string {
-  // SPACE ENVIRONMENTS
-  if (text.includes('crater') || text.includes('lunar')) {
-    if (text.includes('soared') || text.includes('flew') || text.includes('flying')) {
-      return `inside colorful cartoon rocket ship with large round windows, grey moon craters visible outside, black space with twinkling stars and distant blue Earth`;
-    }
-    if (text.includes('landed') || text.includes('standing')) {
-      return `on grey bumpy moon surface with large craters, colorful rocket ship landed nearby, black starry sky with bright stars and Earth in distance`;
-    }
-    return `grey moon surface with rocky craters, dark space sky filled with stars, Earth visible as blue marble`;
+  // SPACE/ROCKET INTERIORS
+  if (text.includes('inside') && (text.includes('rocket') || text.includes('cockpit'))) {
+    return `inside colorful cartoon rocket ship cockpit, big round windows showing space, glowing control panel with buttons`;
   }
 
-  if (text.includes('blasted off') || text.includes('launched') || text.includes('take off')) {
-    return `inside bright colorful rocket ship cockpit, large windows showing stars and planets, glowing control panel with buttons and lights, cozy pilot seat`;
+  if (text.includes('traveled through') && text.includes('stars')) {
+    return `outer space background with swirling galaxies, colorful nebulas, twinkling stars, Earth visible in distance`;
   }
 
-  if (text.includes('outer space') || text.includes('through space') || text.includes('in space') || text.includes('galaxy')) {
-    return `colorful outer space background with swirling purple and blue nebulas, twinkling stars, colorful planets, magical cosmic atmosphere`;
+  // MOON SURFACE
+  if (text.includes('moon') && (text.includes('surface') || text.includes('landed') || text.includes('stepped'))) {
+    return `grey dusty moon surface with craters, black starry space sky, Earth visible in distance, rocket ship nearby`;
   }
 
-  if (text.includes('rocket') || text.includes('spaceship')) {
-    if (text.includes('inside') || text.includes('cockpit') || text.includes('window')) {
-      return `inside cozy cartoon rocket ship, big round windows showing space outside, colorful control panels with glowing buttons`;
-    }
-    return `next to a colorful friendly-looking cartoon rocket ship, ready for adventure`;
+  if (text.includes('crater') && (text.includes('moon') || text.includes('explore'))) {
+    return `moon surface with large grey craters, dark space sky with stars, low gravity environment`;
   }
 
-  // NATURE ENVIRONMENTS
-  if (text.includes('forest') || text.includes('woods') || text.includes('trees')) {
-    if (text.includes('magical') || text.includes('enchanted')) {
-      return `magical enchanted forest with glowing mushrooms, sparkling fireflies, tall friendly trees with dappled golden sunlight`;
-    }
-    return `beautiful green forest with tall trees, soft sunlight filtering through leaves, peaceful woodland atmosphere`;
+  // SPACE GENERAL
+  if (text.includes('space') || text.includes('stars') || text.includes('galaxy')) {
+    return `outer space with colorful nebulas, twinkling stars, floating asteroids, magical cosmic atmosphere`;
   }
 
-  if (text.includes('meadow') || text.includes('field') || text.includes('flowers')) {
-    return `colorful meadow filled with wildflowers, butterflies floating around, soft rolling hills, blue sky with fluffy white clouds`;
+  // SAVANNAH
+  if (text.includes('savannah')) {
+    return `African savannah landscape, golden grass, warm sunset colors, acacia trees in distance`;
   }
 
-  if (text.includes('garden')) {
-    return `beautiful garden with colorful flowers in bloom, stone path, butterflies and bees, warm sunny day`;
+  // SKY
+  if (text.includes('night sky') || text.includes('looking up') && text.includes('stars')) {
+    return `beautiful night sky filled with bright stars, peaceful evening atmosphere`;
   }
 
-  if (text.includes('mountain') || text.includes('hill') || text.includes('cliff')) {
-    return `scenic mountain landscape with green slopes, distant peaks, blue sky, majestic and peaceful`;
+  if (text.includes('sky') && text.includes('soared')) {
+    return `bright blue sky with fluffy clouds, rocket trail behind`;
   }
 
-  if (text.includes('waterfall')) {
-    return `magical waterfall cascading into crystal clear pool, lush green plants, rainbow in the mist, sparkling water`;
+  // HOME/LANDING
+  if (text.includes('back home') || text.includes('back in')) {
+    return `familiar home environment, warm welcoming atmosphere, sunset colors`;
   }
 
-  if (text.includes('river') || text.includes('stream') || text.includes('creek')) {
-    return `peaceful stream with smooth rocks, clear water, green plants along banks, gentle flowing water`;
+  // Use fallback with enhancement
+  if (fallbackSetting && fallbackSetting !== 'Magical storybook scene') {
+    return `${fallbackSetting}, warm inviting atmosphere`;
   }
 
-  // WATER ENVIRONMENTS
-  if (text.includes('underwater') || text.includes('ocean floor') || text.includes('beneath the waves')) {
-    return `magical underwater scene with colorful coral reef, tropical fish swimming by, bubbles rising, soft blue light`;
-  }
-
-  if (text.includes('ocean') || text.includes('sea')) {
-    if (text.includes('beach') || text.includes('shore')) {
-      return `sunny beach with golden sand, gentle waves, blue ocean, seashells scattered around`;
-    }
-    return `beautiful blue ocean with gentle waves, clear sky, peaceful water`;
-  }
-
-  if (text.includes('beach') || text.includes('shore') || text.includes('sand')) {
-    return `sunny beach with soft golden sand, gentle turquoise waves, clear blue sky, tropical paradise`;
-  }
-
-  if (text.includes('lake') || text.includes('pond')) {
-    return `peaceful lake with still reflective water, trees along shore, lily pads floating, serene atmosphere`;
-  }
-
-  // SKY ENVIRONMENTS
-  if (text.includes('sky') || text.includes('clouds') || text.includes('flying')) {
-    if (text.includes('night') || text.includes('stars')) {
-      return `night sky filled with twinkling stars, crescent moon glowing, peaceful nighttime atmosphere`;
-    }
-    return `bright blue sky with fluffy white clouds, warm sunlight, birds flying in distance`;
-  }
-
-  if (text.includes('rainbow')) {
-    return `bright sky with beautiful colorful rainbow arching across, fluffy clouds, magical atmosphere`;
-  }
-
-  // INDOOR ENVIRONMENTS
-  if (text.includes('home') || text.includes('house') || text.includes('room')) {
-    if (text.includes('bedroom')) {
-      return `cozy bedroom with soft bed, toys around, warm lamp light, safe comfortable feeling`;
-    }
-    if (text.includes('kitchen')) {
-      return `warm kitchen with counters and colorful items, homey atmosphere, delicious smells`;
-    }
-    return `cozy home interior with warm lighting, comfortable furniture, safe welcoming atmosphere`;
-  }
-
-  if (text.includes('castle') || text.includes('palace')) {
-    return `magical castle interior with tall windows, colorful banners, golden light, grand but friendly`;
-  }
-
-  if (text.includes('school') || text.includes('classroom')) {
-    return `colorful classroom with desks and books, educational posters, friendly learning environment`;
-  }
-
-  // WEATHER/TIME variations
-  if (text.includes('night') || text.includes('nighttime') || text.includes('dark sky')) {
-    return `${fallbackSetting} at night, starry sky, soft moonlight, peaceful nocturnal atmosphere`;
-  }
-
-  if (text.includes('sunset') || text.includes('evening')) {
-    return `${fallbackSetting} at golden sunset, orange and pink sky, warm glowing light`;
-  }
-
-  if (text.includes('sunrise') || text.includes('morning') || text.includes('dawn')) {
-    return `${fallbackSetting} at sunrise, soft pink and orange sky, fresh morning light`;
-  }
-
-  if (text.includes('rain') || text.includes('rainy')) {
-    return `${fallbackSetting} with gentle rain falling, puddles reflecting, cozy rainy day`;
-  }
-
-  if (text.includes('snow') || text.includes('winter') || text.includes('snowy')) {
-    return `${fallbackSetting} covered in soft white snow, snowflakes falling, magical winter wonderland`;
-  }
-
-  // SPECIAL LOCATIONS
-  if (text.includes('cave') || text.includes('cavern')) {
-    return `magical cave with glowing crystals on walls, soft mysterious light, rocky formations`;
-  }
-
-  if (text.includes('island')) {
-    return `tropical island with palm trees, sandy beach, blue water surrounding, paradise setting`;
-  }
-
-  if (text.includes('desert') || text.includes('sand dune')) {
-    return `golden desert with rolling sand dunes, clear blue sky, warm sunlight`;
-  }
-
-  if (text.includes('jungle') || text.includes('tropical')) {
-    return `lush tropical jungle with vines and big leaves, colorful exotic flowers, dappled sunlight`;
-  }
-
-  // Use fallback setting with enhancement
-  if (fallbackSetting && fallbackSetting !== 'Storybook scene') {
-    return `${fallbackSetting}, warm inviting atmosphere, beautiful background`;
-  }
-
-  return `magical storybook setting with warm colors, friendly atmosphere, soft lighting`;
+  return `magical storybook setting, warm colors, soft lighting`;
 }
 
 /**
- * Extract mood and atmosphere from page text
+ * Extract mood from page text
  */
 function extractMood(text: string): string {
-  // Exciting/Adventure
-  if (text.includes('adventure') || text.includes('excited') || text.includes('thrilling')) {
+  if (text.includes('excited') || text.includes('excitement') || text.includes('sparkled')) {
     return `Exciting adventurous atmosphere, dynamic energy.`;
   }
-
-  // Happy/Joyful
-  if (text.includes('happy') || text.includes('joy') || text.includes('delighted') || text.includes('wonderful')) {
+  if (text.includes('wonder') || text.includes('amazed') || text.includes('amazing')) {
+    return `Magical wondrous atmosphere, sense of awe.`;
+  }
+  if (text.includes('happy') || text.includes('joy') || text.includes('joyful')) {
     return `Warm joyful atmosphere, happiness radiating.`;
   }
-
-  // Peaceful/Calm
-  if (text.includes('peaceful') || text.includes('calm') || text.includes('quiet') || text.includes('gentle')) {
-    return `Peaceful serene atmosphere, soft calming energy.`;
+  if (text.includes('surprised')) {
+    return `Surprising magical atmosphere, unexpected delight.`;
   }
-
-  // Magical/Wonder
-  if (text.includes('magical') || text.includes('wonder') || text.includes('amazing') || text.includes('incredible')) {
-    return `Magical wondrous atmosphere, sparkles of enchantment.`;
+  if (text.includes('proud') || text.includes('brave')) {
+    return `Triumphant proud atmosphere, accomplishment.`;
   }
-
-  // Brave/Determined
-  if (text.includes('brave') || text.includes('courage') || text.includes('determined')) {
-    return `Brave determined atmosphere, inspiring energy.`;
+  if (text.includes('peaceful') || text.includes('gentle')) {
+    return `Peaceful serene atmosphere, calm and safe.`;
   }
-
-  // Warm/Cozy
-  if (text.includes('cozy') || text.includes('warm') || text.includes('comfortable') || text.includes('safe')) {
-    return `Cozy warm atmosphere, comforting feeling.`;
+  if (text.includes('curious') || text.includes('exploring')) {
+    return `Curious explorative atmosphere, discovery.`;
   }
-
-  // Curious/Discovering
-  if (text.includes('curious') || text.includes('discover') || text.includes('explore') || text.includes('found')) {
-    return `Curious explorative atmosphere, sense of discovery.`;
-  }
-
-  // Friendship/Love
-  if (text.includes('friend') || text.includes('together') || text.includes('love') || text.includes('care')) {
-    return `Warm friendship atmosphere, loving energy.`;
-  }
-
-  // Triumphant/Success
-  if (text.includes('success') || text.includes('did it') || text.includes('triumph') || text.includes('won')) {
-    return `Triumphant celebratory atmosphere, victorious energy.`;
-  }
-
-  // Default warm children's book mood
-  return `Warm friendly atmosphere, inviting and safe.`;
+  return `Warm friendly atmosphere, inviting and magical.`;
 }
 
 /**
- * Extract supporting elements - other characters, friends, objects
- */
-function extractSupportingElements(text: string, mainCharName: string): string {
-  const elements: string[] = [];
-  const mainLower = mainCharName.toLowerCase();
-
-  // Named character patterns "Name the Animal" or "Name and Name"
-  const namedPattern = /\b([A-Z][a-z]+)\s+the\s+(dog|cat|rabbit|bunny|bear|fox|owl|bird|mouse|squirrel|deer|porcupine|hedgehog|raccoon|beaver|frog|turtle|fish|penguin|lion|tiger|elephant|monkey|giraffe|zebra|hippo|koala|kangaroo|dolphin|whale|seal|otter|wolf|pig|cow|horse|sheep|goat|duck|chicken|butterfly|bee|dragon|unicorn)\b/gi;
-
-  let match;
-  while ((match = namedPattern.exec(text)) !== null) {
-    const name = match[1];
-    const animal = match[2].toLowerCase();
-    if (name.toLowerCase() !== mainLower) {
-      elements.push(`cute cartoon ${animal} friend ${name}`);
-    }
-  }
-
-  // "Name and Name" pattern for friends
-  const friendPattern = /\b([A-Z][a-z]{2,})\s+and\s+([A-Z][a-z]{2,})\b/g;
-  while ((match = friendPattern.exec(text)) !== null) {
-    const name1 = match[1];
-    const name2 = match[2];
-    const skipWords = ['The', 'And', 'But', 'His', 'Her', 'They', 'With', 'Once', 'Then', 'Soon'];
-    if (!skipWords.includes(name1) && name1.toLowerCase() !== mainLower) {
-      if (!elements.some(e => e.includes(name1))) {
-        elements.push(`friend ${name1}`);
-      }
-    }
-    if (!skipWords.includes(name2) && name2.toLowerCase() !== mainLower) {
-      if (!elements.some(e => e.includes(name2))) {
-        elements.push(`friend ${name2}`);
-      }
-    }
-  }
-
-  // Generic friends/family
-  if (text.includes('friends') && elements.length === 0) {
-    elements.push('friendly animal companions');
-  }
-  if (text.includes('family') || text.includes('parents') || text.includes('mother') || text.includes('father')) {
-    elements.push('loving family members nearby');
-  }
-
-  // Limit to 2 supporting elements
-  if (elements.length === 0) return '';
-  return `With ${elements.slice(0, 2).join(' and ')}. `;
-}
-
-/**
- * Negative prompt - excludes unwanted elements
+ * ENHANCED NEGATIVE PROMPT - Much stronger human exclusion for animal stories
  */
 export function renderNegativePrompt(card: PageSceneCard, isAnimal?: boolean): string {
-  // Base negative prompt for SDXL quality
-  let negative = "text, watermark, logo, signature, words, letters, photorealistic, realistic, photograph, photo, ugly, deformed, disfigured, bad anatomy, bad proportions, extra limbs, mutated, blurry, low quality, artifacts, grainy";
+  // Base quality negatives
+  let negative = "text, watermark, logo, signature, photorealistic, realistic photo, photograph, ugly, deformed, disfigured, bad anatomy, bad proportions, extra limbs, mutated, blurry, low quality, artifacts, grainy, amateur";
 
-  // Exclude humans for animal-only stories
+  // CRITICAL: Strong human exclusion for animal stories
   if (isAnimal) {
-    negative += ", human, person, boy, girl, child, man, woman, people, humanoid";
+    negative += ", human, person, human face, human body, human hands, human skin, boy, girl, child, kid, baby, man, woman, people, humanoid, human features, realistic human, cartoon human, human character";
   }
 
   // Environment-specific exclusions
   const setting = card.setting.toLowerCase();
 
-  if (setting.includes('space') || setting.includes('moon') || setting.includes('rocket') || setting.includes('star') || setting.includes('planet')) {
-    negative += ", forest, trees, grass, green plants, water, ocean, fish, underwater";
+  if (setting.includes('space') || setting.includes('moon') || setting.includes('rocket') || setting.includes('star')) {
+    negative += ", forest, trees, grass, green plants, water, ocean, underwater, fish, beach";
   }
 
   if (setting.includes('underwater') || setting.includes('ocean') || setting.includes('coral')) {
-    negative += ", forest, trees, sky, clouds, space, stars, land animals";
+    negative += ", forest, sky, clouds, space, stars, trees, land, desert";
   }
 
-  if (setting.includes('forest') || setting.includes('meadow') || setting.includes('garden')) {
-    negative += ", space, rockets, planets, underwater, fish, urban, buildings";
-  }
-
-  if (setting.includes('indoor') || setting.includes('room') || setting.includes('home') || setting.includes('house')) {
-    negative += ", outdoor, space, underwater, forest, nature";
+  if (setting.includes('savannah') || setting.includes('africa')) {
+    negative += ", snow, ice, underwater, space, forest";
   }
 
   // Add forbidden elements from card
