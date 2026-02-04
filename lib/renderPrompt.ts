@@ -88,25 +88,25 @@ export function renderPrompt(bible: CharacterBible, card: PageSceneCard, pageTex
   // 4. ACTION - What is the character doing?
   const action = extractActionFromText(lowerText, charName);
 
-  // 5. BUILD PROMPT - SPECIES x3 FIRST (CRITICAL FOR SDXL)
-  // SDXL only pays attention to ~77 tokens, so species MUST be first
+  // 5. BUILD PROMPT - STYLE FIRST, then SPECIES (CRITICAL FOR SDXL)
+  // SDXL only pays attention to ~77 tokens, so STYLE + SPECIES must be first
   let prompt: string;
 
+  // CARTOON STYLE keywords - put at START of prompt for maximum effect
+  const STYLE = "cute cartoon 2D illustration, children's picture book, colorful vibrant, Disney Pixar style";
+
   if (species && species !== 'animal') {
-    // ANIMAL CHARACTER - SPECIES x5 at START for maximum SDXL attention
+    // ANIMAL CHARACTER - STYLE + SPECIES at START for maximum SDXL attention
     const SPECIES = species.toUpperCase();
-    // Use extremely clear, repetitive language to force SDXL to generate correct species
-    prompt = `${SPECIES}. ${SPECIES}. ${SPECIES}. ${SPECIES}. ${SPECIES}. ` +
-      `A ${species} character. This is a ${species}. ` +
-      `Full body shot of ${charName} the ${species}. ` +
-      `${charName} is definitely a ${species}, NOT a human, NOT a bird, NOT a chicken. ` +
+    prompt = `${STYLE}, cute cartoon ${species}. ` +
+      `${SPECIES}. ${SPECIES}. ${SPECIES}. ` +
+      `Adorable cartoon ${species} character named ${charName}. ` +
       `Scene: ${scene}. ` +
-      `${charName} the ${species} is ${action}. ` +
-      `The ${species} has ${furColor}. ` +
-      `Children's picture book illustration style, soft watercolor, vibrant colors, clean lines.`;
+      `${charName} the cute cartoon ${species} is ${action}. ` +
+      `Bright colors, soft rounded shapes, expressive eyes, friendly face, hand-drawn illustration style.`;
   } else {
-    // Couldn't detect specific species - use generic but still block wrong animals
-    prompt = `ANIMAL. ANIMAL. ANIMAL. ANIMAL. ANIMAL. ` +
+    // Couldn't detect specific species - use generic cartoon animal
+    prompt = `${STYLE}, cute cartoon animal. ` +
       `A cute cartoon animal character (non-human, NOT a bird, NOT a chicken, NOT a hen). ` +
       `${charName} the friendly cartoon animal, ${action}. ` +
       `Scene: ${scene}. ` +
@@ -525,11 +525,15 @@ function extractObjectsFromText(text: string): string {
 
 /**
  * Negative prompt - excludes humans for animal stories, realistic style always
- * CRITICAL: Block common SDXL substitution animals
+ * CRITICAL: Block realistic styles and common SDXL substitution animals
  */
 export function renderNegativePrompt(card: PageSceneCard, isAnimal?: boolean, species?: string): string {
-  // Base exclusions for all images
-  let base = "text, watermark, logo, photorealistic, realistic, photograph, 3D render, anime, manga";
+  // Base exclusions for all images - STRONGLY block realistic/photorealistic
+  let base = "photorealistic, realistic, photograph, photo, real, lifelike, hyperrealistic, " +
+    "3D render, 3D, CGI, rendered, unreal engine, blender, " +
+    "sketch, pencil drawing, line art, black and white, grayscale, monochrome, " +
+    "anime, manga, " +
+    "text, watermark, logo, signature";
 
   // Always exclude humans for animal-only stories
   if (isAnimal) {
