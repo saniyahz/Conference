@@ -81,101 +81,81 @@ function extractFurDescription(physicalForm: string, texture: string): string {
 }
 
 // Extract species from physical form (dog, cat, rabbit, etc.)
+// CRITICAL: Uses word boundaries to avoid matching "hen" in "then" or "when"
 function extractSpecies(physicalForm: string): string {
   const form = physicalForm.toLowerCase();
 
-  // COMPREHENSIVE LIST OF ALL ANIMALS AND INSECTS
-  const animals = [
-    // PETS & DOMESTIC
-    'dog', 'puppy', 'cat', 'kitten', 'hamster', 'guinea pig', 'gerbil', 'rabbit', 'bunny',
-    'ferret', 'parrot', 'parakeet', 'budgie', 'canary', 'cockatiel', 'cockatoo', 'macaw',
-    'goldfish', 'betta', 'turtle', 'tortoise', 'snake', 'lizard', 'gecko', 'iguana', 'chameleon',
+  // PRIORITY ORDER: Check distinctive/larger animals FIRST
+  // This prevents matching common words like "hen" before "rhinoceros"
+  const PRIORITY_ANIMALS = [
+    // LARGE DISTINCTIVE ANIMALS - CHECK FIRST!
+    'rhinoceros', 'rhino',  // RHINO MUST BE FIRST
+    'elephant', 'giraffe', 'hippopotamus', 'hippo',
+    'dinosaur', 't-rex', 'triceratops', 'stegosaurus', 'brontosaurus', 'velociraptor', 'pterodactyl',
+    'dragon', 'unicorn', 'phoenix', 'griffin', 'pegasus',
+    'crocodile', 'alligator', 'komodo dragon',
+    'gorilla', 'chimpanzee', 'orangutan',
+    'lion', 'tiger', 'leopard', 'jaguar', 'cheetah', 'panther',
+    'polar bear', 'bear', 'wolf', 'fox',
+    'whale', 'dolphin', 'shark', 'octopus', 'squid',
+    'kangaroo', 'koala', 'platypus',
+    'zebra', 'horse', 'pony', 'donkey',
+    'moose', 'elk', 'deer', 'reindeer', 'caribou',
 
-    // FARM ANIMALS
-    'horse', 'pony', 'donkey', 'mule', 'cow', 'bull', 'calf', 'pig', 'piglet', 'hog', 'boar',
-    'sheep', 'lamb', 'goat', 'kid', 'chicken', 'hen', 'rooster', 'chick', 'duck', 'duckling',
-    'goose', 'gosling', 'turkey', 'llama', 'alpaca', 'buffalo', 'bison', 'ox', 'yak',
+    // MEDIUM ANIMALS
+    'monkey', 'ape', 'baboon', 'lemur',
+    'dog', 'puppy', 'cat', 'kitten',
+    'rabbit', 'bunny', 'hare',
+    'pig', 'piglet', 'cow', 'bull', 'calf',
+    'sheep', 'lamb', 'goat',
+    'turtle', 'tortoise', 'snake', 'python', 'cobra', 'lizard', 'gecko', 'iguana', 'chameleon',
+    'seal', 'sea lion', 'walrus', 'otter', 'beaver',
+    'raccoon', 'skunk', 'badger', 'wolverine', 'weasel',
+    'squirrel', 'chipmunk', 'hamster', 'mouse', 'rat',
+    'porcupine', 'hedgehog',
+    'sloth', 'anteater', 'armadillo', 'capybara',
+    'meerkat', 'mongoose', 'warthog',
+    'llama', 'alpaca', 'camel',
+    'panda', 'red panda',
+    'frog', 'toad', 'salamander', 'newt', 'axolotl',
 
-    // FOREST & WOODLAND
-    'fox', 'wolf', 'coyote', 'bear', 'deer', 'doe', 'fawn', 'buck', 'stag', 'elk', 'moose',
-    'caribou', 'reindeer', 'rabbit', 'hare', 'squirrel', 'chipmunk', 'raccoon', 'skunk',
-    'opossum', 'possum', 'badger', 'wolverine', 'weasel', 'ferret', 'mink', 'otter',
-    'beaver', 'porcupine', 'hedgehog', 'mole', 'shrew', 'vole', 'mouse', 'rat', 'woodchuck',
-    'groundhog', 'bobcat', 'lynx', 'cougar', 'mountain lion', 'panther',
-
-    // JUNGLE & TROPICAL
-    'lion', 'tiger', 'leopard', 'jaguar', 'cheetah', 'monkey', 'ape', 'gorilla', 'chimpanzee',
-    'orangutan', 'baboon', 'lemur', 'sloth', 'anteater', 'armadillo', 'tapir', 'capybara',
-    'toucan', 'parrot', 'macaw', 'anaconda', 'python', 'boa', 'crocodile', 'alligator',
-    'caiman', 'iguana', 'chameleon', 'tree frog', 'poison dart frog',
-
-    // AFRICAN SAVANNA
-    'elephant', 'giraffe', 'zebra', 'hippo', 'hippopotamus', 'rhino', 'rhinoceros',
-    'wildebeest', 'gnu', 'gazelle', 'antelope', 'impala', 'springbok', 'oryx', 'kudu',
-    'hyena', 'jackal', 'meerkat', 'warthog', 'ostrich', 'vulture', 'flamingo',
-
-    // AUSTRALIAN
-    'kangaroo', 'wallaby', 'koala', 'wombat', 'platypus', 'echidna', 'tasmanian devil',
-    'dingo', 'emu', 'kookaburra', 'cockatoo', 'lorikeet', 'sugar glider', 'numbat', 'quokka',
-
-    // ARCTIC & POLAR
-    'polar bear', 'penguin', 'seal', 'sea lion', 'walrus', 'arctic fox', 'snowy owl',
-    'narwhal', 'beluga', 'orca', 'whale', 'puffin', 'lemming', 'musk ox', 'caribou',
-
-    // OCEAN & MARINE
-    'whale', 'dolphin', 'porpoise', 'shark', 'ray', 'stingray', 'manta ray', 'eel',
-    'octopus', 'squid', 'jellyfish', 'starfish', 'seahorse', 'crab', 'lobster', 'shrimp',
-    'clam', 'oyster', 'mussel', 'scallop', 'snail', 'slug', 'sea turtle', 'manatee',
-    'dugong', 'sea otter', 'fish', 'salmon', 'tuna', 'clownfish', 'angelfish', 'swordfish',
-
-    // BIRDS
-    'bird', 'eagle', 'hawk', 'falcon', 'owl', 'vulture', 'condor', 'crow', 'raven',
-    'magpie', 'jay', 'bluejay', 'cardinal', 'robin', 'sparrow', 'finch', 'canary',
-    'hummingbird', 'woodpecker', 'toucan', 'pelican', 'flamingo', 'crane', 'heron',
-    'stork', 'swan', 'duck', 'goose', 'seagull', 'albatross', 'penguin', 'peacock',
-    'pheasant', 'quail', 'pigeon', 'dove', 'parakeet', 'lovebird', 'kingfisher',
-
-    // REPTILES & AMPHIBIANS
-    'snake', 'python', 'cobra', 'viper', 'rattlesnake', 'boa', 'anaconda',
-    'lizard', 'gecko', 'iguana', 'chameleon', 'komodo dragon', 'monitor lizard', 'skink',
-    'turtle', 'tortoise', 'terrapin', 'crocodile', 'alligator', 'caiman', 'gavial',
-    'frog', 'toad', 'salamander', 'newt', 'axolotl', 'tadpole',
+    // BIRDS - Put AFTER mammals to avoid false matches
+    'eagle', 'hawk', 'falcon', 'owl', 'vulture', 'condor',
+    'penguin', 'flamingo', 'peacock', 'swan', 'crane', 'heron', 'stork',
+    'parrot', 'macaw', 'cockatoo', 'toucan',
+    'crow', 'raven', 'magpie', 'jay', 'bluejay',
+    'robin', 'sparrow', 'finch', 'cardinal', 'hummingbird', 'woodpecker',
+    'duck', 'duckling', 'goose', 'gosling', 'turkey',
+    'chicken', 'hen', 'rooster', 'chick',  // FARM BIRDS LAST
+    'bird',  // Generic bird last
 
     // INSECTS & BUGS
-    'butterfly', 'moth', 'bee', 'bumblebee', 'honeybee', 'wasp', 'hornet',
-    'ant', 'termite', 'beetle', 'ladybug', 'ladybird', 'firefly', 'lightning bug',
-    'dragonfly', 'damselfly', 'grasshopper', 'cricket', 'locust', 'katydid',
-    'mantis', 'praying mantis', 'stick insect', 'walking stick', 'leaf insect',
-    'fly', 'housefly', 'fruit fly', 'mosquito', 'gnat', 'midge',
-    'caterpillar', 'worm', 'earthworm', 'silkworm', 'glowworm', 'inchworm',
-    'cockroach', 'cicada', 'aphid', 'flea', 'tick', 'louse', 'bedbug', 'stinkbug',
-    'water strider', 'water beetle', 'dung beetle', 'scarab', 'weevil',
+    'butterfly', 'moth', 'bee', 'bumblebee', 'wasp', 'hornet',
+    'dragonfly', 'firefly', 'ladybug', 'beetle',
+    'ant', 'spider', 'scorpion', 'caterpillar',
+    'grasshopper', 'cricket', 'mantis',
 
-    // ARACHNIDS & OTHER CRAWLIES
-    'spider', 'tarantula', 'black widow', 'scorpion', 'tick', 'mite', 'daddy longlegs',
-    'centipede', 'millipede', 'pillbug', 'roly poly', 'woodlouse', 'sowbug',
+    // OCEAN CREATURES
+    'fish', 'salmon', 'clownfish', 'seahorse',
+    'jellyfish', 'starfish', 'crab', 'lobster', 'shrimp',
+    'snail', 'slug',
 
-    // CRUSTACEANS & MOLLUSKS
-    'crab', 'hermit crab', 'lobster', 'crayfish', 'crawfish', 'shrimp', 'prawn', 'barnacle',
-    'snail', 'slug', 'clam', 'oyster', 'mussel', 'scallop', 'squid', 'octopus', 'nautilus',
-
-    // MYTHICAL & FANTASY
-    'dragon', 'unicorn', 'phoenix', 'griffin', 'pegasus', 'mermaid', 'fairy', 'pixie',
-    'gnome', 'troll', 'goblin', 'elf', 'dwarf', 'centaur', 'minotaur', 'hydra',
-    'kraken', 'yeti', 'bigfoot', 'werewolf', 'vampire bat', 'dinosaur', 't-rex',
-    'triceratops', 'stegosaurus', 'pterodactyl', 'velociraptor', 'brontosaurus',
-
-    // MISCELLANEOUS
-    'bat', 'flying fox', 'panda', 'red panda', 'binturong', 'civet', 'mongoose',
-    'aardvark', 'pangolin', 'okapi', 'tapir', 'manatee', 'dugong', 'narwhal',
+    // MYTHICAL
+    'mermaid', 'fairy', 'pixie', 'elf', 'gnome', 'troll',
+    'yeti', 'bigfoot', 'kraken',
   ];
 
-  for (const animal of animals) {
-    if (form.includes(animal)) {
+  // Use WORD BOUNDARY matching to avoid matching "hen" in "then" or "when"
+  for (const animal of PRIORITY_ANIMALS) {
+    // Create regex with word boundaries
+    const regex = new RegExp(`\\b${animal}\\b`, 'i');
+    if (regex.test(form)) {
+      console.log(`[extractSpecies] Found "${animal}" in physical_form: "${form.substring(0, 100)}..."`);
       return animal;
     }
   }
 
+  console.log(`[extractSpecies] No species found in: "${form.substring(0, 100)}..."`);
   return 'animal'; // fallback
 }
 

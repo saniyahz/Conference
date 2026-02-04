@@ -75,19 +75,33 @@ export function renderPrompt(bible: CharacterBible, card: PageSceneCard, pageTex
   // 4. ACTION - What is the character doing?
   const action = extractActionFromText(lowerText, charName);
 
-  // 5. BUILD PROMPT - SPECIES x3 FIRST
+  // 5. BUILD PROMPT - SPECIES x3 FIRST (CRITICAL FOR SDXL)
+  // SDXL only pays attention to ~77 tokens, so species MUST be first
   let prompt: string;
 
   if (species && species !== 'animal') {
-    // ANIMAL CHARACTER - SPECIES x3 at START (critical for SDXL)
+    // ANIMAL CHARACTER - SPECIES x5 at START for maximum SDXL attention
     const SPECIES = species.toUpperCase();
-    prompt = `${SPECIES}. ${SPECIES}. ${SPECIES}. A full-body ${species} named ${charName} (non-human animal), clearly a ${species} with ${species} features. Scene: ${scene}. Action: ${action}. Must include: ${species} body, ${furColor}. Children's picture book illustration, vibrant, clean lines.`;
+    // Use extremely clear, repetitive language to force SDXL to generate correct species
+    prompt = `${SPECIES}. ${SPECIES}. ${SPECIES}. ${SPECIES}. ${SPECIES}. ` +
+      `A ${species} character. This is a ${species}. ` +
+      `Full body shot of ${charName} the ${species}. ` +
+      `${charName} is definitely a ${species}, NOT a human, NOT a bird, NOT a chicken. ` +
+      `Scene: ${scene}. ` +
+      `${charName} the ${species} is ${action}. ` +
+      `The ${species} has ${furColor}. ` +
+      `Children's picture book illustration style, soft watercolor, vibrant colors, clean lines.`;
   } else {
-    // Couldn't detect species - use generic animal
-    prompt = `ANIMAL. ANIMAL. ANIMAL. A cute cartoon animal character (non-human, NOT a bird, NOT a chicken). ${charName} the friendly animal, ${action}. Scene: ${scene}. Children's picture book illustration, vibrant colors. NO humans, NO birds.`;
+    // Couldn't detect specific species - use generic but still block wrong animals
+    prompt = `ANIMAL. ANIMAL. ANIMAL. ANIMAL. ANIMAL. ` +
+      `A cute cartoon animal character (non-human, NOT a bird, NOT a chicken, NOT a hen). ` +
+      `${charName} the friendly cartoon animal, ${action}. ` +
+      `Scene: ${scene}. ` +
+      `Children's picture book illustration, soft watercolor, vibrant colors. ` +
+      `NO humans, NO birds, NO chickens.`;
   }
 
-  console.log(`[FINAL PROMPT]: ${prompt}`);
+  console.log(`[FINAL PROMPT]: ${prompt.substring(0, 300)}...`);
   console.log(`====== END RENDER PROMPT DEBUG ======\n`);
 
   return prompt;
@@ -498,32 +512,46 @@ function extractObjectsFromText(text: string): string {
 
 /**
  * Negative prompt - excludes humans for animal stories, realistic style always
+ * CRITICAL: Block common SDXL substitution animals
  */
 export function renderNegativePrompt(card: PageSceneCard, isAnimal?: boolean, species?: string): string {
-  let base = "text, watermark, logo, photorealistic, realistic, photograph, 3D render, anime";
+  // Base exclusions for all images
+  let base = "text, watermark, logo, photorealistic, realistic, photograph, 3D render, anime, manga";
 
   // Always exclude humans for animal-only stories
   if (isAnimal) {
-    base += ", human, person, boy, girl, child, man, woman, people";
-    // Also exclude common wrong animals that SDXL tends to substitute
-    base += ", chicken, rooster, hen, bird";
+    base += ", human, person, boy, girl, child, man, woman, people, face, portrait";
+
+    // CRITICAL: Block ALL common SDXL substitution animals
+    // SDXL tends to draw these instead of the correct animal
+    const commonWrongAnimals = [
+      'chicken', 'rooster', 'hen', 'chick',
+      'penguin', 'bird', 'duck', 'goose',
+      'owl', 'eagle', 'crow',
+      'cat', 'dog', 'rabbit', 'bunny',
+      'fox', 'wolf',
+      'furry', 'feathers', 'beak', 'wings'
+    ];
+
+    // Filter out the correct species from wrong animals list
+    const filteredWrong = species
+      ? commonWrongAnimals.filter(a => a !== species && !species.includes(a))
+      : commonWrongAnimals;
+
+    base += `, ${filteredWrong.join(', ')}`;
   }
 
-  // If we know the species, we can be more specific about what NOT to draw
-  if (species && species !== 'animal') {
-    // Don't accidentally draw other animals instead
-    const wrongAnimals = ['chicken', 'rooster', 'hen', 'penguin', 'bird'];
-    // Remove the correct species from wrong animals list if it's there
-    const filteredWrong = wrongAnimals.filter(a => a !== species);
-    if (filteredWrong.length > 0 && !base.includes(filteredWrong[0])) {
-      base += `, ${filteredWrong.join(', ')}`;
+  // Add any scene-specific forbidden elements
+  if (card.forbidden_elements && card.forbidden_elements.length > 0) {
+    const uniqueForbidden = card.forbidden_elements
+      .filter(e => !base.includes(e))
+      .slice(0, 5);
+    if (uniqueForbidden.length > 0) {
+      base += `, ${uniqueForbidden.join(', ')}`;
     }
   }
 
-  if (card.forbidden_elements && card.forbidden_elements.length > 0) {
-    return `${base}, ${card.forbidden_elements.slice(0, 5).join(', ')}`;
-  }
-
+  console.log(`[NEGATIVE PROMPT]: ${base}`);
   return base;
 }
 
