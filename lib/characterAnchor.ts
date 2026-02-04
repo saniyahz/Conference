@@ -9,6 +9,60 @@ import { UniversalCharacterBible } from './generateCharacterBible';
  * 3. Same seed + same reference = consistent character
  */
 
+/**
+ * Robust URL extraction from Replicate output
+ * Handles multiple output formats: string[], string, {url}, ReadableStream, etc.
+ */
+function extractImageUrl(output: unknown): string | null {
+  console.log('[extractImageUrl] typeof output:', typeof output);
+  console.log('[extractImageUrl] Array.isArray:', Array.isArray(output));
+
+  // Case 1: Array of strings (most common)
+  if (Array.isArray(output) && output.length > 0) {
+    const first = output[0];
+    console.log('[extractImageUrl] first element type:', typeof first);
+
+    if (typeof first === 'string' && first.startsWith('http')) {
+      return first;
+    }
+
+    // Case 2: Array of objects with url property
+    if (first && typeof first === 'object' && 'url' in first) {
+      const url = (first as { url: string }).url;
+      if (typeof url === 'string' && url.startsWith('http')) {
+        return url;
+      }
+    }
+  }
+
+  // Case 3: Direct string URL
+  if (typeof output === 'string' && output.startsWith('http')) {
+    return output;
+  }
+
+  // Case 4: Object with url property
+  if (output && typeof output === 'object' && 'url' in output) {
+    const url = (output as { url: string }).url;
+    if (typeof url === 'string' && url.startsWith('http')) {
+      return url;
+    }
+  }
+
+  // Case 5: Try to find any URL in stringified output
+  try {
+    const str = JSON.stringify(output);
+    console.log('[extractImageUrl] stringified (first 500 chars):', str.substring(0, 500));
+    const urlMatch = str.match(/https?:\/\/[^\s"'\\]+/);
+    if (urlMatch) {
+      return urlMatch[0];
+    }
+  } catch (e) {
+    console.log('[extractImageUrl] could not stringify output');
+  }
+
+  return null;
+}
+
 export interface CharacterAnchor {
   imageUrl: string;
   seed: number;
@@ -54,6 +108,7 @@ export async function generateCharacterAnchor(
   console.log(`Negative: ${negativePrompt.substring(0, 100)}...`);
 
   try {
+    console.log('[ANCHOR] Calling replicate.run...');
     const output = await replicate.run(
       "stability-ai/sdxl:39ed52f2a78e934b3ba6e2a89f5b1c712de7dfea535525255b1aa35c5565e08b",
       {
@@ -71,22 +126,24 @@ export async function generateCharacterAnchor(
       }
     );
 
-    // Extract URL from output
-    let imageUrl = '';
-    if (Array.isArray(output) && output.length > 0) {
-      const firstOutput = output[0];
-      if (typeof firstOutput === 'string') {
-        imageUrl = firstOutput;
-      }
-    } else if (typeof output === 'string') {
-      imageUrl = output;
+    // DIAGNOSTIC: Log raw output
+    console.log('[ANCHOR] raw output type:', typeof output);
+    console.log('[ANCHOR] raw output isArray:', Array.isArray(output));
+    try {
+      console.log('[ANCHOR] raw output:', JSON.stringify(output).substring(0, 1000));
+    } catch (e) {
+      console.log('[ANCHOR] raw output (not serializable):', output);
     }
 
-    if (!imageUrl || !imageUrl.startsWith('http')) {
-      throw new Error('Failed to generate character anchor image');
+    // Use robust URL extraction
+    const imageUrl = extractImageUrl(output);
+
+    if (!imageUrl) {
+      console.error('[ANCHOR] Failed to extract URL from output');
+      throw new Error('Failed to generate character anchor image - no URL in output');
     }
 
-    console.log(`Character Anchor generated: ${imageUrl}`);
+    console.log(`[ANCHOR] Character Anchor generated: ${imageUrl}`);
     console.log('==================================================\n');
 
     return {
@@ -97,7 +154,7 @@ export async function generateCharacterAnchor(
       name
     };
   } catch (error) {
-    console.error('Error generating character anchor:', error);
+    console.error('[ANCHOR] Error generating character anchor:', error);
     throw error;
   }
 }
@@ -139,23 +196,15 @@ export async function generatePageWithAnchor(
       }
     );
 
-    // Extract URL from output
-    let imageUrl = '';
-    if (Array.isArray(output) && output.length > 0) {
-      const firstOutput = output[0];
-      if (typeof firstOutput === 'string') {
-        imageUrl = firstOutput;
-      }
-    } else if (typeof output === 'string') {
-      imageUrl = output;
-    }
+    // Use robust URL extraction
+    const imageUrl = extractImageUrl(output);
 
-    if (!imageUrl || !imageUrl.startsWith('http')) {
-      console.log('img2img failed, falling back to txt2img');
+    if (!imageUrl) {
+      console.log(`[PAGE ${pageIndex}] img2img failed - no URL extracted`);
       return '';
     }
 
-    console.log(`Page ${pageIndex} generated with anchor reference: ${imageUrl.substring(0, 50)}...`);
+    console.log(`[PAGE ${pageIndex}] generated with anchor reference: ${imageUrl.substring(0, 80)}...`);
     return imageUrl;
   } catch (error) {
     console.error(`Error generating page ${pageIndex} with anchor:`, error);
@@ -168,12 +217,12 @@ export async function generatePageWithAnchor(
  * No scene elements, plain background
  */
 function buildAnchorNegativePrompt(isAnimal: boolean, species: string): string {
+  // Keep negative prompt simple - overly long negatives can confuse SDXL
   const negatives = [
     'text', 'watermark', 'logo', 'signature',
-    'photorealistic', 'realistic', 'photograph',
-    'ugly', 'deformed', 'bad anatomy', 'bad proportions',
+    'photorealistic', 'photograph',
     'background elements', 'scenery', 'landscape',
-    'outdoor', 'indoor', 'room', 'forest', 'sky',
+    'forest', 'sky', 'grass', 'trees',
     'multiple characters', 'crowd', 'group'
   ];
 
