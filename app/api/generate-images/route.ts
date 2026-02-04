@@ -24,9 +24,9 @@ async function generateImageWithRetry(
           const cleanPrompt = prompt
 
           // Use passed negative prompt OR fallback to default
-          // NOTE: Do NOT include "land animals" - it blocks main characters like rhinos!
+          // CRITICAL: Block humans AND common wrong animals (chicken/rooster keep appearing!)
           const negativePrompt = customNegativePrompt ||
-            `human child, people, realistic, 3D render, anime, text in image, text, words, letters, writing, caption, label, watermark, signature, logo, typography, font, numbers, scary, creepy, horror, dark, evil, ugly, deformed, bad anatomy, bad proportions, photorealistic`
+            `human, human child, person, people, man, woman, boy, girl, child, chicken, rooster, hen, bird, realistic, photorealistic, 3D render, anime, text, words, letters, watermark, signature, logo, ugly, deformed, bad anatomy`
 
           console.log(`\n========== IMAGE ${imageIndex + 1} DEBUG ==========`)
           console.log(`Attempt ${attempt}/${maxRetries}`)

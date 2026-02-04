@@ -250,7 +250,8 @@ CRITICAL: Every page must end with a COMPLETE sentence. Never cut off mid-senten
       // Pass page text so renderPrompt can detect animals from story
       const pageText = parsedStory.pages[index]?.text || ''
       const prompt = renderPrompt(characterBible, card, pageText)
-      const negativePrompt = renderNegativePrompt(card, isAnimalStory)
+      // Pass species to negative prompt so it can block wrong animals
+      const negativePrompt = renderNegativePrompt(card, isAnimalStory, characterBible.species)
       const seed = generatePageSeedByNumber(card.page_number, baseSeed)
 
       imagePrompts.push(prompt)

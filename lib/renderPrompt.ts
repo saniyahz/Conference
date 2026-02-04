@@ -1,45 +1,104 @@
 import { CharacterBible, PageSceneCard } from "./visual-types";
 
+// Comprehensive animal list for detection
+const ALL_ANIMALS = [
+  'rhino', 'rhinoceros', 'elephant', 'giraffe', 'zebra', 'hippo', 'hippopotamus',
+  'lion', 'tiger', 'leopard', 'jaguar', 'cheetah', 'bear', 'polar bear',
+  'dog', 'puppy', 'cat', 'kitten', 'rabbit', 'bunny', 'hamster', 'mouse', 'rat',
+  'fox', 'wolf', 'deer', 'moose', 'elk', 'horse', 'pony', 'donkey', 'cow', 'pig',
+  'sheep', 'goat', 'chicken', 'duck', 'goose', 'turkey', 'owl', 'eagle', 'hawk',
+  'penguin', 'seal', 'walrus', 'dolphin', 'whale', 'shark', 'fish', 'octopus',
+  'frog', 'toad', 'turtle', 'tortoise', 'snake', 'lizard', 'crocodile', 'alligator',
+  'monkey', 'ape', 'gorilla', 'chimpanzee', 'orangutan', 'koala', 'kangaroo',
+  'panda', 'raccoon', 'skunk', 'squirrel', 'chipmunk', 'beaver', 'otter',
+  'butterfly', 'bee', 'ant', 'spider', 'dragon', 'unicorn', 'dinosaur',
+];
+
 /**
  * UNIVERSAL PROMPT TEMPLATE
- * CHARACTER-FIRST approach - species must be the FIRST words in prompt
+ * CRITICAL: Species MUST be the FIRST word and REPEATED multiple times
  * SDXL only pays attention to first ~77 tokens
  */
 export function renderPrompt(bible: CharacterBible, card: PageSceneCard, pageText?: string): string {
   const text = pageText || '';
   const lowerText = text.toLowerCase();
-
-  // 1. CHARACTER SPECIES FIRST - This is the most important part!
-  const species = bible.species || 'animal';
   const charName = bible.name;
 
-  // 2. Get character appearance details for consistency
-  const furColor = bible.appearance?.skin_tone || 'golden';
-  const eyeDesc = bible.appearance?.eyes || 'big sparkling eyes';
+  // 1. DETECT SPECIES - Try multiple sources, be aggressive
+  let species = bible.species;
+
+  // If bible doesn't have specific species, extract from page text
+  if (!species || species === 'animal') {
+    species = extractAnimalFromText(lowerText) || 'animal';
+  }
+
+  // Also check for "Name the Animal" pattern in current page
+  const nameTheAnimalMatch = text.match(/\b([A-Z][a-z]+)\s+the\s+(\w+)/i);
+  if (nameTheAnimalMatch) {
+    const possibleSpecies = nameTheAnimalMatch[2].toLowerCase();
+    if (ALL_ANIMALS.includes(possibleSpecies)) {
+      species = possibleSpecies;
+    }
+  }
+
+  console.log(`[renderPrompt] Detected species: "${species}" for character "${charName}"`);
+
+  // 2. Get character appearance details
+  const furColor = bible.appearance?.skin_tone || 'gray';
+  const eyeDesc = bible.appearance?.eyes || 'big friendly eyes';
 
   // 3. SCENE - Extract from page text
   const scene = extractSceneFromText(lowerText, card.setting);
 
-  // 4. SUPPORTING CHARACTERS - only named ones from text
-  const supporting = extractNamedCharactersFromText(lowerText, charName);
-
-  // 5. ACTION - What is the character doing?
+  // 4. ACTION - What is the character doing?
   const action = extractActionFromText(lowerText, charName);
 
-  // BUILD PROMPT - CHARACTER FIRST, with appearance, then scene + action
-  // More detailed format for better SDXL results
+  // 5. BUILD PROMPT - SPECIES FIRST, REPEATED, NO HUMANS
   let prompt: string;
 
-  if (bible.character_type === 'animal' && species !== 'animal') {
-    // ANIMAL CHARACTER - detailed appearance for consistency
-    prompt = `A cute cartoon ${species} with ${furColor} fur and ${eyeDesc}, ${charName} the adorable ${species}, ${action}, ${scene}. ${supporting}Pixar Disney 3D animation style, soft lighting, vibrant colors, children's book illustration.`;
+  // Check if this is an animal story (bible says animal OR we detected an animal)
+  const isAnimalStory = bible.character_type === 'animal' || (species && species !== 'animal');
+
+  if (isAnimalStory && species && species !== 'animal') {
+    // ANIMAL CHARACTER - Put species FIRST and REPEAT it
+    // This is critical for SDXL to understand
+    prompt = `${species}. A cute cartoon ${species} character. ${charName} the ${species}, an adorable ${species} with ${furColor} and ${eyeDesc}. The ${species} is ${action}. Scene: ${scene}. Style: Pixar Disney animation, soft lighting, vibrant colors, children's book illustration. NO humans, only the ${species}.`;
+  } else if (isAnimalStory) {
+    // Animal story but couldn't detect specific species - use generic but NO HUMANS
+    prompt = `A cute cartoon animal character with ${furColor} and ${eyeDesc}. ${charName} the friendly animal, ${action}. Scene: ${scene}. Style: Pixar Disney animation, soft lighting, vibrant colors, children's book illustration. NO humans.`;
   } else {
-    // HUMAN or unknown - generic child with details
-    prompt = `A cute cartoon child with friendly face and big expressive eyes, ${charName}, ${action}, ${scene}. ${supporting}Pixar Disney 3D animation style, soft lighting, vibrant colors, children's book illustration.`;
+    // HUMAN character (only if explicitly human)
+    prompt = `A cute cartoon child character with friendly face and ${eyeDesc}, ${charName}, ${action}. Scene: ${scene}. Style: Pixar Disney animation, soft lighting, vibrant colors, children's book illustration.`;
   }
 
-  console.log(`[PROMPT] Page ${card.page_number}: ${prompt}`);
+  console.log(`[PROMPT] Page ${card.page_number}: ${prompt.substring(0, 200)}...`);
   return prompt;
+}
+
+/**
+ * Extract animal species from text
+ */
+function extractAnimalFromText(text: string): string | null {
+  const lowerText = text.toLowerCase();
+
+  // Check for specific animals, prioritizing larger/distinctive ones first
+  const priorityAnimals = [
+    'rhinoceros', 'rhino', 'elephant', 'giraffe', 'hippopotamus', 'hippo',
+    'lion', 'tiger', 'bear', 'wolf', 'fox', 'deer', 'horse', 'zebra',
+    'monkey', 'gorilla', 'chimpanzee', 'orangutan', 'panda', 'koala', 'kangaroo',
+    'dolphin', 'whale', 'shark', 'octopus', 'turtle', 'crocodile', 'alligator',
+    'dragon', 'unicorn', 'dinosaur', 'penguin', 'owl', 'eagle',
+    'dog', 'puppy', 'cat', 'kitten', 'rabbit', 'bunny', 'hamster', 'mouse',
+    'frog', 'butterfly', 'bee', 'duck', 'chicken', 'pig', 'cow', 'sheep', 'goat',
+  ];
+
+  for (const animal of priorityAnimals) {
+    if (lowerText.includes(animal)) {
+      return animal;
+    }
+  }
+
+  return null;
 }
 
 /**
@@ -448,12 +507,25 @@ function extractObjectsFromText(text: string): string {
 /**
  * Negative prompt - excludes humans for animal stories, realistic style always
  */
-export function renderNegativePrompt(card: PageSceneCard, isAnimal?: boolean): string {
-  let base = "text, watermark, logo, photorealistic, realistic, photograph";
+export function renderNegativePrompt(card: PageSceneCard, isAnimal?: boolean, species?: string): string {
+  let base = "text, watermark, logo, photorealistic, realistic, photograph, 3D render, anime";
 
   // Always exclude humans for animal-only stories
   if (isAnimal) {
-    base += ", human, person, boy, girl, child, man, woman";
+    base += ", human, person, boy, girl, child, man, woman, people";
+    // Also exclude common wrong animals that SDXL tends to substitute
+    base += ", chicken, rooster, hen, bird";
+  }
+
+  // If we know the species, we can be more specific about what NOT to draw
+  if (species && species !== 'animal') {
+    // Don't accidentally draw other animals instead
+    const wrongAnimals = ['chicken', 'rooster', 'hen', 'penguin', 'bird'];
+    // Remove the correct species from wrong animals list if it's there
+    const filteredWrong = wrongAnimals.filter(a => a !== species);
+    if (filteredWrong.length > 0 && !base.includes(filteredWrong[0])) {
+      base += `, ${filteredWrong.join(', ')}`;
+    }
   }
 
   if (card.forbidden_elements && card.forbidden_elements.length > 0) {
