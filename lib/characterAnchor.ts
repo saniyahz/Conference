@@ -135,17 +135,16 @@ export async function generateCharacterAnchor(
   const name = bible.name;
   const isAnimal = !bible.is_human;
 
-  // Build anchor prompt - plain background, full body, neutral pose
+  // Build anchor prompt — COMPACT for CLIP ~77 token limit
+  // Plain background, full body, neutral pose
   let prompt: string;
 
   if (isAnimal) {
-    // Animal anchor prompt - 2D cartoon style, plain background
-    const fingerprint = bible.visual_fingerprint.slice(0, 6).join(', ');
-    prompt = `Full body character reference sheet of ${name} the ${species}. ${species} ${species} ${species}, ${fingerprint}. Cute 2D cartoon style, bold outlines, simple shapes, big friendly eyes, flat cel shading, vibrant pastel colors. Plain light background, centered, full body visible, no scenery, no text`;
+    const traits = bible.visual_fingerprint.slice(0, 4).join(', ');
+    prompt = `${name} the ${species}, ${species}, ${traits}. Full body, centered, plain white background. 2D cartoon, bold outlines, flat cel shading, vibrant pastels. No scenery, no text.`;
   } else {
-    // Human anchor prompt - 2D cartoon style
-    const fingerprint = bible.visual_fingerprint.slice(0, 6).join(', ');
-    prompt = `Full body character reference sheet of ${name}. cute cartoon child, ${fingerprint}. Cute 2D cartoon style, bold outlines, simple shapes, big friendly eyes, flat cel shading, vibrant pastel colors. Plain light background, centered, full body visible, no scenery, no text`;
+    const traits = bible.visual_fingerprint.slice(0, 4).join(', ');
+    prompt = `${name}, cute cartoon child, ${traits}. Full body, centered, plain white background. 2D cartoon, bold outlines, flat cel shading, vibrant pastels. No scenery, no text.`;
   }
 
   // Negative prompt for anchor - plain background, no scene elements
@@ -317,56 +316,45 @@ export async function generatePageWithAnchor(
 }
 
 /**
- * Build negative prompt for Character Anchor
- * No scene elements, plain background
+ * Build negative prompt for Character Anchor — compact
  */
 function buildAnchorNegativePrompt(isAnimal: boolean, species: string): string {
-  // Block 3D/photorealistic + scene elements for clean 2D anchor
-  const negatives = [
-    'photorealistic', 'realistic', 'lifelike', 'hyperreal',
-    '3D render', 'CGI', 'Pixar', 'Disney 3D', 'cinematic lighting',
-    'ultra-detailed texture', 'DSLR', 'film still',
-    'text', 'watermark', 'logo',
-    'background elements', 'scenery', 'landscape',
-    'multiple characters', 'crowd', 'group'
+  const neg = [
+    'photorealistic', '3D render', 'CGI', 'Pixar', 'DSLR',
+    'text', 'watermark', 'scenery', 'landscape', 'multiple characters'
   ];
 
-  // Block humans for animal characters
   if (isAnimal) {
-    negatives.push('human', 'person', 'boy', 'girl', 'child', 'man', 'woman');
-
-    // Species-specific negatives
-    const speciesNegatives = getSpeciesNegatives(species);
-    negatives.push(...speciesNegatives);
+    neg.push('human', 'person', 'child');
+    const confused = getSpeciesNegatives(species);
+    neg.push(...confused);
   }
 
-  return negatives.join(', ');
+  return neg.join(', ');
 }
 
 /**
- * Species-specific negatives to prevent drift
+ * Species-specific negatives — top confusable animals
  */
 function getSpeciesNegatives(species: string): string[] {
-  const lowerSpecies = species.toLowerCase();
-
-  const speciesMap: Record<string, string[]> = {
-    'rhinoceros': ['cow', 'bull', 'ox', 'hippo', 'hippopotamus', 'elephant', 'unicorn', 'horse', 'pig', 'boar'],
-    'rhino': ['cow', 'bull', 'ox', 'hippo', 'hippopotamus', 'elephant', 'unicorn', 'horse', 'pig', 'boar'],
-    'elephant': ['hippo', 'rhino', 'mammoth', 'cow'],
-    'lion': ['tiger', 'cat', 'dog', 'wolf', 'bear'],
-    'tiger': ['lion', 'cat', 'dog', 'leopard', 'cheetah'],
-    'bear': ['dog', 'wolf', 'lion', 'gorilla'],
-    'rabbit': ['cat', 'dog', 'mouse', 'hamster'],
-    'cat': ['dog', 'rabbit', 'fox', 'wolf'],
-    'dog': ['cat', 'wolf', 'fox', 'bear'],
+  const s = species.toLowerCase();
+  const map: Record<string, string[]> = {
+    'rhinoceros': ['cow', 'hippo', 'elephant', 'horse'],
+    'rhino': ['cow', 'hippo', 'elephant', 'horse'],
+    'elephant': ['hippo', 'rhino', 'cow'],
+    'lion': ['tiger', 'cat', 'dog'],
+    'tiger': ['lion', 'cat', 'leopard'],
+    'bear': ['dog', 'wolf', 'gorilla'],
+    'rabbit': ['cat', 'mouse', 'hamster'],
+    'cat': ['dog', 'rabbit', 'fox'],
+    'dog': ['cat', 'wolf', 'fox'],
   };
-
-  return speciesMap[lowerSpecies] || [];
+  return map[s] || [];
 }
 
 /**
  * Build page prompt that references the anchor character
- * Includes "same character as reference" phrasing
+ * COMPACT — must fit CLIP ~77 token window
  */
 export function buildPagePromptWithAnchor(
   anchor: CharacterAnchor,
@@ -380,34 +368,19 @@ export function buildPagePromptWithAnchor(
   const name = bible.name;
   const isAnimal = !bible.is_human;
 
-  let characterDesc: string;
-  if (isAnimal) {
-    // Reference the anchor character explicitly
-    const fingerprint = bible.visual_fingerprint.slice(0, 4).join(', ');
-    characterDesc = `${species} ${species}, same ${species} as reference, ${fingerprint}, ${name} the ${species}`;
-  } else {
-    const fingerprint = bible.visual_fingerprint.slice(0, 4).join(', ');
-    characterDesc = `same child as reference, ${fingerprint}, ${name}`;
-  }
+  // Character ID — compact, front-loaded
+  const traits = bible.visual_fingerprint.slice(0, 3).join(', ');
+  const charId = isAnimal
+    ? `${name} the ${species}, same ${species} as reference, ${traits}`
+    : `${name}, same child as reference, ${traits}`;
 
-  // Build supporting characters string
-  const supportingDesc = supportingCharacters.length > 0
-    ? `with ${supportingCharacters.map(c => `${c.count} ${c.type}`).join(' and ')}`
+  // Supporting characters — very short
+  const supporting = supportingCharacters.length > 0
+    ? ` With ${supportingCharacters.map(c => `${c.count} ${c.type}`).join(', ')}.`
     : '';
 
-  // Build must-include string
-  const mustIncludeDesc = mustInclude.length > 0
-    ? `showing ${mustInclude.slice(0, 4).join(', ')}`
-    : '';
+  // Must-include — limit to 3-4
+  const musts = mustInclude.slice(0, 4).join(', ');
 
-  const prompt = [
-    characterDesc,
-    action,
-    setting,
-    mustIncludeDesc,
-    supportingDesc,
-    'cute 2D cartoon children\'s illustration, bold clean outlines, simplified shapes, big expressive eyes, flat cel shading, vibrant pastel colors, no text'
-  ].filter(Boolean).join(', ');
-
-  return prompt;
+  return `${charId}. Full body.\nScene: ${setting}.\nAction: ${action}.${supporting}\nInclude: ${musts}.\n2D cartoon, bold outlines, flat cel shading, vibrant pastels. No text.`;
 }

@@ -143,61 +143,49 @@ async function generateImageWithRetry(
 const SDXL_VERSION = "39ed52f2a78e934b3ba6e2a89f5b1c712de7dfea535525255b1aa35c5565e08b"
 
 /**
- * Build dynamic negative prompt that doesn't fight the page's scene.
- * Base negatives always apply, but scene-specific words are only banned
- * when the page prompt doesn't contain them.
+ * Build dynamic negative prompt — compact, scene-aware.
+ * Only bans environments the page doesn't need.
+ * Kept short so CLIP doesn't truncate important terms.
  */
 function buildDynamicNegativePrompt(pagePrompt: string, providedNegative: string | undefined): string {
-  const lowerPrompt = pagePrompt.toLowerCase()
+  const lp = pagePrompt.toLowerCase()
 
-  // Base negatives - always apply (block 3D + photorealistic)
-  const baseNegatives = [
-    'text', 'watermark', 'logo', 'signature',
-    'photorealistic', 'realistic', 'lifelike', 'hyperreal',
-    '3D render', 'CGI', 'Pixar', 'Disney 3D', 'cinematic lighting',
-    'skin pores', 'ultra-detailed texture', 'DSLR', 'film still',
-    'blurry', 'low quality', 'jpeg artifacts',
-    'multiple characters', 'crowd',
+  // Core style block (always apply)
+  const neg = [
+    'photorealistic', '3D render', 'CGI', 'Pixar', 'DSLR',
+    'text', 'watermark', 'logo', 'blurry', 'low quality',
   ]
 
-  // Environment negatives - only add if the page doesn't need them
-  const envNegatives: { word: string; triggers: string[] }[] = [
-    { word: 'underwater', triggers: ['underwater', 'ocean floor', 'sea bed'] },
-    { word: 'ocean', triggers: ['ocean', 'sea', 'water', 'splash', 'swim'] },
-    { word: 'space', triggers: ['space', 'stars', 'galaxy', 'cosmos'] },
-    { word: 'moon', triggers: ['moon', 'lunar', 'crater'] },
-    { word: 'rocket', triggers: ['rocket', 'spaceship', 'ship'] },
-    { word: 'forest', triggers: ['forest', 'trees', 'woods', 'jungle'] },
-    { word: 'desert', triggers: ['desert', 'sand', 'dune'] },
+  // Environment negatives — only add if the page doesn't need them
+  const envRules: [string, string[]][] = [
+    ['underwater', ['underwater', 'ocean floor', 'coral']],
+    ['ocean', ['ocean', 'sea', 'water', 'splash', 'swim']],
+    ['space', ['space', 'stars', 'galaxy', 'cosmos']],
+    ['moon', ['moon', 'lunar', 'crater']],
+    ['rocket', ['rocket', 'spaceship']],
+    ['forest', ['forest', 'trees', 'woods', 'jungle']],
+    ['desert', ['desert', 'sand', 'dune']],
   ]
 
-  const dynamicNegatives = [...baseNegatives]
-
-  for (const { word, triggers } of envNegatives) {
-    // Only ban this environment if the page prompt doesn't mention it
-    const pageNeedsThis = triggers.some(t => lowerPrompt.includes(t))
-    if (!pageNeedsThis) {
-      dynamicNegatives.push(word)
+  for (const [word, triggers] of envRules) {
+    if (!triggers.some(t => lp.includes(t))) {
+      neg.push(word)
     }
   }
 
-  // Add species-confusion negatives (always safe to include)
-  if (lowerPrompt.includes('rhinoceros') || lowerPrompt.includes('rhino')) {
-    dynamicNegatives.push('cow', 'bull', 'hippo', 'elephant', 'unicorn', 'horse')
+  // Species-confusion negatives
+  if (lp.includes('rhinoceros') || lp.includes('rhino')) {
+    neg.push('cow', 'hippo', 'elephant', 'horse')
   }
 
-  // Always block humans for animal stories
-  if (lowerPrompt.includes('rhinoceros') || lowerPrompt.includes('rhino') ||
-      lowerPrompt.includes('elephant') || lowerPrompt.includes('lion') ||
-      lowerPrompt.includes('bear') || lowerPrompt.includes('rabbit') ||
-      lowerPrompt.includes('cat') || lowerPrompt.includes('dog')) {
-    dynamicNegatives.push('human', 'person', 'child', 'boy', 'girl')
+  // Block humans for animal characters
+  const animalKeywords = ['rhinoceros', 'rhino', 'elephant', 'lion', 'bear', 'rabbit', 'cat', 'dog', 'fox', 'tiger']
+  if (animalKeywords.some(a => lp.includes(a))) {
+    neg.push('human', 'person', 'child')
   }
 
-  console.log(`[NEGATIVES] Scene words in prompt: ${envNegatives.filter(e => e.triggers.some(t => lowerPrompt.includes(t))).map(e => e.word).join(', ') || 'none'}`)
-  console.log(`[NEGATIVES] Final: ${dynamicNegatives.join(', ')}`)
-
-  return dynamicNegatives.join(', ')
+  console.log(`[NEGATIVES] ${neg.join(', ')}`)
+  return neg.join(', ')
 }
 
 // Helper function to generate image with anchor reference (img2img)

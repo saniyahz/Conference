@@ -3,7 +3,8 @@ import { UniversalSceneCard } from './generateSceneCard';
 
 /**
  * Build image prompt from Universal Character Bible and SceneCard
- * Combines visual fingerprint with scene details
+ * COMPACT FORMAT — must fit CLIP's ~77 token window
+ * Template: Character ID. Full body. Scene: {SETTING}. Action: {ACTION}. Include: {3-5}. Style tag.
  */
 export function buildImagePrompt(
   bible: UniversalCharacterBible,
@@ -13,158 +14,81 @@ export function buildImagePrompt(
   const name = bible.name;
   const isAnimal = !bible.is_human;
 
-  // 1. CHARACTER FIRST - repeat species for SDXL to lock onto it
-  let characterDesc: string;
+  // CHARACTER ID — short, front-loaded for CLIP priority
+  let charId: string;
   if (isAnimal) {
-    // For animals: repeat species multiple times
-    const fingerprint = bible.visual_fingerprint.slice(0, 5).join(', ');
-    characterDesc = `${species} ${species} ${species}, ${fingerprint}, ${name} the ${species}`;
+    // Repeat species once for emphasis + top 3 fingerprint traits
+    const traits = bible.visual_fingerprint.slice(0, 3).join(', ');
+    charId = `${name} the ${species}, ${species}, ${traits}`;
   } else {
-    // For humans: use visual fingerprint
-    const fingerprint = bible.visual_fingerprint.slice(0, 5).join(', ');
-    characterDesc = `${fingerprint}, ${name}`;
+    const traits = bible.visual_fingerprint.slice(0, 3).join(', ');
+    charId = `${name}, ${traits}`;
   }
 
-  // 2. OUTFIT/PROPS if any
-  const outfitDesc = bible.signature_outfit_or_props.length > 0
-    ? `, wearing ${bible.signature_outfit_or_props.join(' and ')}`
+  // MUST-INCLUDE — limit to 3-4 items to save tokens
+  const musts = card.must_include.slice(0, 4).join(', ');
+
+  // SUPPORTING CHARACTERS — very short
+  const supporting = card.supporting_characters.length > 0
+    ? ` With ${card.supporting_characters.map(c => `${c.count} ${c.type}`).join(', ')}.`
     : '';
 
-  // 3. ACTION from scene card
-  const actionDesc = card.action;
+  // BUILD COMPACT PROMPT — every word counts
+  const prompt = `${charId}. Full body.\nScene: ${card.setting}.\nAction: ${card.action}.${supporting}\nInclude: ${musts}.\n2D cartoon, bold outlines, flat cel shading, vibrant pastels. No text.`;
 
-  // 4. SETTING from scene card
-  const settingDesc = card.setting;
-
-  // 5. MUST-INCLUDE items (for wide shot)
-  const mustIncludeDesc = card.must_include.length > 0
-    ? `showing ${card.must_include.join(', ')}`
-    : '';
-
-  // 6. SUPPORTING CHARACTERS
-  const supportingDesc = card.supporting_characters.length > 0
-    ? `with ${card.supporting_characters.map(c => `${c.count} ${c.type}`).join(' and ')}`
-    : '';
-
-  // 7. CAMERA & MOOD
-  const cameraDesc = card.camera === 'wide'
-    ? 'wide shot showing full scene'
-    : card.camera === 'close-up'
-    ? 'close-up shot'
-    : 'medium shot';
-
-  // 8. ART STYLE - use 2D cartoon style, NOT 3D/Pixar
-  const artStyle = 'cute 2D cartoon children\'s illustration, bold clean outlines, simplified shapes, big expressive eyes, playful proportions, flat cel shading, vibrant pastel colors, clean background details, no text';
-
-  // BUILD FINAL PROMPT
-  // Structure: CHARACTER (repeated) + outfit + action + setting + must-include + supporting + camera + style
-  const prompt = [
-    characterDesc,
-    outfitDesc,
-    actionDesc,
-    settingDesc,
-    mustIncludeDesc,
-    supportingDesc,
-    cameraDesc,
-    artStyle,
-  ].filter(Boolean).join(', ');
-
-  console.log(`[IMAGE PROMPT] Page ${card.page_index}: ${prompt.substring(0, 200)}...`);
+  console.log(`[IMAGE PROMPT] Page ${card.page_index}: ${prompt}`);
   return prompt;
 }
 
 /**
- * Build negative prompt based on character type and scene
+ * Build negative prompt — compact, scene-aware
+ * The actual negatives used at generation time come from
+ * buildDynamicNegativePrompt() in generate-images/route.ts,
+ * but this is used as the passed-through negative for logging/fallback.
  */
 export function buildNegativePrompt(
   bible: UniversalCharacterBible,
   card: UniversalSceneCard
 ): string {
-  const negatives: string[] = [
-    'text', 'watermark', 'logo', 'signature',
-    'photorealistic', 'realistic', 'lifelike', 'hyperreal',
-    '3D render', 'CGI', 'Pixar', 'Disney 3D', 'cinematic lighting',
-    'skin pores', 'wrinkles', 'ultra-detailed texture', 'DSLR', 'film still',
-    'blurry', 'low quality', 'jpeg artifacts'
+  // Core style negatives (always apply)
+  const neg: string[] = [
+    'photorealistic', '3D render', 'CGI', 'Pixar', 'DSLR', 'film still',
+    'text', 'watermark', 'logo', 'blurry', 'low quality'
   ];
 
-  // If animal character, block humans
+  // Block humans for animal characters
   if (!bible.is_human) {
-    negatives.push('human', 'person', 'boy', 'girl', 'child', 'man', 'woman', 'people', 'hands', 'fingers');
-
-    // Add species-specific negatives
-    const speciesNegatives = getSpeciesNegatives(bible.species_or_type);
-    negatives.push(...speciesNegatives);
+    neg.push('human', 'person', 'child');
+    // Top 3 species-confusion negatives
+    const confused = getSpeciesNegatives(bible.species_or_type);
+    neg.push(...confused.slice(0, 3));
   }
 
-  // Add scene-based negatives
-  const sceneNegatives = getSceneNegatives(card.setting);
-  negatives.push(...sceneNegatives);
-
-  return negatives.join(', ');
+  return neg.join(', ');
 }
 
 /**
- * Species-specific negatives to prevent SDXL from drifting to similar animals
+ * Species-specific negatives — top confusable animals only
  */
 function getSpeciesNegatives(species: string): string[] {
-  const lowerSpecies = species.toLowerCase();
-
-  const speciesMap: Record<string, string[]> = {
-    'rhinoceros': ['cow', 'bull', 'ox', 'hippo', 'hippopotamus', 'elephant', 'unicorn', 'horse', 'pig', 'boar'],
-    'rhino': ['cow', 'bull', 'ox', 'hippo', 'hippopotamus', 'elephant', 'unicorn', 'horse', 'pig', 'boar'],
-    'elephant': ['hippo', 'rhino', 'mammoth', 'cow'],
-    'lion': ['tiger', 'cat', 'dog', 'wolf', 'bear'],
-    'tiger': ['lion', 'cat', 'dog', 'leopard', 'cheetah'],
-    'bear': ['dog', 'wolf', 'lion', 'gorilla'],
-    'rabbit': ['cat', 'dog', 'mouse', 'hamster'],
-    'cat': ['dog', 'rabbit', 'fox', 'wolf'],
-    'dog': ['cat', 'wolf', 'fox', 'bear'],
-    'fox': ['dog', 'wolf', 'cat', 'coyote'],
-    'wolf': ['dog', 'fox', 'coyote', 'husky'],
-    'giraffe': ['horse', 'deer', 'llama', 'camel'],
-    'zebra': ['horse', 'donkey', 'cow'],
-    'monkey': ['human', 'ape', 'gorilla', 'chimpanzee'],
-    'penguin': ['duck', 'bird', 'chicken'],
-    'dolphin': ['fish', 'shark', 'whale'],
-    'owl': ['eagle', 'hawk', 'parrot', 'chicken'],
+  const s = species.toLowerCase();
+  const map: Record<string, string[]> = {
+    'rhinoceros': ['cow', 'hippo', 'elephant'],
+    'rhino': ['cow', 'hippo', 'elephant'],
+    'elephant': ['hippo', 'rhino', 'cow'],
+    'lion': ['tiger', 'cat', 'dog'],
+    'tiger': ['lion', 'cat', 'leopard'],
+    'bear': ['dog', 'wolf', 'gorilla'],
+    'rabbit': ['cat', 'mouse', 'hamster'],
+    'cat': ['dog', 'rabbit', 'fox'],
+    'dog': ['cat', 'wolf', 'fox'],
+    'fox': ['dog', 'wolf', 'cat'],
+    'giraffe': ['horse', 'deer', 'llama'],
+    'penguin': ['duck', 'chicken'],
+    'dolphin': ['fish', 'shark'],
+    'owl': ['eagle', 'hawk'],
   };
-
-  return speciesMap[lowerSpecies] || [];
-}
-
-/**
- * Scene-based negatives to prevent wrong settings
- */
-function getSceneNegatives(setting: string): string[] {
-  const lowerSetting = setting.toLowerCase();
-
-  // SPACE/MOON scenes - block underwater
-  if (lowerSetting.includes('space') || lowerSetting.includes('moon') ||
-      lowerSetting.includes('rocket') || lowerSetting.includes('planet') ||
-      lowerSetting.includes('stars') || lowerSetting.includes('crater')) {
-    return ['underwater', 'ocean', 'sea', 'fish', 'coral', 'seaweed', 'water', 'swimming', 'beach'];
-  }
-
-  // UNDERWATER/OCEAN scenes - block space
-  if (lowerSetting.includes('underwater') || lowerSetting.includes('ocean') ||
-      lowerSetting.includes('coral') || lowerSetting.includes('fish')) {
-    return ['space', 'moon', 'stars', 'planet', 'rocket', 'crater'];
-  }
-
-  // FOREST/MEADOW scenes - block underwater and space
-  if (lowerSetting.includes('forest') || lowerSetting.includes('meadow') ||
-      lowerSetting.includes('garden') || lowerSetting.includes('field') ||
-      lowerSetting.includes('jungle') || lowerSetting.includes('savanna')) {
-    return ['underwater', 'ocean', 'sea', 'fish', 'coral', 'space', 'moon', 'rocket'];
-  }
-
-  // BEACH scenes - block underwater
-  if (lowerSetting.includes('beach') || lowerSetting.includes('shore')) {
-    return ['underwater', 'deep sea', 'coral reef', 'space', 'moon'];
-  }
-
-  return [];
+  return map[s] || [];
 }
 
 /**
