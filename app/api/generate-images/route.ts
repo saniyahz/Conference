@@ -160,6 +160,10 @@ function buildDynamicNegativePrompt(pagePrompt: string, providedNegative: string
   // Subtractable negatives — will be removed if they appear in the prompt
   const subNeg: string[] = []
 
+  // Replacement-animal blocking — prevents SDXL from substituting random animals
+  // Only removed if the page prompt explicitly mentions them
+  subNeg.push('shark', 'whale', 'snake', 'spider', 'predator', 'monster')
+
   // Environment negatives — only add if the page doesn't need them
   const envRules: [string, string[]][] = [
     ['underwater', ['underwater', 'ocean floor', 'coral']],

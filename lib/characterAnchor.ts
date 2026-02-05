@@ -328,15 +328,19 @@ export function buildPagePromptWithAnchor(
     ? `${name} the ${species}, same ${species} as reference, ${traits}`
     : `${name}, same child as reference, ${traits}`;
 
-  // Supporting characters — very short
-  const supporting = supportingCharacters.length > 0
-    ? ` With ${supportingCharacters.map(c => `${c.count} ${c.type}`).join(', ')}.`
+  // Supporting characters
+  const hasSupporting = supportingCharacters.length > 0;
+  const supportingList = hasSupporting
+    ? supportingCharacters.map(c => `${c.count} ${c.type}`).join(', ')
     : '';
 
   // Must-include — clean contradictions, then limit to 3-4
   const cleanedMusts = cleanMustInclude(setting, mustInclude);
   const musts = cleanedMusts.slice(0, 4).join(', ');
 
-  // Style + scene FIRST so CLIP prioritizes them over character details
-  return `2D cartoon, bold outlines, flat cel shading, vibrant pastels. ${setting}. ${charId}, full body, ${action}.${supporting} ${musts}. No text.`;
+  // Style + scene FIRST. Wide shot when supporting characters present.
+  if (hasSupporting) {
+    return `2D cartoon, bold outlines, flat cel shading, vibrant pastels. Wide shot: ${setting}. ${charId} with ${supportingList}, ${action}. ${musts}. No text.`;
+  }
+  return `2D cartoon, bold outlines, flat cel shading, vibrant pastels. ${setting}. ${charId}, full body, ${action}. ${musts}. No text.`;
 }

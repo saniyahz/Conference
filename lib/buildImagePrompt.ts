@@ -92,14 +92,21 @@ export function buildImagePrompt(
   const cleanedMusts = cleanMustInclude(card.setting, card.must_include);
   const musts = cleanedMusts.slice(0, 4).join(', ');
 
-  // SUPPORTING CHARACTERS — very short
-  const supporting = card.supporting_characters.length > 0
-    ? ` With ${card.supporting_characters.map(c => `${c.count} ${c.type}`).join(', ')}.`
+  // SUPPORTING CHARACTERS
+  const hasSupporting = card.supporting_characters.length > 0;
+  const supportingList = hasSupporting
+    ? card.supporting_characters.map(c => `${c.count} ${c.type}`).join(', ')
     : '';
 
   // BUILD COMPACT PROMPT — style + scene FIRST (CLIP sees these tokens first)
-  // Anti-sheet language is handled in negatives, not here (wastes CLIP tokens)
-  const prompt = `2D cartoon, bold outlines, flat cel shading, vibrant pastels. ${card.setting}. ${charId}, full body, ${card.action}.${supporting} ${musts}. No text.`;
+  // When supporting characters exist, use WIDE SHOT and list them prominently
+  let prompt: string;
+  if (hasSupporting) {
+    // Wide group scene — supporting chars + key objects right after setting, within CLIP window
+    prompt = `2D cartoon, bold outlines, flat cel shading, vibrant pastels. Wide shot: ${card.setting}. ${charId} with ${supportingList}, ${card.action}. ${musts}. No text.`;
+  } else {
+    prompt = `2D cartoon, bold outlines, flat cel shading, vibrant pastels. ${card.setting}. ${charId}, full body, ${card.action}. ${musts}. No text.`;
+  }
 
   console.log(`[IMAGE PROMPT] Page ${card.page_index}: ${prompt}`);
   return prompt;
