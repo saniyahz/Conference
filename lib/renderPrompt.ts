@@ -32,12 +32,12 @@ export function renderPrompt(bible: CharacterBible, card: PageSceneCard, pageTex
     const bodyDesc = buildAnimalDescription(animalAppearance, species);
 
     // SDXL needs HEAVY species repetition to maintain character
-    prompt = `${species} ${species} ${species}, A cute cartoon ${species} character, ${bodyDesc}, ${charName} the ${species}, the same ${species} as before, ${action}, ${scene}. ${supporting}Pixar Disney 3D animation style, soft lighting, vibrant colors, children's book illustration, ${species} character.`;
+    prompt = `${species} ${species} ${species}, A cute cartoon ${species} character, ${bodyDesc}, ${charName} the ${species}, the same ${species} as before, ${action}, ${scene}. ${supporting}cute 2D cartoon children's illustration, bold clean outlines, simplified shapes, big expressive eyes, flat cel shading, vibrant pastel colors, ${species} character, no text.`;
   } else {
     // HUMAN CHARACTER - Use HumanAppearance fields
     const humanAppearance = bible.appearance as HumanAppearance;
     const humanDesc = buildHumanDescription(humanAppearance);
-    prompt = `A cute cartoon child, ${humanDesc}, ${charName}, ${action}, ${scene}. ${supporting}Pixar Disney 3D animation style, soft lighting, vibrant colors, children's book illustration.`;
+    prompt = `A cute cartoon child, ${humanDesc}, ${charName}, ${action}, ${scene}. ${supporting}cute 2D cartoon children's illustration, bold clean outlines, simplified shapes, big expressive eyes, flat cel shading, vibrant pastel colors, no text.`;
   }
 
   console.log(`[PROMPT] Page ${card.page_number}: ${prompt}`);

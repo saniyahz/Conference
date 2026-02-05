@@ -150,10 +150,13 @@ const SDXL_VERSION = "39ed52f2a78e934b3ba6e2a89f5b1c712de7dfea535525255b1aa35c55
 function buildDynamicNegativePrompt(pagePrompt: string, providedNegative: string | undefined): string {
   const lowerPrompt = pagePrompt.toLowerCase()
 
-  // Base negatives - always apply
+  // Base negatives - always apply (block 3D + photorealistic)
   const baseNegatives = [
     'text', 'watermark', 'logo', 'signature',
-    'photorealistic', 'blurry', 'low quality', 'jpeg artifacts',
+    'photorealistic', 'realistic', 'lifelike', 'hyperreal',
+    '3D render', 'CGI', 'Pixar', 'Disney 3D', 'cinematic lighting',
+    'skin pores', 'ultra-detailed texture', 'DSLR', 'film still',
+    'blurry', 'low quality', 'jpeg artifacts',
     'multiple characters', 'crowd',
   ]
 

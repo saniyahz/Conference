@@ -21,7 +21,7 @@ Age: 6 years old
 Appearance: ${skin}, big expressive eyes, ${hair}
 Body: childlike proportions
 Expression: curious, joyful, brave
-Art style: soft watercolor illustration, high-quality children's picture book
+Art style: cute 2D cartoon, bold clean outlines, flat cel shading, vibrant pastel colors
 Lighting: warm, gentle, magical
 Consistency rule: ${canon.name} must look the same on every page`;
 }
@@ -59,7 +59,7 @@ ${characterLock}
 ${scenePrompt}
 ${requiredElements}
 
-Style: soft watercolor, magical realism, storybook illustration.
+Style: cute 2D cartoon children's illustration, bold clean outlines, flat cel shading, vibrant pastel colors.
 ${forbiddenElements}`;
 
   console.log(`[FINAL PROMPT] ${fullPrompt.substring(0, 500)}...`);
@@ -147,7 +147,7 @@ function getSceneDescription(scene: NormalizedScene): string {
  * Build the negative prompt based on scene exclusions
  */
 export function assembleNegativePrompt(scene: NormalizedScene): string {
-  const base = "portrait, close-up, photorealistic, realistic, 3d render, anime, text, logo, watermark, signature, ugly, deformed";
+  const base = "portrait, close-up, photorealistic, realistic, lifelike, hyperreal, 3D render, CGI, Pixar, Disney 3D, cinematic lighting, skin pores, ultra-detailed texture, DSLR, film still, anime, text, logo, watermark, signature";
 
   // Environment-specific exclusions
   let envExclusions = '';

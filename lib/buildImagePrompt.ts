@@ -53,8 +53,8 @@ export function buildImagePrompt(
     ? 'close-up shot'
     : 'medium shot';
 
-  // 8. ART STYLE
-  const artStyle = `${bible.art_style.medium}, ${bible.art_style.genre}, ${bible.art_style.mood}, ${bible.art_style.color_palette} colors`;
+  // 8. ART STYLE - use 2D cartoon style, NOT 3D/Pixar
+  const artStyle = 'cute 2D cartoon children\'s illustration, bold clean outlines, simplified shapes, big expressive eyes, playful proportions, flat cel shading, vibrant pastel colors, clean background details, no text';
 
   // BUILD FINAL PROMPT
   // Structure: CHARACTER (repeated) + outfit + action + setting + must-include + supporting + camera + style
@@ -67,7 +67,6 @@ export function buildImagePrompt(
     supportingDesc,
     cameraDesc,
     artStyle,
-    'Pixar Disney 3D animation style, soft lighting, vibrant colors, children\'s book illustration'
   ].filter(Boolean).join(', ');
 
   console.log(`[IMAGE PROMPT] Page ${card.page_index}: ${prompt.substring(0, 200)}...`);
@@ -83,8 +82,9 @@ export function buildNegativePrompt(
 ): string {
   const negatives: string[] = [
     'text', 'watermark', 'logo', 'signature',
-    'photorealistic', 'realistic', 'photograph', 'photo',
-    'ugly', 'deformed', 'bad anatomy', 'bad proportions',
+    'photorealistic', 'realistic', 'lifelike', 'hyperreal',
+    '3D render', 'CGI', 'Pixar', 'Disney 3D', 'cinematic lighting',
+    'skin pores', 'wrinkles', 'ultra-detailed texture', 'DSLR', 'film still',
     'blurry', 'low quality', 'jpeg artifacts'
   ];
 

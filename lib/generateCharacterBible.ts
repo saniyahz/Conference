@@ -284,11 +284,11 @@ function createFallbackBible(
         signature_outfit_or_props: [],
         personality_tags: ['curious', 'brave', 'friendly'],
         art_style: {
-          medium: 'soft watercolor',
+          medium: '2D cartoon, flat cel shading',
           genre: 'premium children\'s picture book',
           mood: 'warm, gentle, magical',
-          line_detail: 'clean, whimsical',
-          color_palette: 'bright, pastel'
+          line_detail: 'bold clean outlines',
+          color_palette: 'vibrant, pastel'
         },
         consistency_rules: [
           `${name} must look identical across all pages.`,
@@ -315,11 +315,11 @@ function createFallbackBible(
     signature_outfit_or_props: [],
     personality_tags: ['curious', 'brave', 'friendly'],
     art_style: {
-      medium: 'soft watercolor',
+      medium: '2D cartoon, flat cel shading',
       genre: 'premium children\'s picture book',
       mood: 'warm, gentle, magical',
-      line_detail: 'clean, whimsical',
-      color_palette: 'bright, pastel'
+      line_detail: 'bold clean outlines',
+      color_palette: 'vibrant, pastel'
     },
     consistency_rules: [
       `${name} must look identical across all pages.`,

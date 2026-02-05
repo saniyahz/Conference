@@ -139,13 +139,13 @@ export async function generateCharacterAnchor(
   let prompt: string;
 
   if (isAnimal) {
-    // Animal anchor prompt - repeat species heavily, plain background
+    // Animal anchor prompt - 2D cartoon style, plain background
     const fingerprint = bible.visual_fingerprint.slice(0, 6).join(', ');
-    prompt = `${species} ${species} ${species}, full body character sheet, ${fingerprint}, ${name} the ${species}, standing pose, facing camera, plain white background, studio lighting, character reference sheet, Pixar Disney 3D animation style, soft lighting, vibrant colors, children's book illustration, centered composition, full body visible, no background elements`;
+    prompt = `Full body character reference sheet of ${name} the ${species}. ${species} ${species} ${species}, ${fingerprint}. Cute 2D cartoon style, bold outlines, simple shapes, big friendly eyes, flat cel shading, vibrant pastel colors. Plain light background, centered, full body visible, no scenery, no text`;
   } else {
-    // Human anchor prompt
+    // Human anchor prompt - 2D cartoon style
     const fingerprint = bible.visual_fingerprint.slice(0, 6).join(', ');
-    prompt = `cute cartoon child, full body character sheet, ${fingerprint}, ${name}, standing pose, facing camera, plain white background, studio lighting, character reference sheet, Pixar Disney 3D animation style, soft lighting, vibrant colors, children's book illustration, centered composition, full body visible`;
+    prompt = `Full body character reference sheet of ${name}. cute cartoon child, ${fingerprint}. Cute 2D cartoon style, bold outlines, simple shapes, big friendly eyes, flat cel shading, vibrant pastel colors. Plain light background, centered, full body visible, no scenery, no text`;
   }
 
   // Negative prompt for anchor - plain background, no scene elements
@@ -321,12 +321,13 @@ export async function generatePageWithAnchor(
  * No scene elements, plain background
  */
 function buildAnchorNegativePrompt(isAnimal: boolean, species: string): string {
-  // Keep negative prompt simple - overly long negatives can confuse SDXL
+  // Block 3D/photorealistic + scene elements for clean 2D anchor
   const negatives = [
-    'text', 'watermark', 'logo', 'signature',
-    'photorealistic', 'photograph',
+    'photorealistic', 'realistic', 'lifelike', 'hyperreal',
+    '3D render', 'CGI', 'Pixar', 'Disney 3D', 'cinematic lighting',
+    'ultra-detailed texture', 'DSLR', 'film still',
+    'text', 'watermark', 'logo',
     'background elements', 'scenery', 'landscape',
-    'forest', 'sky', 'grass', 'trees',
     'multiple characters', 'crowd', 'group'
   ];
 
@@ -405,7 +406,7 @@ export function buildPagePromptWithAnchor(
     setting,
     mustIncludeDesc,
     supportingDesc,
-    'Pixar Disney 3D animation style, soft lighting, vibrant colors, children\'s book illustration'
+    'cute 2D cartoon children\'s illustration, bold clean outlines, simplified shapes, big expressive eyes, flat cel shading, vibrant pastel colors, no text'
   ].filter(Boolean).join(', ');
 
   return prompt;

@@ -109,10 +109,10 @@ export function createCharacterBible(dna: CharacterDNA): CharacterBible {
       signature_outfit: dna.accessories !== 'none' ? dna.accessories : '',
       personality: extractPersonality(dna.personality_visuals),
       art_style: {
-        medium: "soft watercolor",
+        medium: "2D cartoon, flat cel shading",
         genre: "premium children's picture book",
         mood: "warm, gentle, magical",
-        line_detail: "clean, whimsical",
+        line_detail: "bold clean outlines",
       },
       consistency_rules: [
         `${dna.name} is a ${species || 'animal'} - NOT a human.`,
@@ -135,10 +135,10 @@ export function createCharacterBible(dna: CharacterDNA): CharacterBible {
     signature_outfit: extractOutfit(dna.accessories),
     personality: extractPersonality(dna.personality_visuals),
     art_style: {
-      medium: "soft watercolor",
+      medium: "2D cartoon, flat cel shading",
       genre: "premium children's picture book",
       mood: "warm, gentle, magical",
-      line_detail: "clean, whimsical",
+      line_detail: "bold clean outlines",
     },
     consistency_rules: [
       `${dna.name} must look identical across all pages.`,
@@ -340,10 +340,10 @@ export function createSimpleBible(
       signature_outfit: "",
       personality: ["curious", "joyful", "brave"],
       art_style: {
-        medium: "soft watercolor",
+        medium: "2D cartoon, flat cel shading",
         genre: "premium children's picture book",
         mood: "warm, gentle, magical",
-        line_detail: "clean, whimsical",
+        line_detail: "bold clean outlines",
       },
       consistency_rules: [
         `${name} is a ${species || 'animal'} - NOT a human.`,
@@ -370,10 +370,10 @@ export function createSimpleBible(
     signature_outfit: "colorful casual clothes",
     personality: ["curious", "joyful", "brave"],
     art_style: {
-      medium: "soft watercolor",
+      medium: "2D cartoon, flat cel shading",
       genre: "premium children's picture book",
       mood: "warm, gentle, magical",
-      line_detail: "clean, whimsimal",
+      line_detail: "bold clean outlines",
     },
     consistency_rules: [
       `${name} must look identical across all pages.`,
