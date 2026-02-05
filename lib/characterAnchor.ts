@@ -264,59 +264,6 @@ export async function generateCharacterAnchor(
 }
 
 /**
- * Generate page image using Character Anchor as reference (img2img)
- * This locks the character identity across pages
- */
-export async function generatePageWithAnchor(
-  replicate: Replicate,
-  anchor: CharacterAnchor,
-  pagePrompt: string,
-  negativePrompt: string,
-  pageIndex: number,
-  strength: number = 0.35  // Low strength = more identity lock (0.25-0.45 recommended)
-): Promise<string> {
-  console.log(`\n--- Generating Page ${pageIndex} with Anchor Reference ---`);
-  console.log(`Strength: ${strength} (lower = more identity lock)`);
-  console.log(`Prompt: ${pagePrompt.substring(0, 150)}...`);
-
-  try {
-    // Use SDXL img2img with anchor as init_image
-    const output = await replicate.run(
-      "stability-ai/sdxl:39ed52f2a78e934b3ba6e2a89f5b1c712de7dfea535525255b1aa35c5565e08b",
-      {
-        input: {
-          prompt: pagePrompt,
-          negative_prompt: negativePrompt,
-          image: anchor.imageUrl,  // Reference image
-          prompt_strength: strength,  // How much to change from reference (lower = more identity lock)
-          width: 1024,
-          height: 1024,
-          num_outputs: 1,
-          scheduler: "K_EULER",
-          num_inference_steps: 25,
-          guidance_scale: 8,
-          seed: anchor.seed,  // Same seed as anchor
-        }
-      }
-    );
-
-    // Use robust URL extraction
-    const imageUrl = extractImageUrl(output);
-
-    if (!imageUrl) {
-      console.log(`[PAGE ${pageIndex}] img2img failed - no URL extracted`);
-      return '';
-    }
-
-    console.log(`[PAGE ${pageIndex}] generated with anchor reference: ${imageUrl.substring(0, 80)}...`);
-    return imageUrl;
-  } catch (error) {
-    console.error(`Error generating page ${pageIndex} with anchor:`, error);
-    return '';
-  }
-}
-
-/**
  * Build negative prompt for Character Anchor
  * Blocks reference sheet layout + 3D + scenery
  */

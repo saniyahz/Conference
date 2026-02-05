@@ -345,7 +345,7 @@ export async function POST(request: NextRequest) {
     console.log(`CHARACTER ANCHOR MODE: ENABLED (required)`)
     console.log(`ANCHOR URL: ${characterAnchorUrl}`)
     console.log(`BASE SEED: ${baseSeed} (each page gets baseSeed + pageIndex*1000)`)
-    console.log(`PROMPT_STRENGTH: 0.65 (allows scene changes)`)
+    console.log(`PROMPT_STRENGTH: 0.80 (scene overrides anchor background)`)
     console.log(`TOTAL PAGES: ${imagePrompts.length}`)
     console.log(`==============================================\n`)
 
@@ -399,7 +399,7 @@ export async function POST(request: NextRequest) {
     console.log(`\n========== IMAGE GENERATION COMPLETE ==========`)
     console.log(`Success: ${successCount}/${imagePrompts.length} images`)
     console.log(`BASE SEED: ${baseSeed} (per-page: baseSeed + page*1000)`)
-    console.log(`PROMPT_STRENGTH: 0.65`)
+    console.log(`PROMPT_STRENGTH: 0.80`)
     console.log(`ANCHOR URL: ${characterAnchorUrl}`)
     if (failedIndices.length > 0) {
       console.log(`Failed pages: ${failedIndices.map(i => i + 1).join(', ')}`)

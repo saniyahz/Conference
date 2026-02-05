@@ -2,20 +2,31 @@ import { UniversalCharacterBible } from './generateCharacterBible';
 import { UniversalSceneCard } from './generateSceneCard';
 
 /**
- * Environment-specific words that don't belong in other environments.
- * If the setting is "ocean", remove any must_include containing forest/moon/space words.
+ * Environment-specific words that are PHYSICALLY IMPOSSIBLE in other environments.
+ * Only ban biome/location words — NEVER ban movable objects (rocket, spaceship).
+ * A rocket can be in a forest (discovery scene) or on the moon (landing scene).
  */
 const ENV_CONFLICT_MAP: Record<string, string[]> = {
-  ocean:      ['forest', 'trees', 'woods', 'jungle', 'moon', 'crater', 'stars', 'space', 'nebula', 'planet', 'desert', 'sand', 'dune', 'mountain', 'cave', 'savann', 'grass'],
-  underwater: ['forest', 'trees', 'woods', 'jungle', 'moon', 'crater', 'stars', 'space', 'nebula', 'planet', 'desert', 'sand', 'dune', 'mountain', 'cave', 'clouds', 'sky', 'savann'],
-  moon:       ['forest', 'trees', 'woods', 'jungle', 'ocean', 'waves', 'water', 'dolphin', 'fish', 'coral', 'sea', 'desert', 'sand', 'clouds', 'river', 'meadow', 'flower', 'grass'],
-  space:      ['forest', 'trees', 'woods', 'jungle', 'ocean', 'waves', 'water', 'dolphin', 'fish', 'coral', 'sea', 'desert', 'sand', 'river', 'meadow', 'flower', 'grass'],
-  rocket:     ['forest', 'trees', 'woods', 'jungle', 'ocean', 'waves', 'dolphin', 'fish', 'coral', 'moon', 'crater', 'desert', 'cave', 'meadow'],
-  forest:     ['ocean', 'waves', 'dolphin', 'fish', 'coral', 'sea', 'moon', 'crater', 'space', 'nebula', 'planet', 'rocket', 'spaceship', 'desert', 'sand', 'dune'],
-  savann:     ['ocean', 'waves', 'dolphin', 'fish', 'coral', 'sea', 'moon', 'crater', 'space', 'nebula', 'planet', 'rocket', 'spaceship', 'desert', 'sand', 'forest', 'woods', 'jungle'],
-  desert:     ['ocean', 'waves', 'dolphin', 'fish', 'coral', 'sea', 'forest', 'trees', 'woods', 'jungle', 'moon', 'crater', 'space', 'nebula', 'river', 'meadow'],
-  beach:      ['forest', 'trees', 'woods', 'jungle', 'moon', 'crater', 'space', 'nebula', 'planet', 'desert', 'cave', 'mountain'],
-  cave:       ['ocean', 'waves', 'dolphin', 'sea', 'moon', 'space', 'nebula', 'planet', 'rocket', 'desert', 'beach', 'meadow'],
+  // Ocean: no land biomes
+  ocean:      ['forest', 'trees', 'woods', 'jungle', 'crater', 'desert', 'sand', 'dune', 'mountain', 'cave', 'savann', 'grass', 'meadow'],
+  // Underwater: no sky, no land
+  underwater: ['forest', 'trees', 'woods', 'jungle', 'crater', 'desert', 'sand', 'dune', 'mountain', 'cave', 'clouds', 'savann', 'meadow'],
+  // Moon: no Earth biomes, no weather
+  moon:       ['forest', 'trees', 'woods', 'jungle', 'ocean', 'waves', 'dolphin', 'fish', 'coral', 'sea', 'desert', 'sand', 'clouds', 'river', 'meadow', 'flower', 'grass'],
+  // Space: no Earth biomes
+  space:      ['forest', 'trees', 'woods', 'jungle', 'ocean', 'waves', 'dolphin', 'fish', 'coral', 'sea', 'desert', 'sand', 'river', 'meadow', 'flower', 'grass'],
+  // Rocket interior: no outdoor biomes (but moon/stars visible through window = OK)
+  rocket:     ['dolphin', 'fish', 'coral', 'desert', 'cave', 'meadow'],
+  // Forest: no ocean/underwater biome (but rocket = OK, it can be hidden in forest)
+  forest:     ['ocean', 'waves', 'dolphin', 'fish', 'coral', 'sea', 'crater', 'desert', 'sand', 'dune'],
+  // Savanna: no ocean/underwater
+  savann:     ['ocean', 'waves', 'dolphin', 'fish', 'coral', 'sea', 'crater', 'desert', 'sand'],
+  // Desert: no ocean/forest
+  desert:     ['ocean', 'waves', 'dolphin', 'fish', 'coral', 'sea', 'forest', 'woods', 'jungle', 'river', 'meadow'],
+  // Beach: no contradictory biomes
+  beach:      ['forest', 'woods', 'jungle', 'crater', 'desert', 'cave'],
+  // Cave: no open biomes
+  cave:       ['ocean', 'waves', 'dolphin', 'sea', 'desert', 'beach', 'meadow'],
 };
 
 /**
