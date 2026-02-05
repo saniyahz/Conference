@@ -209,52 +209,49 @@ function createFallbackSceneCard(
   const lowerText = pageText.toLowerCase();
   console.log(`[FALLBACK SCENE] Page ${pageIndex}: extracting from "${pageText.substring(0, 80)}..."`)
 
-  // Extract location nouns from the actual page text (ordered by specificity)
-  // Returns SHORT nouns, not full descriptive sentences
-  const locationPatterns: { pattern: RegExp; noun: string; mood: string }[] = [
-    { pattern: /cockpit|control\s*panel|pilot\s*seat|dashboard/, noun: 'inside rocket cockpit', mood: 'exciting' },
-    { pattern: /(rocket|spaceship).*(inside|sat in|buckled)|(inside|sat in|buckled).*(rocket|spaceship)/, noun: 'inside rocket ship', mood: 'exciting' },
-    { pattern: /moon.*(surface|landed|crater)|(surface|landed|crater).*moon/, noun: 'moon surface with craters', mood: 'wondrous' },
-    { pattern: /moon/, noun: 'moon', mood: 'wondrous' },
-    { pattern: /rocket|spaceship|blast\s*off|launch/, noun: 'rocket launching into sky', mood: 'exciting' },
-    { pattern: /space|galaxy|nebula/, noun: 'outer space', mood: 'wondrous' },
-    { pattern: /underwater|beneath\s*the\s*water|ocean\s*floor/, noun: 'underwater', mood: 'magical' },
-    { pattern: /dolphin/, noun: 'ocean surface with dolphins', mood: 'playful' },
-    { pattern: /ocean|sea\b/, noun: 'ocean', mood: 'adventurous' },
-    { pattern: /waterfall/, noun: 'forest with waterfall', mood: 'magical' },
-    { pattern: /forest|woods|jungle/, noun: 'forest', mood: 'enchanting' },
-    { pattern: /savann|grassland/, noun: 'savannah', mood: 'warm' },
-    { pattern: /beach|shore/, noun: 'beach', mood: 'cheerful' },
-    { pattern: /mountain|hill/, noun: 'mountains', mood: 'majestic' },
-    { pattern: /river|stream/, noun: 'river', mood: 'peaceful' },
-    { pattern: /cave/, noun: 'cave', mood: 'mysterious' },
-    { pattern: /desert/, noun: 'desert', mood: 'vast' },
-    { pattern: /meadow|field/, noun: 'meadow', mood: 'peaceful' },
-    { pattern: /storm/, noun: 'stormy landscape', mood: 'dramatic' },
-    { pattern: /home|house|bed/, noun: 'cozy home', mood: 'warm' },
+  // CANONICAL SCENE BUCKETS — each page maps to exactly ONE scene.
+  // No more "near" compound strings that confuse SDXL.
+  // Ordered by priority: specific compounds first, then general patterns.
+  // General priority: forest > ocean > moon > space > rocket
+  // (because a rocket can appear in ANY scene, but a forest/ocean IS the scene)
+  const CANONICAL_SCENES: { pattern: RegExp; bucket: string; mood: string }[] = [
+    // === SPECIFIC COMPOUND (unambiguous, highest priority) ===
+    { pattern: /underwater|beneath\s*the\s*water|ocean\s*floor/, bucket: 'underwater ocean with coral reef and sunbeams', mood: 'magical' },
+    { pattern: /cockpit|control\s*panel|pilot\s*seat|dashboard/, bucket: 'rocket cockpit interior with glowing controls and stars through window', mood: 'exciting' },
+    { pattern: /(rocket|spaceship).*(inside|sat in|buckled)|(inside|sat in|buckled).*(rocket|spaceship)/, bucket: 'inside rocket ship with porthole windows showing stars', mood: 'exciting' },
+    { pattern: /moon.*(surface|landed|crater|walked|bounce|hop)|(surface|landed|crater|walked).*moon/, bucket: 'moon surface with craters and Earth visible in sky', mood: 'wondrous' },
+    // === GENERAL (priority: forest > ocean > moon > space > rocket > others) ===
+    { pattern: /forest|woods|jungle/, bucket: 'lush green forest with tall trees and dappled sunlight', mood: 'enchanting' },
+    { pattern: /waterfall/, bucket: 'forest clearing with cascading waterfall and mist', mood: 'magical' },
+    { pattern: /dolphin/, bucket: 'sparkling open ocean with leaping dolphins', mood: 'playful' },
+    { pattern: /ocean|sea\b|splash.*water|water.*splash/, bucket: 'open ocean with gentle waves under bright sky', mood: 'adventurous' },
+    { pattern: /moon/, bucket: 'moon surface with craters and starry sky', mood: 'wondrous' },
+    { pattern: /space|galaxy|nebula/, bucket: 'deep space with colorful nebula and distant stars', mood: 'wondrous' },
+    { pattern: /rocket|spaceship|blast\s*off|launch/, bucket: 'rocket launching into bright blue sky with fluffy clouds', mood: 'exciting' },
+    { pattern: /lion/, bucket: 'golden savannah with scattered acacia trees and warm light', mood: 'warm' },
+    { pattern: /savann|grassland/, bucket: 'golden savannah with scattered acacia trees', mood: 'warm' },
+    { pattern: /beach|shore/, bucket: 'sandy tropical beach with palm trees and gentle waves', mood: 'cheerful' },
+    { pattern: /mountain|hill/, bucket: 'rolling green mountains under bright blue sky', mood: 'majestic' },
+    { pattern: /river|stream/, bucket: 'peaceful river flowing through green valley', mood: 'peaceful' },
+    { pattern: /cave/, bucket: 'mysterious cave entrance with glowing light inside', mood: 'mysterious' },
+    { pattern: /desert/, bucket: 'vast desert with golden sand dunes under blue sky', mood: 'vast' },
+    { pattern: /meadow|field/, bucket: 'sunny meadow with colorful wildflowers', mood: 'peaceful' },
+    { pattern: /storm/, bucket: 'dramatic stormy sky over rocky landscape', mood: 'dramatic' },
+    { pattern: /home|house|bed/, bucket: 'cozy cottage interior with warm golden light', mood: 'warm' },
   ]
 
-  const foundNouns: string[] = []
+  // First match wins — scenes are ordered by priority
+  let setting = 'colorful outdoor landscape'
   let mood = 'magical'
-  for (const { pattern, noun, mood: m } of locationPatterns) {
-    if (pattern.test(lowerText) && foundNouns.length < 2) {
-      foundNouns.push(noun)
-      if (foundNouns.length === 1) mood = m  // Use mood of primary location
+  for (const { pattern, bucket, mood: m } of CANONICAL_SCENES) {
+    if (pattern.test(lowerText)) {
+      setting = bucket
+      mood = m
+      break
     }
   }
 
-  // Build setting from extracted nouns — short and direct, no verbose templates
-  let setting: string
-  if (foundNouns.length >= 2) {
-    setting = `${foundNouns[0]} near ${foundNouns[1]}`
-  } else if (foundNouns.length === 1) {
-    setting = foundNouns[0]
-  } else {
-    // No location nouns found — generic fallback
-    setting = 'colorful outdoor landscape'
-  }
-
-  console.log(`[FALLBACK SCENE] Page ${pageIndex} extracted setting: "${setting}" from nouns: [${foundNouns.join(', ')}]`)
+  console.log(`[FALLBACK SCENE] Page ${pageIndex} canonical setting: "${setting}"`)
 
   // ===== SETTING-CATEGORY NOUN GATING =====
   // Only allow nouns that belong to the detected setting category.
@@ -279,22 +276,44 @@ function createFallbackSceneCard(
     home:       ['colorful flowers', 'rainbow', 'bright sun', 'friends'],
   }
 
-  // Find which category the setting belongs to and filter nouns
-  function gateNounsBySetting(settingStr: string, nouns: string[]): string[] {
+  // Gate nouns by setting category — MERGE ALL matching categories (not first-match).
+  // A setting like "sparkling open ocean with leaping dolphins" matches both "ocean"
+  // and "dolphin" categories, so allowed nouns = union of both.
+  // Also preserves nouns whose core word (>3 chars) appears in the page text.
+  function gateNounsBySetting(settingStr: string, nouns: string[], pageText: string): string[] {
     const sl = settingStr.toLowerCase()
+    const pl = pageText.toLowerCase()
+
+    // Merge ALL matching category allowed lists
+    const allAllowed = new Set<string>()
+    const matchedCategories: string[] = []
     for (const [category, allowed] of Object.entries(CATEGORY_ALLOWED_NOUNS)) {
       if (sl.includes(category)) {
-        const gated = nouns.filter(noun =>
-          allowed.some(a => noun.toLowerCase().includes(a.toLowerCase()))
-        )
-        const removed = nouns.filter(n => !gated.includes(n))
-        if (removed.length > 0) {
-          console.log(`[NOUN GATE] Setting "${settingStr}" (category: ${category}): removed [${removed.join(', ')}], kept [${gated.join(', ')}]`)
+        matchedCategories.push(category)
+        for (const a of allowed) {
+          allAllowed.add(a.toLowerCase())
         }
-        return gated
       }
     }
-    return nouns  // No category match — keep all
+
+    if (matchedCategories.length === 0) return nouns  // No category match — keep all
+
+    const gated = nouns.filter(noun => {
+      const lowerNoun = noun.toLowerCase()
+      // Keep if allowed by ANY matching category
+      if (Array.from(allAllowed).some(a => lowerNoun.includes(a) || a.includes(lowerNoun))) return true
+      // EXCEPTION: Keep noun if its core word (>3 chars) appears in the page text
+      // e.g., "dolphins" stays if pageText contains "dolphin"
+      const coreWords = lowerNoun.split(/\s+/).filter(w => w.length > 3)
+      if (coreWords.some(w => pl.includes(w))) return true
+      return false
+    })
+
+    const removed = nouns.filter(n => !gated.includes(n))
+    if (removed.length > 0) {
+      console.log(`[NOUN GATE] Setting "${settingStr}" (categories: ${matchedCategories.join('+')}): removed [${removed.join(', ')}], kept [${gated.join(', ')}]`)
+    }
+    return gated
   }
 
   // Extract action from text - more specific patterns
@@ -325,16 +344,14 @@ function createFallbackSceneCard(
 
   // Extract concrete nouns from text, then gate by setting category
   const rawNouns = extractNounsFromText(pageText)
-  const gatedNouns = gateNounsBySetting(setting, rawNouns)
+  const gatedNouns = gateNounsBySetting(setting, rawNouns, pageText)
   const mustInclude = [`${characterName} full body`, ...gatedNouns]
 
-  // Ensure at least 4 items by adding setting-derived elements
-  if (mustInclude.length < 4) {
-    const settingWords = setting.split(' ').filter(w => w.length > 3).slice(0, 3).join(' ')
-    mustInclude.push(settingWords)
-  }
-  while (mustInclude.length < 4) {
-    mustInclude.push('vibrant colors')
+  // Pad to 4 items with generic illustration elements (no setting substrings)
+  const padItems = ['vibrant colors', 'soft lighting', 'detailed background']
+  for (const pad of padItems) {
+    if (mustInclude.length >= 4) break
+    if (!mustInclude.includes(pad)) mustInclude.push(pad)
   }
 
   // Extract supporting characters more thoroughly

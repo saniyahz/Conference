@@ -9,6 +9,37 @@ const replicate = new Replicate({
 // Helper function to sleep/delay
 const sleep = (ms: number) => new Promise(resolve => setTimeout(resolve, ms))
 
+/**
+ * Wait until a Replicate CDN URL is fetchable (HTTP 200).
+ * Replicate delivery URLs can 404 briefly after prediction completes
+ * because CDN propagation lags behind the API response.
+ * Retries HEAD requests with delays until ready or max attempts reached.
+ */
+async function waitForUrlReady(url: string, maxAttempts = 10, delayMs = 3000): Promise<boolean> {
+  for (let attempt = 1; attempt <= maxAttempts; attempt++) {
+    try {
+      const response = await fetch(url, {
+        method: 'HEAD',
+        signal: AbortSignal.timeout(10000),
+      })
+      if (response.ok) {
+        if (attempt > 1) {
+          console.log(`[URL READY] ${url.substring(0, 60)}... ready after ${attempt} attempt(s)`)
+        }
+        return true
+      }
+      console.log(`[URL PROBE] Attempt ${attempt}/${maxAttempts}: HTTP ${response.status} — waiting ${delayMs / 1000}s...`)
+    } catch (error: any) {
+      console.log(`[URL PROBE] Attempt ${attempt}/${maxAttempts}: ${error.message} — waiting ${delayMs / 1000}s...`)
+    }
+    if (attempt < maxAttempts) {
+      await sleep(delayMs)
+    }
+  }
+  console.warn(`[URL PROBE] WARN: ${url.substring(0, 60)}... not ready after ${maxAttempts} attempts`)
+  return false
+}
+
 // Rate limit configuration
 // Replicate free tier: 6 requests per minute = 10 seconds between requests minimum
 const BASE_DELAY_BETWEEN_IMAGES = 15000 // 15 seconds between Replicate calls (2 calls per page now)
@@ -140,6 +171,9 @@ async function generateScenePlate(
     throw new Error(`Failed to extract scene plate URL for page ${pageIndex + 1}`)
   }
 
+  // Probe: wait until CDN URL is fetchable before using as img2img base
+  await waitForUrlReady(plateUrl)
+
   console.log(`[PLATE ${pageIndex + 1}] URL: ${plateUrl.substring(0, 60)}...`)
   return plateUrl
 }
@@ -236,6 +270,8 @@ async function generateImageWithAnchor(
       }
 
       if (imageUrl) {
+        // Probe: wait until CDN URL is fetchable (prevents PDF 404s)
+        await waitForUrlReady(imageUrl)
         console.log(`SUCCESS: Page ${imageIndex + 1} generated: ${imageUrl.substring(0, 60)}...`)
         return imageUrl
       } else {

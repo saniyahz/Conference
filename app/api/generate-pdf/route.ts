@@ -3,7 +3,7 @@ import jsPDF from 'jspdf'
 import { Story } from '@/app/page'
 
 // Helper function to convert image URL to base64 with retry
-async function getImageAsBase64(url: string, maxRetries = 2): Promise<string> {
+async function getImageAsBase64(url: string, maxRetries = 5): Promise<string> {
   let lastError: Error | null = null
 
   for (let attempt = 0; attempt <= maxRetries; attempt++) {
@@ -26,7 +26,7 @@ async function getImageAsBase64(url: string, maxRetries = 2): Promise<string> {
 
       if (attempt < maxRetries) {
         // Wait before retry with exponential backoff
-        await new Promise(resolve => setTimeout(resolve, 1000 * (attempt + 1)))
+        await new Promise(resolve => setTimeout(resolve, 2000 * (attempt + 1)))
       }
     }
   }
