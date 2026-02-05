@@ -69,6 +69,7 @@ export default function Home() {
           seed: storyData.seed,
           characterAnchorUrl: storyData.characterAnchorUrl,
           sceneSettings: storyData.sceneSettings,  // Raw settings for scene plate generation
+          sceneMustIncludes: storyData.sceneMustIncludes,  // Key objects per page for plate + sanitizer
         }),
       })
 

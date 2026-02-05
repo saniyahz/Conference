@@ -15,131 +15,6 @@ const BASE_DELAY_BETWEEN_IMAGES = 15000 // 15 seconds between Replicate calls (2
 const RATE_LIMIT_INITIAL_WAIT = 15000 // 15 seconds on first rate limit
 const RATE_LIMIT_MAX_WAIT = 60000 // 60 seconds max wait
 
-// Helper function to generate a single image with retry logic
-async function generateImageWithRetry(
-  replicate: Replicate,
-  prompt: string,
-  customNegativePrompt: string | undefined,
-  imageIndex: number,
-  imagePromptsLength: number,
-  seed: number,
-  maxRetries = 4 // Increased retries for rate limiting
-): Promise<string> {
-  let rateLimitWait = RATE_LIMIT_INITIAL_WAIT
-
-  for (let attempt = 1; attempt <= maxRetries; attempt++) {
-    try {
-          // Use the prompt as-is - it's already structured properly
-          const cleanPrompt = prompt
-
-          // Use passed negative prompt OR fallback to default
-          // MUST include environment-blocking terms to prevent forest/castle defaults
-          const negativePrompt = customNegativePrompt ||
-            `forest, trees, grass, castle, human child, people, land animals, houses, realistic, 3D render, anime, text in image, text, words, letters, writing, caption, label, watermark, signature, logo, typography, font, numbers, scary, creepy, horror, dark, evil, ugly, deformed, bad anatomy, bad proportions, photorealistic`
-
-          console.log(`\n========== IMAGE ${imageIndex + 1} DEBUG ==========`)
-          console.log(`Attempt ${attempt}/${maxRetries}`)
-          console.log(`\n--- FULL PROMPT ---`)
-          console.log(cleanPrompt)
-          console.log(`\n--- NEGATIVE PROMPT ---`)
-          console.log(negativePrompt)
-          console.log(`\n--- REPLICATE INPUT ---`)
-          console.log(JSON.stringify({
-            prompt: cleanPrompt.substring(0, 500) + '...',
-            negative_prompt: negativePrompt.substring(0, 200) + '...',
-            guidance_scale: 2,
-            num_inference_steps: 4
-          }, null, 2))
-          console.log(`===================================\n`)
-
-          // Use standard SDXL - balanced settings for speed + quality
-          const output = await replicate.run(
-            "stability-ai/sdxl:39ed52f2a78e934b3ba6e2a89f5b1c712de7dfea535525255b1aa35c5565e08b",
-            {
-              input: {
-                prompt: cleanPrompt,
-                negative_prompt: negativePrompt,
-                width: 1024,
-                height: 1024,
-                num_outputs: 1,
-                scheduler: "K_EULER",
-                num_inference_steps: 20,   // Faster, still good
-                guidance_scale: 8,         // Balanced prompt following
-                seed: seed,
-              }
-            }
-          )
-
-          // Handle output - SDXL returns array of URLs
-          let imageUrl = ''
-
-          if (Array.isArray(output) && output.length > 0) {
-            // If it's an array, take the first element
-            const firstOutput = output[0]
-
-            // Check if it's already a string URL
-            if (typeof firstOutput === 'string') {
-              imageUrl = firstOutput
-            } else if (firstOutput && typeof firstOutput === 'object') {
-              // If it's a stream or object, try to read it
-              // The stream might contain the URL as data
-              try {
-                // Try converting to string (might be a URL object)
-                imageUrl = String(firstOutput)
-                // If it looks like a stream object, we need to iterate
-                if (imageUrl.includes('ReadableStream') || imageUrl.includes('[object')) {
-                  // Use async iteration to read the stream
-                  const chunks: string[] = []
-                  for await (const chunk of output as any) {
-                    if (typeof chunk === 'string') {
-                      chunks.push(chunk)
-                    }
-                  }
-                  imageUrl = chunks.join('')
-                }
-              } catch (e) {
-                // Error reading stream
-              }
-            }
-          } else if (typeof output === 'string') {
-            imageUrl = output
-          }
-
-          if (imageUrl && imageUrl.startsWith('http')) {
-          return imageUrl
-        } else {
-          return ''
-        }
-      } catch (error: any) {
-        const errorMessage = error.message || String(error)
-        const is429 = errorMessage.includes('429') || errorMessage.includes('Too Many Requests')
-        const isRateLimit = errorMessage.includes('rate limit') || is429
-
-        console.log(`Image ${imageIndex + 1} attempt ${attempt} failed: ${errorMessage.substring(0, 100)}`)
-
-        if (isRateLimit && attempt < maxRetries) {
-          // Exponential backoff for rate limits
-          console.log(`Rate limited, waiting ${rateLimitWait}ms before retry...`)
-          await sleep(rateLimitWait)
-          // Increase wait time for next potential rate limit (exponential backoff)
-          rateLimitWait = Math.min(rateLimitWait * 1.5, RATE_LIMIT_MAX_WAIT)
-          continue
-        } else if (attempt < maxRetries) {
-          // For other errors, quick retry with small backoff
-          const waitTime = 3000 * attempt
-          console.log(`Error on attempt ${attempt}, retrying in ${waitTime}ms...`)
-          await sleep(waitTime)
-          continue
-        } else {
-          // Max retries reached
-          console.log(`Max retries (${maxRetries}) reached for image ${imageIndex + 1}`)
-          return ''
-        }
-      }
-    }
-    return ''
-}
-
 // SDXL model version - use consistent version throughout
 const SDXL_VERSION = "39ed52f2a78e934b3ba6e2a89f5b1c712de7dfea535525255b1aa35c5565e08b"
 
@@ -235,21 +110,28 @@ function buildFinalPassNegative(): string {
 }
 
 /**
- * Anti-sabotage sanitizer: remove any negative term that appears in the prompt or setting.
- * Last line of defense — catches edge cases where a negative accidentally matches
- * a word the image actually needs.
+ * TOKEN-BASED negative sanitizer: "Never negate what you ask for."
+ * Tokenizes prompt + setting + mustIncludes into individual words,
+ * then removes any negative term containing a matching word.
+ * This is the core fix for scene elements disappearing.
  */
-function sanitizeNegatives(negativePrompt: string, prompt: string, setting: string): string {
-  const contextLower = `${prompt} ${setting}`.toLowerCase()
-  const terms = negativePrompt.split(',').map(t => t.trim()).filter(t => t.length > 0)
+function sanitizeNegatives(negativePrompt: string, prompt: string, setting: string, mustInclude: string[] = []): string {
+  // Build token set from ALL positive context
+  const contextText = `${prompt} ${setting} ${mustInclude.join(' ')}`
+  const contextTokens = new Set(
+    contextText.toLowerCase()
+      .replace(/[.,!?;:'"()]/g, ' ')
+      .split(/\s+/)
+      .filter(t => t.length > 2)  // skip tiny words like "a", "the", "no"
+  )
 
+  const terms = negativePrompt.split(',').map(t => t.trim()).filter(t => t.length > 0)
   const removed: string[] = []
+
   const filtered = terms.filter(term => {
-    const termLower = term.toLowerCase()
-    // Check if the exact negative term appears in the prompt/setting context
-    // Only remove single-word or short terms that match — don't strip quality terms
-    // Quality terms (photorealistic, blurry, watermark, etc.) will never appear in story prompts
-    if (contextLower.includes(termLower)) {
+    const termWords = term.toLowerCase().split(/\s+/)
+    // If ANY word in the negative term matches a prompt/setting/mustInclude token, remove it
+    if (termWords.some(w => w.length > 2 && contextTokens.has(w))) {
       removed.push(term)
       return false
     }
@@ -257,7 +139,7 @@ function sanitizeNegatives(negativePrompt: string, prompt: string, setting: stri
   })
 
   if (removed.length > 0) {
-    console.log(`[SANITIZER] Removed from negatives (found in prompt/setting): ${removed.join(', ')}`)
+    console.log(`[SANITIZER] Removed from negatives (token match in prompt/setting/must_include): ${removed.join(', ')}`)
   }
 
   return filtered.join(', ')
@@ -356,7 +238,8 @@ async function generateImageWithAnchor(
   imageIndex: number,
   promptStrength: number = 0.80,
   settingContext: string = '',  // Setting text for sanitizer context
-  useMinimalNegatives: boolean = false  // true = 2-pass final (quality only), false = fallback (full env rules)
+  useMinimalNegatives: boolean = false,  // true = 2-pass final (quality only), false = fallback (full env rules)
+  mustInclude: string[] = []  // Must-include items for negative sanitization
 ): Promise<string> {
   const maxRetries = 3
 
@@ -372,8 +255,9 @@ async function generateImageWithAnchor(
         const promptForNegatives = settingContext ? `${prompt} ${settingContext}` : prompt
         dynamicNegative = buildDynamicNegativePrompt(promptForNegatives, negativePrompt)
       }
-      // Anti-sabotage sanitizer: last line of defense — remove any negative that matches prompt/setting
-      dynamicNegative = sanitizeNegatives(dynamicNegative, prompt, settingContext)
+      // TOKEN-BASED sanitizer: "Never negate what you ask for"
+      // Tokenizes prompt + setting + mustIncludes and strips any matching negative
+      dynamicNegative = sanitizeNegatives(dynamicNegative, prompt, settingContext, mustInclude)
 
       // Build input object for img2img
       const input: any = {
@@ -461,7 +345,7 @@ async function generateImageWithAnchor(
 
 export async function POST(request: NextRequest) {
   try {
-    const { imagePrompts, negativePrompts, seed, characterAnchorUrl, sceneSettings } = await request.json()
+    const { imagePrompts, negativePrompts, seed, characterAnchorUrl, sceneSettings, sceneMustIncludes } = await request.json()
 
     if (!imagePrompts || !Array.isArray(imagePrompts)) {
       return NextResponse.json(
@@ -493,14 +377,16 @@ export async function POST(request: NextRequest) {
     const baseSeed = seed || Math.floor(Math.random() * 1000000)
 
     const has2PassPipeline = sceneSettings && Array.isArray(sceneSettings) && sceneSettings.length > 0
+    const hasMustIncludes = sceneMustIncludes && Array.isArray(sceneMustIncludes) && sceneMustIncludes.length > 0
 
     console.log(`\n========== IMAGE GENERATION CONFIG ==========`)
     console.log(`PIPELINE: ${has2PassPipeline ? '2-PASS (scene plate → character img2img)' : 'SINGLE-PASS (anchor img2img)'}`)
     console.log(`ANCHOR URL: ${characterAnchorUrl}`)
     console.log(`SCENE SETTINGS: ${has2PassPipeline ? sceneSettings.length + ' settings provided' : 'NONE'}`)
+    console.log(`MUST INCLUDES: ${hasMustIncludes ? 'YES (per-page key objects for plate + sanitizer)' : 'NONE'}`)
     console.log(`BASE SEED: ${baseSeed} (each page gets baseSeed + pageIndex*1000)`)
     console.log(`PLATE PROMPT_STRENGTH: 0.45 (character on plate) / FALLBACK: 0.80 (anchor)`)
-    console.log(`NEGATIVES: 2-pass=quality-only (no env words) / fallback=full env rules`)
+    console.log(`NEGATIVES: 2-pass=quality-only (no env words) / fallback=full env rules + token sanitizer`)
     console.log(`DELAY BETWEEN CALLS: ${BASE_DELAY_BETWEEN_IMAGES / 1000}s`)
     console.log(`TOTAL PAGES: ${imagePrompts.length}`)
     console.log(`==============================================\n`)
@@ -513,13 +399,28 @@ export async function POST(request: NextRequest) {
       const prompt = imagePrompts[i]
       const negativePrompt = negativePrompts && negativePrompts[i] ? negativePrompts[i] : undefined
       const setting = has2PassPipeline ? sceneSettings[i] : ''
+      const mustInclude: string[] = hasMustIncludes ? (sceneMustIncludes[i] || []) : []
       const pageSeed = baseSeed + i * 1000
 
       console.log(`\n========== PAGE ${i + 1}/${imagePrompts.length} ==========`)
       console.log(`SEED: ${pageSeed}`)
       console.log(`SETTING: ${setting ? setting.substring(0, 80) : 'N/A'}`)
+      console.log(`MUST INCLUDE: ${mustInclude.length > 0 ? mustInclude.join(', ') : 'NONE'}`)
       console.log(`FINAL PROMPT: ${prompt.substring(0, 120)}...`)
       console.log(`FINAL PROMPT LENGTH: ${prompt.split(/\s+/).length} words / ${prompt.length} chars`)
+
+      // ===== VALIDATION LOG =====
+      // Check: do any must_include keywords appear in the prompt? If not, warn.
+      const promptLower = prompt.toLowerCase()
+      const settingLower = setting.toLowerCase()
+      const sceneKeywords = [...settingLower.split(/\s+/), ...mustInclude.map(m => m.toLowerCase())]
+        .filter(w => w.length > 3)
+      const missingFromPrompt = sceneKeywords.filter(kw => !promptLower.includes(kw))
+      if (missingFromPrompt.length > 0 && missingFromPrompt.length < sceneKeywords.length) {
+        console.log(`[VALIDATION] Some scene keywords not in prompt (OK if in plate): ${missingFromPrompt.slice(0, 5).join(', ')}`)
+      }
+      console.log(`[VALIDATION] Setting: "${setting}" | Prompt has Include: ${prompt.includes('Include:')}`)
+      console.log(`==============================`)
 
       let imageUrl = ''
 
@@ -527,7 +428,8 @@ export async function POST(request: NextRequest) {
         if (setting) {
           // ===== 2-PASS PIPELINE =====
           // STEP 1: Generate scene plate (txt2img, background only)
-          const scenePrompt = buildSceneOnlyPrompt(setting)
+          // Include key objects from must_include in plate prompt
+          const scenePrompt = buildSceneOnlyPrompt(setting, mustInclude)
           const plateUrl = await generateScenePlate(replicate, scenePrompt, pageSeed, i)
 
           // Delay between Replicate calls
@@ -545,7 +447,8 @@ export async function POST(request: NextRequest) {
             i,
             0.45,           // prompt_strength: character shows but scene stays
             setting,         // Setting context for sanitizer
-            true             // MINIMAL negatives — no env words, plate controls scene
+            true,            // MINIMAL negatives — no env words, plate controls scene
+            mustInclude      // Must-include items for negative sanitization
           )
         } else {
           // ===== FALLBACK: single-pass with anchor =====
@@ -559,7 +462,8 @@ export async function POST(request: NextRequest) {
             i,
             0.80,
             '',              // No setting context
-            false            // FULL negatives — env rules needed since no plate
+            false,           // FULL negatives — env rules needed since no plate
+            mustInclude      // Must-include items for negative sanitization
           )
         }
 
@@ -587,7 +491,8 @@ export async function POST(request: NextRequest) {
               i,
               0.80,
               setting,
-              false            // FULL negatives — env rules needed since no plate
+              false,           // FULL negatives — env rules needed since no plate
+              mustInclude      // Must-include items for negative sanitization
             )
             if (imageUrl) {
               imageUrls.push(imageUrl)

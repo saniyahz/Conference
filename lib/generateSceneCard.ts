@@ -83,8 +83,12 @@ async function tryLLMSceneCard(
 }
 
 /**
- * Generate SceneCard for a single page using LLM.
- * Retry strategy: try 70B twice with jitter, then fall back to 8B, then heuristic.
+ * Generate SceneCard for a single page.
+ * DETERMINISTIC MODE: Uses rule-based mapper directly from page text.
+ * LLM scene cards were unreliable (Replicate Llama 500 errors caused wrong
+ * fallback settings like "Cozy cottage" for rocket scenes).
+ * The rule-based mapper extracts location nouns directly from page text —
+ * stable, fast, and no API dependency.
  */
 export async function generateSceneCardWithLLM(
   replicate: Replicate,
@@ -92,43 +96,6 @@ export async function generateSceneCardWithLLM(
   pageText: string,
   characterName: string
 ): Promise<UniversalSceneCard> {
-  const fullPrompt = `${SCENE_CARD_PROMPT}
-Page ${pageIndex}: "${pageText}"
-
-Main character name: ${characterName}
-
-Output ONLY the JSON, no explanation:`;
-
-  const LLAMA_70B = "meta/meta-llama-3.1-70b-instruct";
-  const LLAMA_8B = "meta/meta-llama-3.1-8b-instruct";
-
-  // Attempt 1: 70B
-  try {
-    return await tryLLMSceneCard(replicate, LLAMA_70B, fullPrompt, pageIndex);
-  } catch (err: any) {
-    console.log(`[SCENE CARD] Page ${pageIndex} — 70B attempt 1 failed: ${err.message?.substring(0, 80)}`);
-  }
-
-  // Jittered wait before retry (1-3 seconds)
-  await new Promise(r => setTimeout(r, 1000 + Math.random() * 2000));
-
-  // Attempt 2: 70B retry
-  try {
-    return await tryLLMSceneCard(replicate, LLAMA_70B, fullPrompt, pageIndex);
-  } catch (err: any) {
-    console.log(`[SCENE CARD] Page ${pageIndex} — 70B attempt 2 failed: ${err.message?.substring(0, 80)}`);
-  }
-
-  // Attempt 3: fall back to 8B (smaller, more reliable)
-  try {
-    console.log(`[SCENE CARD] Page ${pageIndex} — falling back to 8B model`);
-    return await tryLLMSceneCard(replicate, LLAMA_8B, fullPrompt, pageIndex);
-  } catch (err: any) {
-    console.log(`[SCENE CARD] Page ${pageIndex} — 8B also failed: ${err.message?.substring(0, 80)}`);
-  }
-
-  // All LLM attempts failed — use heuristic fallback
-  console.log(`[SCENE CARD] Page ${pageIndex} — all LLM attempts failed, using heuristic fallback`);
   return createFallbackSceneCard(pageIndex, pageText, characterName);
 }
 

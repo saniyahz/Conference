@@ -70,9 +70,11 @@ export function cleanMustInclude(setting: string, mustInclude: string[]): string
  * Build scene-only prompt for the scene plate (first pass).
  * No characters — just the background environment.
  * Setting comes directly from SceneCard.setting (source of truth).
+ * keyObjects are must_include items to embed in the plate background.
  */
-export function buildSceneOnlyPrompt(setting: string): string {
-  return `2D cartoon, bold outlines, flat cel shading, vibrant pastels. SCENE: ${setting}. Wide shot, detailed background. No characters. No animals. No text.`;
+export function buildSceneOnlyPrompt(setting: string, keyObjects: string[] = []): string {
+  const includeClause = keyObjects.length > 0 ? ` Include: ${keyObjects.slice(0, 5).join(', ')}.` : ''
+  return `2D cartoon, bold outlines, flat cel shading, vibrant pastels. SCENE: ${setting}.${includeClause} Wide shot, detailed background. No characters. No animals. No text.`;
 }
 
 /**
@@ -104,8 +106,8 @@ function gateIndoorNouns(setting: string, mustInclude: string[]): string[] {
 /**
  * Build image prompt for the FINAL PASS (img2img from scene plate).
  * Scene is already baked into the plate — prompt focuses on character + action.
- * "Keep the same background scene" tells SDXL to preserve the plate.
- * COMPACT FORMAT — must fit CLIP's ~77 token window.
+ * COMPACT FORMAT — stay under ~40 words to fit CLIP's ~77 token window.
+ * Order: scene anchor → character (CLIP priority) → Include: objects → style.
  */
 export function buildImagePrompt(
   bible: UniversalCharacterBible,
@@ -115,40 +117,39 @@ export function buildImagePrompt(
   const name = bible.name;
   const isAnimal = !bible.is_human;
 
-  // CHARACTER ID — short, front-loaded for CLIP priority
+  // CHARACTER ID — short, 2 traits max for CLIP efficiency
   let charId: string;
   if (isAnimal) {
-    // Repeat species once for emphasis + top 3 fingerprint traits
-    const traits = bible.visual_fingerprint.slice(0, 3).join(', ');
-    charId = `${name} the ${species}, ${species}, ${traits}`;
+    const traits = bible.visual_fingerprint.slice(0, 2).join(', ');
+    charId = `${name} the ${species}, ${traits}`;
   } else {
-    const traits = bible.visual_fingerprint.slice(0, 3).join(', ');
+    const traits = bible.visual_fingerprint.slice(0, 2).join(', ');
     charId = `${name}, ${traits}`;
   }
 
-  // MUST-INCLUDE — clean contradictions, gate indoor nouns, then limit to 3-4 items
+  // MUST-INCLUDE — clean contradictions, gate indoor nouns, limit to 3 items
   const envCleaned = cleanMustInclude(card.setting, card.must_include);
   const cleanedMusts = gateIndoorNouns(card.setting, envCleaned);
-  const musts = cleanedMusts.slice(0, 4).join(', ');
+  const musts = cleanedMusts.slice(0, 3).join(', ');
 
-  // SUPPORTING CHARACTERS
+  // SUPPORTING CHARACTERS — short
   const hasSupporting = card.supporting_characters.length > 0;
   const supportingList = hasSupporting
-    ? card.supporting_characters.map(c => `${c.count} ${c.type}`).join(', ')
+    ? card.supporting_characters.slice(0, 2).map(c => `${c.count} ${c.type}`).join(', ')
     : '';
 
-  // FINAL PASS PROMPT — scene is already in the plate, CLIP tokens prioritize character
-  // "Keep the same background scene" preserves the plate's environment
-  // Character description comes immediately after for maximum CLIP weight
-  // Style at end (already in plate, just reinforcing)
+  // FINAL PASS PROMPT — compact, ~35-40 words
+  // "Keep the same background scene" preserves the plate
+  // Character → Include → Style (front-load what matters for CLIP)
   let prompt: string;
   if (hasSupporting) {
-    prompt = `Keep the same background scene. ${charId} as main character, centered, with ${supportingList}, ${card.action}. ${musts}. 2D cartoon, bold outlines, flat cel shading, vibrant pastels. No text.`;
+    prompt = `Keep the same background scene. ${charId}, centered, with ${supportingList}, ${card.action}. Include: ${musts}. 2D cartoon, bold outlines, flat cel shading, vibrant pastels. No text.`;
   } else {
-    prompt = `Keep the same background scene. ${charId} as main character, centered, full body, ${card.action}. ${musts}. 2D cartoon, bold outlines, flat cel shading, vibrant pastels. No text.`;
+    prompt = `Keep the same background scene. ${charId}, centered, full body, ${card.action}. Include: ${musts}. 2D cartoon, bold outlines, flat cel shading, vibrant pastels. No text.`;
   }
 
   console.log(`[IMAGE PROMPT] Page ${card.page_index}: ${prompt}`);
+  console.log(`[IMAGE PROMPT] Word count: ${prompt.split(/\s+/).length}`);
   return prompt;
 }
 
@@ -206,24 +207,37 @@ function getSpeciesNegatives(species: string): string[] {
 
 /**
  * Generate all image prompts for a story.
- * Returns settings separately so generate-images can build scene plates from them.
+ * Returns settings and mustIncludes separately so generate-images can:
+ * - Build scene plates from settings + mustIncludes
+ * - Use mustIncludes for negative sanitization (never negate what you ask for)
  */
 export function generateAllImagePrompts(
   bible: UniversalCharacterBible,
   cards: UniversalSceneCard[]
-): { prompts: string[]; negativePrompts: string[]; settings: string[] } {
+): { prompts: string[]; negativePrompts: string[]; settings: string[]; mustIncludes: string[][] } {
   const prompts: string[] = [];
   const negativePrompts: string[] = [];
   const settings: string[] = [];
+  const mustIncludes: string[][] = [];
+  const charName = bible.name.toLowerCase();
 
   for (const card of cards) {
     const prompt = buildImagePrompt(bible, card);
     const negativePrompt = buildNegativePrompt(bible, card);
 
+    // Clean must_include for plate (same filtering as buildImagePrompt)
+    // Filter out character-related items — plate has NO characters
+    const envCleaned = cleanMustInclude(card.setting, card.must_include);
+    const cleanedMusts = gateIndoorNouns(card.setting, envCleaned);
+    const plateObjects = cleanedMusts
+      .filter(item => !item.toLowerCase().includes(charName) && !item.toLowerCase().includes('full body'))
+      .slice(0, 5);
+
     prompts.push(prompt);
     negativePrompts.push(negativePrompt);
     settings.push(card.setting);
+    mustIncludes.push(plateObjects);
   }
 
-  return { prompts, negativePrompts, settings };
+  return { prompts, negativePrompts, settings, mustIncludes };
 }
