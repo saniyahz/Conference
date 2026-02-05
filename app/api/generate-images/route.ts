@@ -225,48 +225,13 @@ function buildDynamicNegativePrompt(pagePrompt: string, providedNegative: string
 /**
  * Build MINIMAL negative for final pass (2-pass pipeline).
  * Scene is already baked into the plate — negatives must NEVER contain env words.
- * Focus: quality, anti-sheet, anti-3D, species confusion, replacement animals.
- * NO environment words (ocean, forest, moon, rocket, etc.) — plate controls that.
+ * STATIC quality-only list. No species, no replacement animals, no env words.
+ * Scene is controlled by the plate + must_include, not by negatives.
  */
-function buildFinalPassNegative(pagePrompt: string): string {
-  const lp = pagePrompt.toLowerCase()
-
-  // Quality + anti-sheet + anti-3D (always apply)
-  const neg = [
-    'character sheet', 'reference sheet', 'turnaround', 'multiple poses', 'collage', 'grid', 'lineup',
-    'photorealistic', 'realistic', '3D render', 'CGI', 'Pixar', 'DSLR',
-    'text', 'watermark', 'logo', 'signature',
-    'blurry', 'low quality', 'jpeg artifacts',
-    'extra limbs', 'extra arms', 'extra legs', 'extra heads',
-    'deformed', 'bad anatomy',
-  ]
-
-  // Replacement-animal blocking (no random substitutions) — skip if in prompt
-  const replacementAnimals = ['shark', 'whale', 'snake', 'spider', 'predator', 'monster']
-  for (const animal of replacementAnimals) {
-    if (!lp.includes(animal)) neg.push(animal)
-  }
-
-  // Species-confusion negatives
-  if (lp.includes('rhinoceros') || lp.includes('rhino')) {
-    neg.push('cow', 'hippo', 'elephant', 'horse')
-  }
-  if (lp.includes('elephant')) neg.push('hippo', 'rhino', 'cow')
-  if (lp.includes('lion')) neg.push('tiger', 'cat', 'dog')
-  if (lp.includes('tiger')) neg.push('lion', 'cat', 'leopard')
-  if (lp.includes('bear')) neg.push('dog', 'wolf', 'gorilla')
-  if (lp.includes('rabbit')) neg.push('cat', 'mouse', 'hamster')
-  if (lp.includes('penguin')) neg.push('duck', 'chicken')
-  if (lp.includes('dolphin')) neg.push('fish')
-
-  // Block humans for animal characters
-  const animalKeywords = ['rhinoceros', 'rhino', 'elephant', 'lion', 'bear', 'rabbit', 'cat', 'dog', 'fox', 'tiger', 'giraffe', 'penguin', 'dolphin', 'owl']
-  if (animalKeywords.some(a => lp.includes(a))) {
-    neg.push('human', 'person', 'child')
-  }
-
-  console.log(`[FINAL-PASS NEGATIVES] ${neg.join(', ')}`)
-  return neg.join(', ')
+function buildFinalPassNegative(): string {
+  const neg = 'text, watermark, logo, signature, photorealistic, realistic, 3D render, CGI, blurry, low quality, jpeg artifacts, bad anatomy, bad proportions, deformed, extra limbs, extra arms, extra legs, extra heads, extra faces, monster, horror, gore, weapon'
+  console.log(`[FINAL-PASS NEGATIVES] ${neg}`)
+  return neg
 }
 
 /**
@@ -402,7 +367,7 @@ async function generateImageWithAnchor(
       // Fallback anchor pass: full dynamic negatives (env words needed since no plate)
       let dynamicNegative: string
       if (useMinimalNegatives) {
-        dynamicNegative = buildFinalPassNegative(prompt)
+        dynamicNegative = buildFinalPassNegative()
       } else {
         const promptForNegatives = settingContext ? `${prompt} ${settingContext}` : prompt
         dynamicNegative = buildDynamicNegativePrompt(promptForNegatives, negativePrompt)

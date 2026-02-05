@@ -76,6 +76,32 @@ export function buildSceneOnlyPrompt(setting: string): string {
 }
 
 /**
+ * Gate indoor nouns from outdoor scenes.
+ * A "doorway" doesn't belong in "rocket launching into sky" — it confuses SDXL.
+ * Only allow indoor nouns when the setting is explicitly indoor (cockpit, home, cottage, room).
+ */
+function gateIndoorNouns(setting: string, mustInclude: string[]): string[] {
+  const lowerSetting = setting.toLowerCase()
+  const isIndoor = /cockpit|inside|interior|home|cottage|house|room|bedroom/.test(lowerSetting)
+
+  if (isIndoor) return mustInclude  // Indoor scene — keep all nouns
+
+  const indoorNouns = ['doorway', 'door', 'room', 'window', 'hallway', 'stairs', 'ceiling', 'wall', 'curtain']
+
+  const filtered = mustInclude.filter(item => {
+    const lower = item.toLowerCase()
+    return !indoorNouns.some(noun => lower.includes(noun))
+  })
+
+  const removed = mustInclude.filter(item => !filtered.includes(item))
+  if (removed.length > 0) {
+    console.log(`[GATE] Removed indoor nouns from outdoor scene "${setting}": ${removed.join(', ')}`)
+  }
+
+  return filtered
+}
+
+/**
  * Build image prompt for the FINAL PASS (img2img from scene plate).
  * Scene is already baked into the plate — prompt focuses on character + action.
  * "Keep the same background scene" tells SDXL to preserve the plate.
@@ -100,8 +126,9 @@ export function buildImagePrompt(
     charId = `${name}, ${traits}`;
   }
 
-  // MUST-INCLUDE — clean contradictions, then limit to 3-4 items
-  const cleanedMusts = cleanMustInclude(card.setting, card.must_include);
+  // MUST-INCLUDE — clean contradictions, gate indoor nouns, then limit to 3-4 items
+  const envCleaned = cleanMustInclude(card.setting, card.must_include);
+  const cleanedMusts = gateIndoorNouns(card.setting, envCleaned);
   const musts = cleanedMusts.slice(0, 4).join(', ');
 
   // SUPPORTING CHARACTERS
