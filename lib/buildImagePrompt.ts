@@ -161,9 +161,13 @@ export function buildImagePrompt(
     ? `. ${keyObjects.join(', ')} visible`
     : '';
 
+  // SINGULARITY CONSTRAINT: "only one {species}" prevents SDXL from generating duplicates.
+  // This is critical for animal characters which SDXL loves to duplicate.
+  const singularity = isAnimal ? ` Only one ${species}.` : '';
+
   // PROMPT: Character FIRST (highest CLIP weight), scene anchoring LAST (lowest).
   // The plate already preserves the scene — prompt_strength controls the balance.
-  const prompt = `${charId}, full body, large in foreground, centered${supportingClause}, ${card.action}${objectsClause}. Same background. 2D cartoon, bold outlines, vibrant pastels. No text.`;
+  const prompt = `${charId}, full body, large in foreground, centered${supportingClause}, ${card.action}${objectsClause}.${singularity} Same background. 2D cartoon, bold outlines, vibrant pastels. No text.`;
 
   console.log(`[IMAGE PROMPT] Page ${card.page_index}: ${prompt}`);
   console.log(`[IMAGE PROMPT] Word count: ${prompt.split(/\s+/).length}`);
@@ -242,10 +246,13 @@ export function generateAllImagePrompts(
     const prompt = buildImagePrompt(bible, card);
     const negativePrompt = buildNegativePrompt(bible, card);
 
-    // Clean must_include for PLATE prompt (env conflict + indoor gate)
+    // Prepare must_include for PLATE prompt (indoor gate only)
+    // NOTE: cleanMustInclude was REMOVED — it used ENV_CONFLICT_MAP to strip
+    // items like "dolphins" from moon settings even when page text contains them.
+    // The noun gating in generateSceneCard.ts already handles env conflicts
+    // with a page-text exception. cleanMustInclude was a redundant layer.
     // Filter out character-related items — plate has NO characters
-    const envCleaned = cleanMustInclude(card.setting, card.must_include);
-    const cleanedMusts = gateIndoorNouns(card.setting, envCleaned);
+    const cleanedMusts = gateIndoorNouns(card.setting, card.must_include);
     const plateObjects = cleanedMusts
       .filter(item => !item.toLowerCase().includes(charName) && !item.toLowerCase().includes('full body'))
       .slice(0, 5);

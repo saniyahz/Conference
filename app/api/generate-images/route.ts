@@ -87,7 +87,7 @@ const SDXL_VERSION = "39ed52f2a78e934b3ba6e2a89f5b1c712de7dfea535525255b1aa35c55
  * Scene is controlled by the plate + prompt + must_include, not by negatives.
  */
 function buildQualityOnlyNegative(): string {
-  return 'text, watermark, logo, signature, photorealistic, realistic, 3D render, CGI, blurry, low quality, jpeg artifacts, bad anatomy, bad proportions, deformed, extra limbs, extra arms, extra legs, extra heads, extra faces, monster, horror, gore, weapon'
+  return 'text, watermark, logo, signature, photorealistic, realistic, 3D render, CGI, blurry, low quality, jpeg artifacts, bad anatomy, bad proportions, deformed, extra limbs, extra arms, extra legs, extra heads, extra faces, duplicate character, twin, clone, multiple main characters, character sheet, reference sheet, turnaround, collage, grid, monster, horror, gore, weapon'
 }
 
 /**
@@ -127,29 +127,13 @@ function sanitizeNegatives(negativePrompt: string, prompt: string, setting: stri
 }
 
 /**
- * Categorize a setting string into a canonical bucket for plate reuse.
- * Pages with the same category reuse the same plate (keyframe optimization).
- * This cuts ~6 plate generations per 10-page book.
+ * Plate cache key: use the EXACT setting string (lowercased + trimmed).
+ * Previous approach used broad categories ("ocean", "moon") which caused
+ * wildly different scenes to share the same plate. Now each unique setting
+ * gets its own plate, and only truly identical settings reuse a plate.
  */
-function getSettingCategory(setting: string): string {
-  const s = setting.toLowerCase()
-  if (s.includes('underwater') || s.includes('coral')) return 'underwater'
-  if (s.includes('cockpit') || s.includes('controls')) return 'rocket_interior'
-  if (s.includes('inside rocket') || s.includes('porthole')) return 'rocket_interior'
-  if (s.includes('moon surface') || s.includes('crater')) return 'moon_surface'
-  if (s.includes('forest') || s.includes('waterfall') || s.includes('tall trees')) return 'forest'
-  if (s.includes('dolphin')) return 'ocean'
-  if (s.includes('ocean') || s.includes('waves')) return 'ocean'
-  if (s.includes('moon')) return 'moon'
-  if (s.includes('space') || s.includes('nebula')) return 'space'
-  if (s.includes('rocket') || s.includes('launch') || s.includes('sky')) return 'rocket_launch'
-  if (s.includes('savannah') || s.includes('acacia')) return 'savannah'
-  if (s.includes('beach') || s.includes('palm')) return 'beach'
-  if (s.includes('mountain')) return 'mountain'
-  if (s.includes('cottage') || s.includes('home') || s.includes('warm golden')) return 'home'
-  if (s.includes('desert')) return 'desert'
-  if (s.includes('cave')) return 'cave'
-  return 'unique_' + s.substring(0, 30).replace(/\s+/g, '_')
+function plateCacheKey(setting: string): string {
+  return setting.toLowerCase().trim()
 }
 
 /**
@@ -181,7 +165,7 @@ async function generateScenePlate(
       height: 1024,
       num_outputs: 1,
       scheduler: "K_EULER",
-      num_inference_steps: 22,
+      num_inference_steps: 14,  // Plates need fewer steps (background only, no fine detail)
       guidance_scale: 8,
       seed,
     }
@@ -268,7 +252,7 @@ async function generateImageWithAnchor(
         height: 1024,
         num_outputs: 1,
         scheduler: "K_EULER",
-        num_inference_steps: 22,
+        num_inference_steps: 20,  // Final pass: character detail needs more steps than plate
         guidance_scale: 8,
         seed,  // Per-page seed (offset from baseSeed)
         image: baseImageUrl,  // Scene plate (primary) or anchor (fallback)
@@ -390,7 +374,7 @@ export async function POST(request: NextRequest) {
     console.log(`PLATE PROMPT_STRENGTH: 0.65 (character on plate) / FALLBACK: 0.80 (anchor)`)
     console.log(`NEGATIVES: quality-only for ALL paths (zero env words) + token sanitizer`)
     console.log(`DELAY BETWEEN CALLS: ${BASE_DELAY_BETWEEN_IMAGES / 1000}s`)
-    console.log(`KEYFRAME OPTIMIZATION: reuse plates when scene category unchanged`)
+    console.log(`KEYFRAME OPTIMIZATION: reuse plates only when exact setting string matches`)
     console.log(`IMAGE DOWNLOAD: immediate base64 (no remote URL dependency for PDF)`)
     console.log(`TOTAL PAGES: ${imagePrompts.length}`)
     console.log(`==============================================\n`)
@@ -401,7 +385,7 @@ export async function POST(request: NextRequest) {
     // This turns ~20 API calls → ~14 for a typical 10-page book.
     const imageUrls: string[] = []
     const plateUrls: string[] = []  // Debug: collect plate URLs to verify scenes
-    const plateCache: Map<string, string> = new Map()  // category → plateUrl
+    const plateCache: Map<string, string> = new Map()  // exact setting → plateUrl
     let totalApiCalls = 0
 
     for (let i = 0; i < imagePrompts.length; i++) {
@@ -409,12 +393,12 @@ export async function POST(request: NextRequest) {
       const setting = has2PassPipeline ? sceneSettings[i] : ''
       const mustInclude: string[] = hasMustIncludes ? (sceneMustIncludes[i] || []) : []
       const pageSeed = baseSeed + i * 1000
-      const category = setting ? getSettingCategory(setting) : ''
+      const cacheKey = setting ? plateCacheKey(setting) : ''
 
       console.log(`\n========== PAGE ${i + 1}/${imagePrompts.length} ==========`)
       console.log(`SEED: ${pageSeed}`)
       console.log(`SETTING: ${setting ? setting.substring(0, 80) : 'N/A'}`)
-      console.log(`CATEGORY: ${category || 'N/A'}`)
+      console.log(`CACHE KEY: ${cacheKey || 'N/A'}`)
       console.log(`MUST INCLUDE: ${mustInclude.length > 0 ? mustInclude.join(', ') : 'NONE'}`)
       console.log(`FINAL PROMPT: ${prompt.substring(0, 120)}...`)
       console.log(`FINAL PROMPT LENGTH: ${prompt.split(/\s+/).length} words / ${prompt.length} chars`)
@@ -426,18 +410,18 @@ export async function POST(request: NextRequest) {
         if (setting) {
           let plateUrl: string
 
-          // KEYFRAME CHECK: reuse plate if same scene category
-          const cachedPlate = plateCache.get(category)
+          // KEYFRAME CHECK: reuse plate only if EXACT same setting string
+          const cachedPlate = plateCache.get(cacheKey)
           if (cachedPlate) {
             plateUrl = cachedPlate
             plateUrls.push(plateUrl)
-            console.log(`[PLATE REUSE] Category "${category}" — skipping plate generation (saved 1 API call + ${BASE_DELAY_BETWEEN_IMAGES / 1000}s)`)
+            console.log(`[PLATE REUSE] Exact setting match — skipping plate generation (saved 1 API call + ${BASE_DELAY_BETWEEN_IMAGES / 1000}s)`)
           } else {
-            // ===== NEW KEYFRAME: Generate scene plate =====
+            // ===== NEW PLATE: Generate scene plate for this setting =====
             const scenePrompt = buildSceneOnlyPrompt(setting, mustInclude)
             plateUrl = await generateScenePlate(replicate, scenePrompt, pageSeed, i)
             plateUrls.push(plateUrl)
-            plateCache.set(category, plateUrl)
+            plateCache.set(cacheKey, plateUrl)
             totalApiCalls++
 
             // Delay between Replicate calls
