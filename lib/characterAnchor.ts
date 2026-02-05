@@ -8,7 +8,35 @@ import { cleanMustInclude } from './buildImagePrompt';
  * 1. Generate a Character Anchor image (plain background, full body, neutral pose)
  * 2. Use it as reference for all page images via img2img
  * 3. Same seed + same reference = consistent character
+ *
+ * CACHING: Anchors are cached in-memory by character identity + seed.
+ * On cache hit, the 30-step SDXL txt2img call is skipped entirely.
+ * Images are stored as base64 data URIs so they survive Replicate CDN
+ * URL expiration. Replicate's img2img accepts data URIs as input.
  */
+
+// Module-level anchor cache — persists across requests in the same Next.js process.
+// Key: "name:species:fingerprint_hash:seed" → Value: CharacterAnchor (with base64 imageUrl)
+const anchorCache = new Map<string, CharacterAnchor>()
+
+function anchorCacheKey(bible: UniversalCharacterBible, seed: number): string {
+  const fingerprint = bible.visual_fingerprint.slice(0, 4).sort().join('|')
+  return `${bible.name}:${bible.species_or_type}:${fingerprint}:${seed}`
+}
+
+async function downloadAsBase64(url: string): Promise<string> {
+  try {
+    const response = await fetch(url, { signal: AbortSignal.timeout(30000) })
+    if (!response.ok) throw new Error(`HTTP ${response.status}`)
+    const buffer = Buffer.from(await response.arrayBuffer())
+    const sizeKB = Math.round(buffer.length / 1024)
+    console.log(`[ANCHOR CACHE] Downloaded anchor: ${sizeKB}KB`)
+    return `data:image/png;base64,${buffer.toString('base64')}`
+  } catch (err: any) {
+    console.warn(`[ANCHOR CACHE] Download failed: ${err.message} — using raw URL`)
+    return url
+  }
+}
 
 /**
  * Robust URL extraction from Replicate output
@@ -126,12 +154,26 @@ export interface CharacterAnchor {
 /**
  * Generate a Character Anchor image
  * Plain background, full body, neutral pose - the "canonical" look
+ * Returns cached anchor if same character+seed was generated before.
  */
 export async function generateCharacterAnchor(
   replicate: Replicate,
   bible: UniversalCharacterBible,
   seed: number
 ): Promise<CharacterAnchor> {
+  // CACHE CHECK: skip 30-step generation if we already have this anchor
+  const cacheKey = anchorCacheKey(bible, seed)
+  const cached = anchorCache.get(cacheKey)
+  if (cached) {
+    console.log(`\n========== ANCHOR CACHE HIT ==========`)
+    console.log(`Key: ${cacheKey}`)
+    console.log(`Image: ${cached.imageUrl.substring(0, 60)}...`)
+    console.log(`Skipping 30-step SDXL generation — reusing cached anchor`)
+    console.log(`========================================\n`)
+    return cached
+  }
+  console.log(`[ANCHOR CACHE] Miss for key: ${cacheKey} — generating fresh anchor`)
+
   const species = bible.species_or_type;
   const name = bible.name;
   const isAnimal = !bible.is_human;
@@ -239,15 +281,23 @@ export async function generateCharacterAnchor(
       }
 
       console.log(`[ANCHOR] Character Anchor generated: ${imageUrl}`);
-      console.log('==================================================\n');
 
-      return {
-        imageUrl,
+      // Download as base64 for cache — survives Replicate CDN URL expiration
+      const base64Url = await downloadAsBase64(imageUrl);
+      const anchor: CharacterAnchor = {
+        imageUrl: base64Url,
         seed,
         prompt,
         species,
         name
       };
+
+      // Cache for future requests with same character + seed
+      anchorCache.set(cacheKey, anchor);
+      console.log(`[ANCHOR CACHE] Stored anchor (key: ${cacheKey})`);
+      console.log('==================================================\n');
+
+      return anchor;
     } catch (error) {
       console.error(`[ANCHOR] Error on attempt ${attempt}:`, error);
       lastError = error as Error;

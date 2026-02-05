@@ -294,7 +294,7 @@ function createFallbackSceneCard(
     rocket_interior: /(rocket|spaceship|cockpit|control|panel|dashboard|seat|porthole|window|stars|moon|earth|planet)/i,
     underwater:      /(coral|fish|water|ocean|waves?|splash)/i,
     forest:          /(rocket|spaceship|forest|trees?|waterfall|river|stream|sunlight|clearing|lions?|flowers?|meadow|rainbow|bridge|bright sun)/i,
-    savannah:        /(rocket|spaceship|savann|grass|acacia|lions?|sun|mountains?|meadow)/i,
+    savannah:        /(rocket|spaceship|savann|grass|acacia|trees?|lions?|sun|mountains?|meadow|clouds?|river|flowers?)/i,
     ocean:           /(rocket|spaceship|ocean|waves?|water|splash|dolphins?|beach|shore|island|sun|clouds?|fish)/i,
     moon:            /(rocket|spaceship|moon|crater|earth|stars|rabbits?|spacesuit|aliens?|planet)/i,
     space:           /(rocket|spaceship|stars|moon|earth|nebula|planet|aliens?)/i,
@@ -360,18 +360,20 @@ function createFallbackSceneCard(
   // SPECIALIZE "friends" — but ONLY when page text has explicit companion signals.
   // Without a signal like "met/welcomed/joined/together/the rabbits/the dolphins",
   // "friends" is too vague and introduces wrong creatures. Drop it instead.
-  const settingLower = setting.toLowerCase()
+  // Uses category (from categoryForSetting) instead of scanning setting text
+  // to avoid "acacia trees" in savannah matching settingLower.includes('trees').
+  const category = categoryForSetting(setting)
   const hasCompanionSignal = /(friends|together|welcomed|met|joined|invited|the rabbits|the dolphins|the lions|new friends|made friends)/.test(lowerText)
 
   const specializedNouns = gatedNouns.map(noun => {
     if (noun.toLowerCase() !== 'friends') return noun
     if (!hasCompanionSignal) return ''  // Drop vague "friends" — no companion signal
-    if (settingLower.includes('moon') || settingLower.includes('crater')) return 'moon rabbits in tiny spacesuits'
-    if (settingLower.includes('ocean') || settingLower.includes('dolphin')) return 'playful dolphins'
-    if (settingLower.includes('forest') || settingLower.includes('trees')) return 'friendly forest animals'
-    if (settingLower.includes('savann') || settingLower.includes('lion')) return 'friendly lions'
-    if (settingLower.includes('space') || settingLower.includes('nebula')) return 'friendly aliens'
-    if (settingLower.includes('beach')) return 'friendly sea creatures'
+    if (category === 'moon') return 'moon rabbits in tiny spacesuits'
+    if (category === 'ocean') return 'playful dolphins'
+    if (category === 'underwater') return 'playful dolphins'
+    if (category === 'forest') return 'friendly forest animals'
+    if (category === 'savannah') return 'friendly savannah animals'
+    if (category === 'space') return 'friendly aliens'
     return 'friendly small creatures'  // fallback
   }).filter(n => n !== '')  // Remove dropped empty strings
 
@@ -406,15 +408,16 @@ function createFallbackSceneCard(
 
   // Specialize "friends" into setting-appropriate supporting characters
   // (only if no specific creature was already detected AND companion signal present)
+  // Uses category (from categoryForSetting) to avoid "trees"-in-savannah trap.
   if (hasCompanionSignal && /friends?\b/i.test(lowerText) && supportingCharacters.length === 0) {
-    if (settingLower.includes('moon') || settingLower.includes('crater')) {
+    if (category === 'moon') {
       supportingCharacters.push({ type: 'rabbit in spacesuit', count: 3, notes: 'small moon rabbits in tiny spacesuits' })
-    } else if (settingLower.includes('ocean') || settingLower.includes('dolphin')) {
+    } else if (category === 'ocean' || category === 'underwater') {
       supportingCharacters.push({ type: 'dolphin', count: 3, notes: 'playful cartoon dolphins' })
-    } else if (settingLower.includes('forest') || settingLower.includes('trees')) {
+    } else if (category === 'forest') {
       supportingCharacters.push({ type: 'forest animal', count: 2, notes: 'friendly woodland creatures' })
-    } else if (settingLower.includes('savann') || settingLower.includes('lion')) {
-      supportingCharacters.push({ type: 'lion', count: 2, notes: 'friendly cartoon lions' })
+    } else if (category === 'savannah') {
+      supportingCharacters.push({ type: 'savannah animal', count: 2, notes: 'friendly meerkats and birds' })
     } else {
       supportingCharacters.push({ type: 'small creature', count: 3, notes: 'friendly small creatures' })
     }
