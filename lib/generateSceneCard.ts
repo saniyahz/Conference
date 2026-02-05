@@ -251,6 +251,45 @@ function createFallbackSceneCard(
 
   console.log(`[FALLBACK SCENE] Page ${pageIndex} extracted setting: "${setting}" from nouns: [${foundNouns.join(', ')}]`)
 
+  // ===== SETTING-CATEGORY NOUN GATING =====
+  // Only allow nouns that belong to the detected setting category.
+  // Prevents "ocean waves" from appearing in a cockpit scene, or
+  // "forest trees" from appearing on the moon.
+  const CATEGORY_ALLOWED_NOUNS: Record<string, string[]> = {
+    cockpit:    ['rocket ship', 'glowing control panel', 'twinkling stars', 'Earth in the sky', 'colorful planet'],
+    'inside rocket': ['rocket ship', 'glowing control panel', 'twinkling stars', 'Earth in the sky'],
+    moon:       ['moon', 'craters', 'twinkling stars', 'Earth in the sky', 'rocket ship', 'colorful planet', 'friendly aliens'],
+    rocket:     ['rocket ship', 'fluffy clouds', 'twinkling stars', 'bright sun', 'Earth in the sky'],
+    space:      ['twinkling stars', 'colorful planet', 'rocket ship', 'Earth in the sky', 'friendly aliens'],
+    underwater: ['colorful coral', 'tropical fish', 'water', 'ocean waves', 'waves'],
+    ocean:      ['ocean waves', 'waves', 'water', 'dolphins', 'water splash', 'island', 'bright sun', 'fluffy clouds', 'tropical fish'],
+    forest:     ['forest trees', 'tall trees', 'colorful flowers', 'green meadow', 'lions', 'rainbow', 'bridge', 'bright sun', 'fluffy clouds'],
+    savann:     ['lions', 'bright sun', 'mountains', 'tall trees'],
+    beach:      ['ocean waves', 'water splash', 'bright sun', 'island', 'fluffy clouds'],
+    mountain:   ['mountains', 'fluffy clouds', 'bright sun', 'rainbow', 'flowing river'],
+    desert:     ['bright sun', 'mountains', 'cave entrance'],
+    cave:       ['cave entrance', 'colorful flowers', 'mountains'],
+    home:       ['colorful flowers', 'rainbow', 'bright sun', 'friends'],
+  }
+
+  // Find which category the setting belongs to and filter nouns
+  function gateNounsBySetting(settingStr: string, nouns: string[]): string[] {
+    const sl = settingStr.toLowerCase()
+    for (const [category, allowed] of Object.entries(CATEGORY_ALLOWED_NOUNS)) {
+      if (sl.includes(category)) {
+        const gated = nouns.filter(noun =>
+          allowed.some(a => noun.toLowerCase().includes(a.toLowerCase()))
+        )
+        const removed = nouns.filter(n => !gated.includes(n))
+        if (removed.length > 0) {
+          console.log(`[NOUN GATE] Setting "${settingStr}" (category: ${category}): removed [${removed.join(', ')}], kept [${gated.join(', ')}]`)
+        }
+        return gated
+      }
+    }
+    return nouns  // No category match — keep all
+  }
+
   // Extract action from text - more specific patterns
   const actionRules: { test: (t: string) => boolean; action: string }[] = [
     { test: t => t.includes('splash') || t.includes('landed in water'), action: `${characterName} splashes into the water` },
@@ -277,9 +316,10 @@ function createFallbackSceneCard(
     }
   }
 
-  // Extract concrete nouns from text
-  const extractedNouns = extractNounsFromText(pageText)
-  const mustInclude = [`${characterName} full body`, ...extractedNouns]
+  // Extract concrete nouns from text, then gate by setting category
+  const rawNouns = extractNounsFromText(pageText)
+  const gatedNouns = gateNounsBySetting(setting, rawNouns)
+  const mustInclude = [`${characterName} full body`, ...gatedNouns]
 
   // Ensure at least 4 items by adding setting-derived elements
   if (mustInclude.length < 4) {
@@ -309,7 +349,7 @@ function createFallbackSceneCard(
     }
   }
 
-  console.log(`[FALLBACK SCENE] Page ${pageIndex} → setting: "${setting}", nouns: [${extractedNouns.join(', ')}]`)
+  console.log(`[FALLBACK SCENE] Page ${pageIndex} → setting: "${setting}", nouns: [${gatedNouns.join(', ')}]`)
 
   return {
     page_index: pageIndex,

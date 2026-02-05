@@ -19,94 +19,12 @@ const RATE_LIMIT_MAX_WAIT = 60000 // 60 seconds max wait
 const SDXL_VERSION = "39ed52f2a78e934b3ba6e2a89f5b1c712de7dfea535525255b1aa35c5565e08b"
 
 /**
- * Build dynamic negative prompt — compact, scene-aware.
- * Only bans environments the page doesn't need.
- * AGGRESSIVE SUBTRACTION: any negative term found in the prompt is removed.
+ * Build QUALITY-ONLY negative prompt. Used for ALL image generation paths.
+ * NEVER contains environment words (ocean, forest, moon, rocket, etc.).
+ * Scene is controlled by the plate + prompt + must_include, not by negatives.
  */
-function buildDynamicNegativePrompt(pagePrompt: string, providedNegative: string | undefined): string {
-  const lp = pagePrompt.toLowerCase()
-
-  // Core block: anti-sheet + anti-3D (always apply, NEVER subtracted)
-  const safeNeg = [
-    'character sheet', 'reference sheet', 'turnaround', 'multiple poses', 'collage', 'grid', 'lineup',
-    'photorealistic', '3D render', 'CGI', 'Pixar', 'DSLR',
-    'text', 'watermark', 'logo', 'blurry', 'low quality',
-  ]
-
-  // Subtractable negatives — will be removed if they appear in the prompt
-  const subNeg: string[] = []
-
-  // Replacement-animal blocking — prevents SDXL from substituting random animals
-  subNeg.push('shark', 'whale', 'snake', 'spider', 'predator', 'monster')
-
-  // Environment negatives — only add if the page doesn't need them
-  // Trigger lists are BROAD: prefer not-banning over wrongly-banning
-  const envRules: [string, string[]][] = [
-    ['underwater', ['underwater', 'ocean floor', 'coral', 'beneath the water', 'under the sea', 'deep sea', 'seabed']],
-    ['ocean', ['ocean', 'sea', 'water', 'splash', 'swim', 'wave', 'shore', 'beach', 'dolphin', 'fish', 'sail', 'boat']],
-    ['space', ['space', 'star', 'stars', 'starry', 'galaxy', 'cosmos', 'nebula', 'planet', 'orbit', 'moon', 'lunar', 'asteroid', 'rocket', 'spaceship', 'launch', 'blast off', 'liftoff']],
-    ['moon', ['moon', 'lunar', 'crater', 'rocket', 'spaceship', 'launch', 'space', 'star', 'stars', 'starry']],
-    ['rocket', ['rocket', 'spaceship', 'launch', 'blast off', 'cockpit', 'liftoff', 'countdown']],
-    ['forest', ['forest', 'tree', 'trees', 'woods', 'jungle', 'woodland', 'leaf', 'leaves']],
-    ['desert', ['desert', 'sand', 'dune', 'oasis', 'cactus', 'arid']],
-  ]
-
-  for (const [word, triggers] of envRules) {
-    if (!triggers.some(t => lp.includes(t))) {
-      subNeg.push(word)
-    }
-  }
-
-  // Species-confusion negatives
-  if (lp.includes('rhinoceros') || lp.includes('rhino')) {
-    subNeg.push('cow', 'hippo', 'elephant', 'horse')
-  }
-
-  // Block humans for animal characters
-  const animalKeywords = ['rhinoceros', 'rhino', 'elephant', 'lion', 'bear', 'rabbit', 'cat', 'dog', 'fox', 'tiger', 'giraffe', 'penguin', 'dolphin', 'owl']
-  if (animalKeywords.some(a => lp.includes(a))) {
-    subNeg.push('human', 'person', 'child')
-  }
-
-  // AGGRESSIVE SUBTRACTION: remove any subtractable negative found in the prompt
-  // Uses substring match — "dolphins" in prompt removes "dolphin" from negatives
-  const filteredSubNeg = subNeg.filter(n => !lp.includes(n.toLowerCase()))
-
-  // CRITICAL TOKEN SAFETY NET: explicit list of tokens that must NEVER be
-  // in negatives if they appear anywhere in the prompt (catches edge cases)
-  const criticalTokens = [
-    'moon', 'space', 'star', 'stars', 'ocean', 'underwater', 'water',
-    'forest', 'trees', 'tree', 'rocket', 'dolphin', 'dolphins', 'lion',
-    'lions', 'earth', 'sea', 'waves', 'coral', 'fish', 'sand', 'desert',
-    'cave', 'mountain', 'river', 'meadow', 'beach', 'whale', 'shark',
-  ]
-  const safetyFiltered = filteredSubNeg.filter(term => {
-    const t = term.toLowerCase()
-    // If this term is a critical token AND appears in prompt, remove it
-    if (criticalTokens.includes(t) && lp.includes(t)) return false
-    return true
-  })
-
-  const removed = subNeg.filter(n => !safetyFiltered.includes(n))
-  if (removed.length > 0) {
-    console.log(`[NEGATIVES] Removed (found in prompt): ${removed.join(', ')}`)
-  }
-
-  const finalNeg = [...safeNeg, ...safetyFiltered]
-  console.log(`[NEGATIVES] ${finalNeg.join(', ')}`)
-  return finalNeg.join(', ')
-}
-
-/**
- * Build MINIMAL negative for final pass (2-pass pipeline).
- * Scene is already baked into the plate — negatives must NEVER contain env words.
- * STATIC quality-only list. No species, no replacement animals, no env words.
- * Scene is controlled by the plate + must_include, not by negatives.
- */
-function buildFinalPassNegative(): string {
-  const neg = 'text, watermark, logo, signature, photorealistic, realistic, 3D render, CGI, blurry, low quality, jpeg artifacts, bad anatomy, bad proportions, deformed, extra limbs, extra arms, extra legs, extra heads, extra faces, monster, horror, gore, weapon'
-  console.log(`[FINAL-PASS NEGATIVES] ${neg}`)
-  return neg
+function buildQualityOnlyNegative(): string {
+  return 'text, watermark, logo, signature, photorealistic, realistic, 3D render, CGI, blurry, low quality, jpeg artifacts, bad anatomy, bad proportions, deformed, extra limbs, extra arms, extra legs, extra heads, extra faces, monster, horror, gore, weapon'
 }
 
 /**
@@ -232,32 +150,23 @@ async function generateScenePlate(
 async function generateImageWithAnchor(
   replicate: Replicate,
   prompt: string,
-  negativePrompt: string | undefined,
   baseImageUrl: string,
   seed: number,
   imageIndex: number,
   promptStrength: number = 0.80,
   settingContext: string = '',  // Setting text for sanitizer context
-  useMinimalNegatives: boolean = false,  // true = 2-pass final (quality only), false = fallback (full env rules)
   mustInclude: string[] = []  // Must-include items for negative sanitization
 ): Promise<string> {
   const maxRetries = 3
 
   for (let attempt = 1; attempt <= maxRetries; attempt++) {
     try {
-      // Choose negative strategy based on pipeline mode:
-      // 2-pass final pass: minimal negatives (quality/style only, NO env words — plate handles env)
-      // Fallback anchor pass: full dynamic negatives (env words needed since no plate)
-      let dynamicNegative: string
-      if (useMinimalNegatives) {
-        dynamicNegative = buildFinalPassNegative()
-      } else {
-        const promptForNegatives = settingContext ? `${prompt} ${settingContext}` : prompt
-        dynamicNegative = buildDynamicNegativePrompt(promptForNegatives, negativePrompt)
-      }
-      // TOKEN-BASED sanitizer: "Never negate what you ask for"
-      // Tokenizes prompt + setting + mustIncludes and strips any matching negative
+      // QUALITY-ONLY negatives for ALL paths. ZERO env words.
+      // Scene is controlled by plate + prompt + Include:, not by negatives.
+      let dynamicNegative = buildQualityOnlyNegative()
+      // Safety net: token-based sanitizer removes any negative that matches prompt/setting/must_include
       dynamicNegative = sanitizeNegatives(dynamicNegative, prompt, settingContext, mustInclude)
+      console.log(`[NEGATIVES PAGE ${imageIndex + 1}] ${dynamicNegative}`)
 
       // Build input object for img2img
       const input: any = {
@@ -386,7 +295,7 @@ export async function POST(request: NextRequest) {
     console.log(`MUST INCLUDES: ${hasMustIncludes ? 'YES (per-page key objects for plate + sanitizer)' : 'NONE'}`)
     console.log(`BASE SEED: ${baseSeed} (each page gets baseSeed + pageIndex*1000)`)
     console.log(`PLATE PROMPT_STRENGTH: 0.45 (character on plate) / FALLBACK: 0.80 (anchor)`)
-    console.log(`NEGATIVES: 2-pass=quality-only (no env words) / fallback=full env rules + token sanitizer`)
+    console.log(`NEGATIVES: quality-only for ALL paths (zero env words) + token sanitizer`)
     console.log(`DELAY BETWEEN CALLS: ${BASE_DELAY_BETWEEN_IMAGES / 1000}s`)
     console.log(`TOTAL PAGES: ${imagePrompts.length}`)
     console.log(`==============================================\n`)
@@ -397,7 +306,6 @@ export async function POST(request: NextRequest) {
 
     for (let i = 0; i < imagePrompts.length; i++) {
       const prompt = imagePrompts[i]
-      const negativePrompt = negativePrompts && negativePrompts[i] ? negativePrompts[i] : undefined
       const setting = has2PassPipeline ? sceneSettings[i] : ''
       const mustInclude: string[] = hasMustIncludes ? (sceneMustIncludes[i] || []) : []
       const pageSeed = baseSeed + i * 1000
@@ -437,32 +345,26 @@ export async function POST(request: NextRequest) {
           await sleep(BASE_DELAY_BETWEEN_IMAGES)
 
           // STEP 2: Add character to plate (img2img, plate as base)
-          // useMinimalNegatives=true: quality-only negatives, NO env words (plate handles env)
           imageUrl = await generateImageWithAnchor(
             replicate,
             prompt,
-            negativePrompt,
             plateUrl,       // Scene plate as base image
             pageSeed,
             i,
             0.45,           // prompt_strength: character shows but scene stays
             setting,         // Setting context for sanitizer
-            true,            // MINIMAL negatives — no env words, plate controls scene
             mustInclude      // Must-include items for negative sanitization
           )
         } else {
           // ===== FALLBACK: single-pass with anchor =====
-          // useMinimalNegatives=false: full env rules (no plate to handle scene)
           imageUrl = await generateImageWithAnchor(
             replicate,
             prompt,
-            negativePrompt,
             characterAnchorUrl,
             pageSeed,
             i,
             0.80,
             '',              // No setting context
-            false,           // FULL negatives — env rules needed since no plate
             mustInclude      // Must-include items for negative sanitization
           )
         }
@@ -481,18 +383,15 @@ export async function POST(request: NextRequest) {
           console.log(`[PAGE ${i + 1}] 2-pass failed, falling back to anchor img2img...`)
           try {
             await sleep(BASE_DELAY_BETWEEN_IMAGES)
-            // Fallback: useMinimalNegatives=false — full env rules since no plate
             imageUrl = await generateImageWithAnchor(
               replicate,
               prompt,
-              negativePrompt,
               characterAnchorUrl,
               pageSeed,
               i,
               0.80,
               setting,
-              false,           // FULL negatives — env rules needed since no plate
-              mustInclude      // Must-include items for negative sanitization
+              mustInclude
             )
             if (imageUrl) {
               imageUrls.push(imageUrl)
