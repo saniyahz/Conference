@@ -142,6 +142,61 @@ async function generateImageWithRetry(
 // SDXL model version - use consistent version throughout
 const SDXL_VERSION = "39ed52f2a78e934b3ba6e2a89f5b1c712de7dfea535525255b1aa35c5565e08b"
 
+/**
+ * Build dynamic negative prompt that doesn't fight the page's scene.
+ * Base negatives always apply, but scene-specific words are only banned
+ * when the page prompt doesn't contain them.
+ */
+function buildDynamicNegativePrompt(pagePrompt: string, providedNegative: string | undefined): string {
+  const lowerPrompt = pagePrompt.toLowerCase()
+
+  // Base negatives - always apply
+  const baseNegatives = [
+    'text', 'watermark', 'logo', 'signature',
+    'photorealistic', 'blurry', 'low quality', 'jpeg artifacts',
+    'multiple characters', 'crowd',
+  ]
+
+  // Environment negatives - only add if the page doesn't need them
+  const envNegatives: { word: string; triggers: string[] }[] = [
+    { word: 'underwater', triggers: ['underwater', 'ocean floor', 'sea bed'] },
+    { word: 'ocean', triggers: ['ocean', 'sea', 'water', 'splash', 'swim'] },
+    { word: 'space', triggers: ['space', 'stars', 'galaxy', 'cosmos'] },
+    { word: 'moon', triggers: ['moon', 'lunar', 'crater'] },
+    { word: 'rocket', triggers: ['rocket', 'spaceship', 'ship'] },
+    { word: 'forest', triggers: ['forest', 'trees', 'woods', 'jungle'] },
+    { word: 'desert', triggers: ['desert', 'sand', 'dune'] },
+  ]
+
+  const dynamicNegatives = [...baseNegatives]
+
+  for (const { word, triggers } of envNegatives) {
+    // Only ban this environment if the page prompt doesn't mention it
+    const pageNeedsThis = triggers.some(t => lowerPrompt.includes(t))
+    if (!pageNeedsThis) {
+      dynamicNegatives.push(word)
+    }
+  }
+
+  // Add species-confusion negatives (always safe to include)
+  if (lowerPrompt.includes('rhinoceros') || lowerPrompt.includes('rhino')) {
+    dynamicNegatives.push('cow', 'bull', 'hippo', 'elephant', 'unicorn', 'horse')
+  }
+
+  // Always block humans for animal stories
+  if (lowerPrompt.includes('rhinoceros') || lowerPrompt.includes('rhino') ||
+      lowerPrompt.includes('elephant') || lowerPrompt.includes('lion') ||
+      lowerPrompt.includes('bear') || lowerPrompt.includes('rabbit') ||
+      lowerPrompt.includes('cat') || lowerPrompt.includes('dog')) {
+    dynamicNegatives.push('human', 'person', 'child', 'boy', 'girl')
+  }
+
+  console.log(`[NEGATIVES] Scene words in prompt: ${envNegatives.filter(e => e.triggers.some(t => lowerPrompt.includes(t))).map(e => e.word).join(', ') || 'none'}`)
+  console.log(`[NEGATIVES] Final: ${dynamicNegatives.join(', ')}`)
+
+  return dynamicNegatives.join(', ')
+}
+
 // Helper function to generate image with anchor reference (img2img)
 // This is the PRIMARY method for character consistency
 // Uses predictions API instead of run() to avoid empty [{}] response issue
@@ -154,24 +209,28 @@ async function generateImageWithAnchor(
   imageIndex: number
 ): Promise<string> {
   const maxRetries = 3
-  // FIXED: Use constant prompt_strength for all pages (no variation)
-  const PROMPT_STRENGTH = 0.35
+  // prompt_strength: 0.65 allows scene changes while keeping character identity from anchor
+  // Lower values (0.35) lock too hard to the anchor's studio background
+  const PROMPT_STRENGTH = 0.65
 
   for (let attempt = 1; attempt <= maxRetries; attempt++) {
     try {
+      // Build dynamic negative prompt that doesn't fight the scene
+      const dynamicNegative = buildDynamicNegativePrompt(prompt, negativePrompt)
+
       // Build input object for img2img
       const input: any = {
         prompt,
-        negative_prompt: negativePrompt || "text, watermark, ugly, deformed, human, person, child",
+        negative_prompt: dynamicNegative,
         width: 1024,
         height: 1024,
         num_outputs: 1,
         scheduler: "K_EULER",
-        num_inference_steps: 25,
+        num_inference_steps: 30,
         guidance_scale: 8,
-        seed,  // SAME seed for all pages
+        seed,  // Per-page seed (offset from baseSeed)
         image: anchorUrl,  // Anchor for img2img
-        prompt_strength: PROMPT_STRENGTH,  // How much to change from anchor
+        prompt_strength: PROMPT_STRENGTH,  // Allow scene to change
       }
 
       // EXPLICIT DEBUG LOGS
@@ -272,13 +331,15 @@ export async function POST(request: NextRequest) {
       )
     }
 
-    // Use provided seed - SAME seed for ALL pages
+    // Use provided seed as base - each page gets baseSeed + pageIndex*1000
+    // Different seeds per page prevent identical compositions while staying deterministic
     const baseSeed = seed || Math.floor(Math.random() * 1000000)
 
     console.log(`\n========== IMAGE GENERATION CONFIG ==========`)
     console.log(`CHARACTER ANCHOR MODE: ENABLED (required)`)
     console.log(`ANCHOR URL: ${characterAnchorUrl}`)
-    console.log(`BASE SEED (same for all pages): ${baseSeed}`)
+    console.log(`BASE SEED: ${baseSeed} (each page gets baseSeed + pageIndex*1000)`)
+    console.log(`PROMPT_STRENGTH: 0.65 (allows scene changes)`)
     console.log(`TOTAL PAGES: ${imagePrompts.length}`)
     console.log(`==============================================\n`)
 
@@ -288,9 +349,11 @@ export async function POST(request: NextRequest) {
     for (let i = 0; i < imagePrompts.length; i++) {
       const prompt = imagePrompts[i]
       const negativePrompt = negativePrompts && negativePrompts[i] ? negativePrompts[i] : undefined
+      // Per-page seed: deterministic but different for each page
+      const pageSeed = baseSeed + i * 1000
 
       console.log(`\n========== GENERATING IMAGE ${i + 1}/${imagePrompts.length} ==========`)
-      console.log(`SEED: ${baseSeed} (same for all pages)`)
+      console.log(`SEED: ${pageSeed} (baseSeed ${baseSeed} + page ${i} * 1000)`)
 
       try {
         // ALWAYS use anchor-based img2img - NO FALLBACK to txt2img
@@ -299,7 +362,7 @@ export async function POST(request: NextRequest) {
           prompt,
           negativePrompt,
           characterAnchorUrl,
-          baseSeed,  // SAME seed for all pages
+          pageSeed,  // Per-page seed for composition variety
           i
         )
 
@@ -329,7 +392,8 @@ export async function POST(request: NextRequest) {
 
     console.log(`\n========== IMAGE GENERATION COMPLETE ==========`)
     console.log(`Success: ${successCount}/${imagePrompts.length} images`)
-    console.log(`SEED USED (all pages): ${baseSeed}`)
+    console.log(`BASE SEED: ${baseSeed} (per-page: baseSeed + page*1000)`)
+    console.log(`PROMPT_STRENGTH: 0.65`)
     console.log(`ANCHOR URL: ${characterAnchorUrl}`)
     if (failedIndices.length > 0) {
       console.log(`Failed pages: ${failedIndices.map(i => i + 1).join(', ')}`)

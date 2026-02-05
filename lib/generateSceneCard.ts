@@ -144,7 +144,59 @@ export async function generateAllSceneCardsWithLLM(
 }
 
 /**
+ * Extract concrete nouns from page text for must_include
+ */
+function extractNounsFromText(text: string): string[] {
+  const lowerText = text.toLowerCase()
+  const nouns: string[] = []
+
+  // Visual nouns that make good illustration elements
+  const nounPatterns: { pattern: RegExp; noun: string }[] = [
+    { pattern: /rocket\s*(ship)?/i, noun: 'rocket ship' },
+    { pattern: /moon/i, noun: 'moon' },
+    { pattern: /crater/i, noun: 'craters' },
+    { pattern: /star/i, noun: 'twinkling stars' },
+    { pattern: /earth/i, noun: 'Earth in the sky' },
+    { pattern: /planet/i, noun: 'colorful planet' },
+    { pattern: /dolphin/i, noun: 'dolphins' },
+    { pattern: /lion/i, noun: 'lions' },
+    { pattern: /ocean|sea\b/i, noun: 'ocean waves' },
+    { pattern: /water/i, noun: 'water' },
+    { pattern: /splash/i, noun: 'water splash' },
+    { pattern: /wave/i, noun: 'waves' },
+    { pattern: /forest/i, noun: 'forest trees' },
+    { pattern: /tree/i, noun: 'tall trees' },
+    { pattern: /flower/i, noun: 'colorful flowers' },
+    { pattern: /meadow|field/i, noun: 'green meadow' },
+    { pattern: /mountain/i, noun: 'mountains' },
+    { pattern: /river|stream/i, noun: 'flowing river' },
+    { pattern: /cloud/i, noun: 'fluffy clouds' },
+    { pattern: /sun\b/i, noun: 'bright sun' },
+    { pattern: /rainbow/i, noun: 'rainbow' },
+    { pattern: /friend/i, noun: 'friends' },
+    { pattern: /cave/i, noun: 'cave entrance' },
+    { pattern: /island/i, noun: 'island' },
+    { pattern: /bridge/i, noun: 'bridge' },
+    { pattern: /coral/i, noun: 'colorful coral' },
+    { pattern: /fish/i, noun: 'tropical fish' },
+    { pattern: /alien/i, noun: 'friendly aliens' },
+    { pattern: /cockpit|control\s*panel/i, noun: 'glowing control panel' },
+    { pattern: /window/i, noun: 'window' },
+    { pattern: /door/i, noun: 'doorway' },
+  ]
+
+  for (const { pattern, noun } of nounPatterns) {
+    if (pattern.test(lowerText) && !nouns.includes(noun)) {
+      nouns.push(noun)
+    }
+  }
+
+  return nouns
+}
+
+/**
  * Create fallback SceneCard when LLM fails
+ * Extracts real nouns and settings from the page text
  */
 function createFallbackSceneCard(
   pageIndex: number,
@@ -152,78 +204,107 @@ function createFallbackSceneCard(
   characterName: string
 ): UniversalSceneCard {
   const lowerText = pageText.toLowerCase();
+  console.log(`[FALLBACK SCENE] Page ${pageIndex}: extracting from "${pageText.substring(0, 80)}..."`)
 
-  // Extract setting from common keywords
-  let setting = 'A colorful storybook scene';
-  let mood = 'magical, warm';
+  // Extract setting - check multiple keywords, pick the most specific match
+  // Order matters: most specific first
+  const settingRules: { test: (t: string) => boolean; setting: string; mood: string }[] = [
+    { test: t => t.includes('splash') && t.includes('ocean'), setting: 'Ocean surface with splashing water and blue sky', mood: 'exciting, adventurous' },
+    { test: t => t.includes('swim') && (t.includes('ocean') || t.includes('sea')), setting: 'Open ocean with waves under blue sky', mood: 'adventurous, free' },
+    { test: t => t.includes('underwater') || t.includes('beneath the water'), setting: 'Underwater ocean scene with colorful coral and tropical fish', mood: 'magical, serene' },
+    { test: t => t.includes('ocean') || t.includes('sea') && t.includes('water'), setting: 'Open ocean with waves and blue sky', mood: 'vast, adventurous' },
+    { test: t => t.includes('dolphin'), setting: 'Ocean surface with dolphins jumping in waves', mood: 'playful, joyful' },
+    { test: t => t.includes('moon') && t.includes('surface'), setting: 'Gray moon surface with craters and Earth visible in the starry sky', mood: 'wondrous, adventurous' },
+    { test: t => t.includes('moon'), setting: 'The moon with craters and starry space background', mood: 'wondrous, magical' },
+    { test: t => (t.includes('rocket') || t.includes('spaceship')) && t.includes('inside'), setting: 'Inside a colorful rocket ship cockpit with glowing controls and windows showing space', mood: 'exciting, adventurous' },
+    { test: t => t.includes('rocket') || t.includes('spaceship'), setting: 'A shiny rocket ship ready for launch with clouds and sky', mood: 'exciting, adventurous' },
+    { test: t => t.includes('space') || t.includes('stars') && t.includes('galaxy'), setting: 'Outer space with colorful nebulae stars and planets', mood: 'wondrous, vast' },
+    { test: t => t.includes('lion') && t.includes('forest'), setting: 'A lush forest clearing with golden sunlight filtering through trees', mood: 'adventurous, warm' },
+    { test: t => t.includes('forest') || t.includes('woods') || t.includes('jungle'), setting: 'A magical forest with tall green trees and dappled sunlight', mood: 'enchanting, mysterious' },
+    { test: t => t.includes('beach') || t.includes('shore') || t.includes('sand'), setting: 'A sunny tropical beach with golden sand and gentle waves', mood: 'cheerful, relaxing' },
+    { test: t => t.includes('meadow') || t.includes('field') || t.includes('grass'), setting: 'A sunny meadow with colorful wildflowers and blue sky', mood: 'peaceful, sunny' },
+    { test: t => t.includes('mountain') || t.includes('hill'), setting: 'Rolling green mountains under a bright sky', mood: 'majestic, adventurous' },
+    { test: t => t.includes('river') || t.includes('stream'), setting: 'A gentle river flowing through a green landscape', mood: 'peaceful, serene' },
+    { test: t => t.includes('cave'), setting: 'A mysterious cave with glowing crystals', mood: 'mysterious, exciting' },
+    { test: t => t.includes('home') || t.includes('house'), setting: 'A cozy cottage surrounded by flowers and a garden', mood: 'warm, safe' },
+  ]
 
-  if (lowerText.includes('meadow') || lowerText.includes('field')) {
-    setting = 'A sunny meadow with colorful wildflowers';
-    mood = 'peaceful, sunny';
-  } else if (lowerText.includes('forest') || lowerText.includes('trees')) {
-    setting = 'A magical forest with tall trees';
-    mood = 'mysterious, enchanting';
-  } else if (lowerText.includes('moon') || lowerText.includes('lunar')) {
-    setting = 'The gray moon surface with craters and Earth visible in sky';
-    mood = 'wondrous, adventurous';
-  } else if (lowerText.includes('rocket') || lowerText.includes('spaceship')) {
-    setting = 'Inside a colorful rocket ship cockpit with glowing controls';
-    mood = 'exciting, adventurous';
-  } else if (lowerText.includes('space') || lowerText.includes('stars')) {
-    setting = 'Outer space with colorful stars and planets';
-    mood = 'wondrous, vast';
-  } else if (lowerText.includes('ocean') || lowerText.includes('underwater') || lowerText.includes('sea')) {
-    setting = 'Underwater ocean scene with colorful coral and fish';
-    mood = 'magical, serene';
-  } else if (lowerText.includes('beach') || lowerText.includes('shore')) {
-    setting = 'A sunny beach with sand and gentle waves';
-    mood = 'cheerful, relaxing';
+  let setting = 'A colorful storybook landscape with blue sky';
+  let mood = 'warm, magical';
+
+  for (const rule of settingRules) {
+    if (rule.test(lowerText)) {
+      setting = rule.setting;
+      mood = rule.mood;
+      break;
+    }
   }
 
-  // Extract action from text
+  // Extract action from text - more specific patterns
+  const actionRules: { test: (t: string) => boolean; action: string }[] = [
+    { test: t => t.includes('splash') || t.includes('landed in water'), action: `${characterName} splashes into the water` },
+    { test: t => t.includes('swim'), action: `${characterName} swims through the water` },
+    { test: t => t.includes('flew') || t.includes('flying') || t.includes('soar'), action: `${characterName} flies through the air` },
+    { test: t => t.includes('pilot') || t.includes('drove') || t.includes('steer'), action: `${characterName} pilots the rocket ship` },
+    { test: t => t.includes('sat in') && t.includes('rocket'), action: `${characterName} sits inside the rocket ship` },
+    { test: t => t.includes('stumble') || t.includes('discover') || t.includes('found'), action: `${characterName} discovers something amazing` },
+    { test: t => t.includes('walk') || t.includes('wander'), action: `${characterName} walks with curiosity` },
+    { test: t => t.includes('run') || t.includes('ran') || t.includes('dash'), action: `${characterName} runs with excitement` },
+    { test: t => t.includes('jump') || t.includes('leap'), action: `${characterName} jumps with joy` },
+    { test: t => t.includes('hug') || t.includes('embrace'), action: `${characterName} hugs a friend warmly` },
+    { test: t => t.includes('wave') && t.includes('goodbye'), action: `${characterName} waves goodbye` },
+    { test: t => t.includes('smile') || t.includes('laugh') || t.includes('happy'), action: `${characterName} smiles happily` },
+    { test: t => t.includes('look') || t.includes('saw') || t.includes('gaze'), action: `${characterName} looks around with wonder` },
+    { test: t => t.includes('brought') || t.includes('carried'), action: `${characterName} carries friends along` },
+  ]
+
   let action = `${characterName} explores with curiosity`;
-  if (lowerText.includes('flew') || lowerText.includes('soar') || lowerText.includes('flying')) {
-    action = `${characterName} flies through the air`;
-  } else if (lowerText.includes('run') || lowerText.includes('ran')) {
-    action = `${characterName} runs with excitement`;
-  } else if (lowerText.includes('smile') || lowerText.includes('laugh')) {
-    action = `${characterName} smiles happily`;
-  } else if (lowerText.includes('look') || lowerText.includes('saw')) {
-    action = `${characterName} looks around with wonder`;
+  for (const rule of actionRules) {
+    if (rule.test(lowerText)) {
+      action = rule.action;
+      break;
+    }
   }
 
-  // Build must_include
-  const mustInclude = [`${characterName} full body`];
+  // Extract concrete nouns from text
+  const extractedNouns = extractNounsFromText(pageText)
+  const mustInclude = [`${characterName} full body`, ...extractedNouns]
 
-  // Add setting elements
-  if (lowerText.includes('rocket')) mustInclude.push('rocket ship');
-  if (lowerText.includes('moon')) mustInclude.push('moon surface', 'craters');
-  if (lowerText.includes('stars')) mustInclude.push('twinkling stars');
-  if (lowerText.includes('flower')) mustInclude.push('colorful flowers');
-  if (lowerText.includes('tree')) mustInclude.push('trees');
-
-  // Ensure at least 4 items
+  // Ensure at least 4 items by adding setting-derived elements
+  if (mustInclude.length < 4) {
+    const settingWords = setting.split(' ').filter(w => w.length > 3).slice(0, 3).join(' ')
+    mustInclude.push(settingWords)
+  }
   while (mustInclude.length < 4) {
-    mustInclude.push(setting.split(' ').slice(0, 3).join(' '));
+    mustInclude.push('vibrant colors')
   }
 
-  // Extract supporting characters
+  // Extract supporting characters more thoroughly
   const supportingCharacters: { type: string; count: number; notes: string }[] = [];
-  if (lowerText.includes('alien')) {
-    supportingCharacters.push({ type: 'friendly alien', count: 2, notes: 'small jellybean-shaped' });
+  const charPatterns: { pattern: RegExp; type: string; count: number; notes: string }[] = [
+    { pattern: /alien/i, type: 'friendly alien', count: 2, notes: 'small colorful aliens' },
+    { pattern: /dolphins?/i, type: 'dolphin', count: 3, notes: 'playful cartoon dolphins' },
+    { pattern: /lions?/i, type: 'lion', count: 2, notes: 'friendly cartoon lions' },
+    { pattern: /friends?\b/i, type: 'small creatures', count: 3, notes: 'friendly small creatures' },
+    { pattern: /birds?/i, type: 'bird', count: 2, notes: 'colorful flying birds' },
+    { pattern: /butterfl/i, type: 'butterfly', count: 3, notes: 'colorful butterflies' },
+    { pattern: /fish/i, type: 'fish', count: 3, notes: 'colorful tropical fish' },
+    { pattern: /luminari/i, type: 'glowing creature', count: 3, notes: 'small glowing moon creatures' },
+  ]
+
+  for (const { pattern, type, count, notes } of charPatterns) {
+    if (pattern.test(lowerText) && supportingCharacters.length < 3) {
+      supportingCharacters.push({ type, count, notes })
+    }
   }
-  if (lowerText.includes('dolphin')) {
-    supportingCharacters.push({ type: 'dolphin', count: 1, notes: 'friendly cartoon dolphin' });
-  }
-  if (lowerText.includes('lion')) {
-    supportingCharacters.push({ type: 'lion', count: 2, notes: 'friendly cartoon lions' });
-  }
+
+  console.log(`[FALLBACK SCENE] Page ${pageIndex} → setting: "${setting}", nouns: [${extractedNouns.join(', ')}]`)
 
   return {
     page_index: pageIndex,
     setting,
     action,
-    must_include: mustInclude.slice(0, 6),
+    must_include: mustInclude.slice(0, 7),
     supporting_characters: supportingCharacters,
     camera: supportingCharacters.length > 0 ? 'wide' : 'medium',
     mood
