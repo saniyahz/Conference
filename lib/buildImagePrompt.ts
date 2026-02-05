@@ -246,15 +246,25 @@ export function generateAllImagePrompts(
     const prompt = buildImagePrompt(bible, card);
     const negativePrompt = buildNegativePrompt(bible, card);
 
-    // Prepare must_include for PLATE prompt (indoor gate only)
-    // NOTE: cleanMustInclude was REMOVED — it used ENV_CONFLICT_MAP to strip
-    // items like "dolphins" from moon settings even when page text contains them.
-    // The noun gating in generateSceneCard.ts already handles env conflicts
-    // with a page-text exception. cleanMustInclude was a redundant layer.
-    // Filter out character-related items — plate has NO characters
+    // Build PLATE must_include: strip ALL character-related items.
+    // Plates are pure backgrounds ("No characters. No animals." in plate prompt).
+    // The main character, "full body", "friends", and singularity constraints
+    // must NEVER appear in plate must_include — they conflict with "No characters".
+    // Noun gating in generateSceneCard.ts already handles env conflicts.
     const cleanedMusts = gateIndoorNouns(card.setting, card.must_include);
     const plateObjects = cleanedMusts
-      .filter(item => !item.toLowerCase().includes(charName) && !item.toLowerCase().includes('full body'))
+      .filter(item => {
+        const lower = item.toLowerCase()
+        if (lower.includes(charName)) return false           // main character name
+        if (lower.includes('full body')) return false         // character pose
+        if (lower === 'friends') return false                 // vague, not visual
+        if (lower.includes('only one')) return false          // singularity constraint
+        if (lower.includes('vibrant')) return false           // generic filler
+        if (lower.includes('lighting')) return false          // generic filler
+        if (lower.includes('background')) return false        // generic filler
+        if (lower.includes('colors')) return false            // generic filler
+        return true
+      })
       .slice(0, 5);
 
     prompts.push(prompt);

@@ -196,6 +196,8 @@ function createFallbackSceneCard(
   //
   // Priority: interior > underwater > savannah > forest > ocean > moon > space > rocket > others
   const CANONICAL_SCENES: { pattern: RegExp; bucket: string; mood: string }[] = [
+    // === DISCOVERY OUTDOORS (highest priority — "found/stumbled rocket" = outdoor scene) ===
+    { pattern: /(stumbled upon|found|discovered|spotted).*(rocket|spaceship)/, bucket: 'golden savannah with scattered acacia trees and warm light', mood: 'warm' },
     // === INTERIOR (only if text explicitly says "inside" the rocket) ===
     { pattern: /cockpit|control\s*panel|pilot\s*seat|dashboard/, bucket: 'rocket cockpit interior with glowing controls and stars through window', mood: 'exciting' },
     { pattern: /(rocket|spaceship).*(inside|sat in|buckled|strapped)|(inside|sat in|buckled|strapped).*(rocket|spaceship)/, bucket: 'inside rocket ship with porthole windows showing stars', mood: 'exciting' },
@@ -225,10 +227,24 @@ function createFallbackSceneCard(
     { pattern: /home|house|bed/, bucket: 'cozy cottage interior with warm golden light', mood: 'warm' },
   ]
 
+  // OUTDOOR OVERRIDE GUARD: If the page text has clear outdoor environment language
+  // AND no explicit interior signal (cockpit, sat in, buckled), block rocket interior
+  // scenes even if the text mentions "rocket". This prevents Page 1 "discovered a
+  // rocket in the savannah" from becoming an interior scene.
+  const hasOutdoorEnv =
+    /(forest|woods|jungle|savann|grassland|tall\s*grass|open\s*plain|meadow|field|waterfall|river|stream|beach|shore|desert|mountain|hill)/.test(lowerText)
+  const hasInteriorSignal =
+    /(cockpit|control\s*panel|pilot\s*seat|dashboard|inside|sat in|sat down|buckled|strapped|buttons|lever|controls)/.test(lowerText)
+  const blockRocketInterior = hasOutdoorEnv && !hasInteriorSignal
+
   // First match wins — scenes are ordered by priority
   let setting = 'colorful outdoor landscape'
   let mood = 'magical'
   for (const { pattern, bucket, mood: m } of CANONICAL_SCENES) {
+    // Skip interior scenes when outdoor environment is clearly present
+    if (blockRocketInterior && (bucket.includes('inside rocket') || bucket.includes('cockpit interior'))) {
+      continue
+    }
     if (pattern.test(lowerText)) {
       setting = bucket
       mood = m
@@ -238,65 +254,74 @@ function createFallbackSceneCard(
 
   console.log(`[FALLBACK SCENE] Page ${pageIndex} canonical setting: "${setting}"`)
 
-  // ===== SETTING-CATEGORY NOUN GATING =====
-  // Only allow nouns that belong to the detected setting category.
-  // Prevents "ocean waves" from appearing in a cockpit scene, or
-  // "forest trees" from appearing on the moon.
-  const CATEGORY_ALLOWED_NOUNS: Record<string, string[]> = {
-    cockpit:    ['rocket ship', 'glowing control panel', 'twinkling stars', 'Earth in the sky', 'colorful planet'],
-    'inside rocket': ['rocket ship', 'glowing control panel', 'twinkling stars', 'Earth in the sky'],
-    moon:       ['moon', 'craters', 'twinkling stars', 'Earth in the sky', 'rocket ship', 'colorful planet', 'friendly aliens', 'rabbits', 'moon rabbits in tiny spacesuits'],
-    rocket:     ['rocket ship', 'fluffy clouds', 'twinkling stars', 'bright sun', 'Earth in the sky'],
-    space:      ['twinkling stars', 'colorful planet', 'rocket ship', 'Earth in the sky', 'friendly aliens'],
-    underwater: ['colorful coral', 'tropical fish', 'water', 'ocean waves', 'waves'],
-    ocean:      ['ocean waves', 'waves', 'water', 'dolphins', 'water splash', 'island', 'bright sun', 'fluffy clouds', 'tropical fish'],
-    forest:     ['forest trees', 'tall trees', 'colorful flowers', 'green meadow', 'lions', 'rainbow', 'bridge', 'bright sun', 'fluffy clouds', 'waterfall'],
-    waterfall:  ['waterfall', 'forest trees', 'tall trees', 'colorful flowers', 'flowing river', 'rainbow', 'bright sun'],
-    storm:      ['storm clouds', 'shelter', 'rocket ship', 'twinkling stars', 'moon', 'craters'],
-    savann:     ['lions', 'bright sun', 'mountains', 'tall trees'],
-    beach:      ['ocean waves', 'water splash', 'bright sun', 'island', 'fluffy clouds'],
-    mountain:   ['mountains', 'fluffy clouds', 'bright sun', 'rainbow', 'flowing river'],
-    desert:     ['bright sun', 'mountains', 'cave entrance'],
-    cave:       ['cave entrance', 'colorful flowers', 'mountains'],
-    home:       ['colorful flowers', 'rainbow', 'bright sun', 'friends'],
+  // ===== STRICT SINGLE-CATEGORY NOUN GATING =====
+  // Each setting maps to exactly ONE category via categoryForSetting().
+  // Then ALLOWED_BY_CAT regex determines which extracted nouns survive.
+  // This replaces the old multi-category union approach which accidentally
+  // allowed cross-environment nouns (waterfall inside rocket, etc).
+
+  // Nouns that can appear in ANY scene (transportable objects, celestial bodies)
+  const CROSS_SCENE_NOUNS = new Set([
+    'rocket ship', 'twinkling stars', 'earth in the sky', 'moon', 'colorful planet',
+    'glowing control panel',
+  ])
+
+  function categoryForSetting(s: string): string {
+    const sl = s.toLowerCase()
+    if (sl.includes('cockpit') || sl.includes('inside rocket')) return 'rocket_interior'
+    if (sl.includes('underwater') || sl.includes('coral reef')) return 'underwater'
+    if (sl.includes('waterfall')) return 'forest'
+    if (sl.includes('forest') || sl.includes('trees') || sl.includes('enchanting')) return 'forest'
+    if (sl.includes('savann') || sl.includes('grassland') || sl.includes('acacia')) return 'savannah'
+    if (sl.includes('ocean') || sl.includes('dolphin') || sl.includes('waves')) return 'ocean'
+    if (sl.includes('beach') || sl.includes('palm')) return 'ocean'
+    if (sl.includes('moon') || sl.includes('crater')) return 'moon'
+    if (sl.includes('space') || sl.includes('nebula')) return 'space'
+    if (sl.includes('rocket launching') || sl.includes('bright blue sky')) return 'rocket_launch'
+    if (sl.includes('desert')) return 'desert'
+    if (sl.includes('cave')) return 'cave'
+    if (sl.includes('mountain')) return 'mountain'
+    if (sl.includes('starry') || sl.includes('night sky')) return 'night'
+    if (sl.includes('home') || sl.includes('cottage')) return 'home'
+    if (sl.includes('storm')) return 'storm'
+    return 'other'
   }
 
-  // Gate nouns by setting category — MERGE ALL matching categories (not first-match).
-  // A setting like "sparkling open ocean with leaping dolphins" matches both "ocean"
-  // and "dolphin" categories, so allowed nouns = union of both.
-  // Also preserves nouns whose core word (>3 chars) appears in the page text.
-  function gateNounsBySetting(settingStr: string, nouns: string[], pageText: string): string[] {
-    const sl = settingStr.toLowerCase()
-    const pl = pageText.toLowerCase()
+  // Regex allowlists per category. Nouns must match to survive gating.
+  // "rocket" and "spaceship" allowed in most categories (transportable object).
+  const ALLOWED_BY_CAT: Record<string, RegExp> = {
+    rocket_interior: /(rocket|spaceship|cockpit|control|panel|dashboard|seat|porthole|window|stars|moon|earth|planet)/i,
+    underwater:      /(coral|fish|water|ocean|waves?|splash)/i,
+    forest:          /(rocket|spaceship|forest|trees?|waterfall|river|stream|sunlight|clearing|lions?|flowers?|meadow|rainbow|bridge|bright sun)/i,
+    savannah:        /(rocket|spaceship|savann|grass|acacia|lions?|sun|mountains?|meadow)/i,
+    ocean:           /(rocket|spaceship|ocean|waves?|water|splash|dolphins?|beach|shore|island|sun|clouds?|fish)/i,
+    moon:            /(rocket|spaceship|moon|crater|earth|stars|rabbits?|spacesuit|aliens?|planet)/i,
+    space:           /(rocket|spaceship|stars|moon|earth|nebula|planet|aliens?)/i,
+    rocket_launch:   /(rocket|spaceship|clouds?|stars|sun|earth|sky)/i,
+    desert:          /(rocket|spaceship|desert|sand|dune|sun|mountains?|cave)/i,
+    cave:            /(rocket|spaceship|cave|flowers?|mountains?|crystals?)/i,
+    mountain:        /(rocket|spaceship|mountains?|clouds?|sun|rainbow|river|stream)/i,
+    night:           /(rocket|spaceship|stars|moon|earth|sky)/i,
+    home:            /(rocket|spaceship|flowers?|rainbow|sun|friends)/i,
+    storm:           /(rocket|spaceship|storm|shelter|clouds?|stars|moon|crater)/i,
+    other:           /./i,  // Allow everything if no category matched
+  }
 
-    // Merge ALL matching category allowed lists
-    const allAllowed = new Set<string>()
-    const matchedCategories: string[] = []
-    for (const [category, allowed] of Object.entries(CATEGORY_ALLOWED_NOUNS)) {
-      if (sl.includes(category)) {
-        matchedCategories.push(category)
-        for (const a of allowed) {
-          allAllowed.add(a.toLowerCase())
-        }
-      }
-    }
-
-    if (matchedCategories.length === 0) return nouns  // No category match — keep all
+  function gateNounsBySetting(settingStr: string, nouns: string[]): string[] {
+    const cat = categoryForSetting(settingStr)
+    const allow = ALLOWED_BY_CAT[cat] ?? ALLOWED_BY_CAT.other
 
     const gated = nouns.filter(noun => {
       const lowerNoun = noun.toLowerCase()
-      // Keep if allowed by ANY matching category
-      if (Array.from(allAllowed).some(a => lowerNoun.includes(a) || a.includes(lowerNoun))) return true
-      // EXCEPTION: Keep noun if its core word (>3 chars) appears in the page text
-      // e.g., "dolphins" stays if pageText contains "dolphin"
-      const coreWords = lowerNoun.split(/\s+/).filter(w => w.length > 3)
-      if (coreWords.some(w => pl.includes(w))) return true
-      return false
+      // Always allow cross-scene nouns (rocket ship, stars, earth, moon, planet)
+      if (CROSS_SCENE_NOUNS.has(lowerNoun)) return true
+      // Check against category regex
+      return allow.test(lowerNoun)
     })
 
     const removed = nouns.filter(n => !gated.includes(n))
     if (removed.length > 0) {
-      console.log(`[NOUN GATE] Setting "${settingStr}" (categories: ${matchedCategories.join('+')}): removed [${removed.join(', ')}], kept [${gated.join(', ')}]`)
+      console.log(`[NOUN GATE] Setting "${settingStr}" (category: ${cat}): removed [${removed.join(', ')}], kept [${gated.join(', ')}]`)
     }
     return gated
   }
@@ -329,14 +354,17 @@ function createFallbackSceneCard(
 
   // Extract concrete nouns from text, then gate by setting category
   const rawNouns = extractNounsFromText(pageText)
-  const gatedNouns = gateNounsBySetting(setting, rawNouns, pageText)
+  const gatedNouns = gateNounsBySetting(setting, rawNouns)
 
-  // SPECIALIZE "friends" — convert generic "friends" to setting-appropriate creatures.
-  // This prevents vague "friends" from being ignored by SDXL and ensures the
-  // supporting characters match the story world (e.g., "moon rabbits in spacesuits").
+  // SPECIALIZE "friends" — but ONLY when page text has explicit companion signals.
+  // Without a signal like "met/welcomed/joined/together/the rabbits/the dolphins",
+  // "friends" is too vague and introduces wrong creatures. Drop it instead.
   const settingLower = setting.toLowerCase()
+  const hasCompanionSignal = /(friends|together|welcomed|met|joined|invited|the rabbits|the dolphins|the lions|new friends|made friends)/.test(lowerText)
+
   const specializedNouns = gatedNouns.map(noun => {
     if (noun.toLowerCase() !== 'friends') return noun
+    if (!hasCompanionSignal) return ''  // Drop vague "friends" — no companion signal
     if (settingLower.includes('moon') || settingLower.includes('crater')) return 'moon rabbits in tiny spacesuits'
     if (settingLower.includes('ocean') || settingLower.includes('dolphin')) return 'playful dolphins'
     if (settingLower.includes('forest') || settingLower.includes('trees')) return 'friendly forest animals'
@@ -344,7 +372,7 @@ function createFallbackSceneCard(
     if (settingLower.includes('space') || settingLower.includes('nebula')) return 'friendly aliens'
     if (settingLower.includes('beach')) return 'friendly sea creatures'
     return 'friendly small creatures'  // fallback
-  })
+  }).filter(n => n !== '')  // Remove dropped empty strings
 
   const mustInclude = [`${characterName} full body`, ...specializedNouns]
 
@@ -376,8 +404,8 @@ function createFallbackSceneCard(
   }
 
   // Specialize "friends" into setting-appropriate supporting characters
-  // (only if no specific creature was already detected above)
-  if (/friends?\b/i.test(lowerText) && supportingCharacters.length === 0) {
+  // (only if no specific creature was already detected AND companion signal present)
+  if (hasCompanionSignal && /friends?\b/i.test(lowerText) && supportingCharacters.length === 0) {
     if (settingLower.includes('moon') || settingLower.includes('crater')) {
       supportingCharacters.push({ type: 'rabbit in spacesuit', count: 3, notes: 'small moon rabbits in tiny spacesuits' })
     } else if (settingLower.includes('ocean') || settingLower.includes('dolphin')) {
