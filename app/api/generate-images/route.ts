@@ -386,6 +386,7 @@ export async function POST(request: NextRequest) {
     const imageUrls: string[] = []
     const plateUrls: string[] = []  // Debug: collect plate URLs to verify scenes
     const plateCache: Map<string, string> = new Map()  // exact setting → plateUrl
+    const plateMustIncludes: Map<string, string[]> = new Map()  // exact setting → mustIncludes used for that plate
     let totalApiCalls = 0
 
     for (let i = 0; i < imagePrompts.length; i++) {
@@ -410,18 +411,33 @@ export async function POST(request: NextRequest) {
         if (setting) {
           let plateUrl: string
 
-          // KEYFRAME CHECK: reuse plate only if EXACT same setting string
+          // KEYFRAME CHECK: reuse plate only if EXACT same setting AND compatible must_includes.
+          // "Compatible" = this page's key objects are a subset of the cached plate's objects.
+          // If this page requires "rocket ship" but the cached plate was generated without it,
+          // we must regenerate (the rocket won't be in the background).
           const cachedPlate = plateCache.get(cacheKey)
-          if (cachedPlate) {
+          const cachedMusts = plateMustIncludes.get(cacheKey) || []
+          const KEY_OBJECTS = ['rocket ship', 'dolphins', 'lions', 'moon rabbits', 'rocket', 'waterfall', 'cave entrance']
+          const missingKeyObjects = mustInclude.filter(item => {
+            const lower = item.toLowerCase()
+            return KEY_OBJECTS.some(k => lower.includes(k)) && !cachedMusts.some(c => c.toLowerCase().includes(lower) || lower.includes(c.toLowerCase()))
+          })
+          const plateCompatible = cachedPlate && missingKeyObjects.length === 0
+
+          if (plateCompatible) {
             plateUrl = cachedPlate
             plateUrls.push(plateUrl)
-            console.log(`[PLATE REUSE] Exact setting match — skipping plate generation (saved 1 API call + ${BASE_DELAY_BETWEEN_IMAGES / 1000}s)`)
+            console.log(`[PLATE REUSE] Exact setting + compatible must_includes — skipping plate generation`)
           } else {
+            if (cachedPlate && missingKeyObjects.length > 0) {
+              console.log(`[PLATE REGEN] Same setting but missing key objects: [${missingKeyObjects.join(', ')}] — generating new plate`)
+            }
             // ===== NEW PLATE: Generate scene plate for this setting =====
             const scenePrompt = buildSceneOnlyPrompt(setting, mustInclude)
             plateUrl = await generateScenePlate(replicate, scenePrompt, pageSeed, i)
             plateUrls.push(plateUrl)
             plateCache.set(cacheKey, plateUrl)
+            plateMustIncludes.set(cacheKey, mustInclude)
             totalApiCalls++
 
             // Delay between Replicate calls

@@ -156,6 +156,7 @@ function extractNounsFromText(text: string): string[] {
     { pattern: /bridge/i, noun: 'bridge' },
     { pattern: /coral/i, noun: 'colorful coral' },
     { pattern: /fish/i, noun: 'tropical fish' },
+    { pattern: /rabbit|bunny|bunnies/i, noun: 'rabbits' },
     { pattern: /alien/i, noun: 'friendly aliens' },
     { pattern: /cockpit|control\s*panel/i, noun: 'glowing control panel' },
     { pattern: /waterfall/i, noun: 'waterfall' },
@@ -187,25 +188,28 @@ function createFallbackSceneCard(
 
   // CANONICAL SCENE BUCKETS — each page maps to exactly ONE scene.
   // No more "near" compound strings that confuse SDXL.
-  // Ordered by priority: specific compounds first, then general patterns.
-  // General priority: forest > ocean > moon > space > rocket
-  // (because a rocket can appear in ANY scene, but a forest/ocean IS the scene)
+  //
+  // RULE: Pick scene by ENVIRONMENT keywords first, rocket/space second.
+  // A rocket can appear in ANY environment (savannah, ocean, forest), but
+  // a savannah/ocean IS the environment. Only pick "rocket interior" if
+  // text explicitly describes being inside (cockpit, controls, sat in, buckled).
+  //
+  // Priority: interior > underwater > savannah > forest > ocean > moon > space > rocket > others
   const CANONICAL_SCENES: { pattern: RegExp; bucket: string; mood: string }[] = [
-    // === SPECIFIC COMPOUND (unambiguous, highest priority) ===
-    { pattern: /underwater|beneath\s*the\s*water|ocean\s*floor/, bucket: 'underwater ocean with coral reef and sunbeams', mood: 'magical' },
+    // === INTERIOR (only if text explicitly says "inside" the rocket) ===
     { pattern: /cockpit|control\s*panel|pilot\s*seat|dashboard/, bucket: 'rocket cockpit interior with glowing controls and stars through window', mood: 'exciting' },
-    { pattern: /(rocket|spaceship).*(inside|sat in|buckled)|(inside|sat in|buckled).*(rocket|spaceship)/, bucket: 'inside rocket ship with porthole windows showing stars', mood: 'exciting' },
-    { pattern: /moon.*(surface|landed|crater|walked|bounce|hop)|(surface|landed|crater|walked).*moon/, bucket: 'moon surface with craters and Earth visible in sky', mood: 'wondrous' },
-    // === GENERAL (priority: forest > ocean > moon > space > rocket > others) ===
-    { pattern: /forest|woods|jungle/, bucket: 'lush green forest with tall trees and dappled sunlight', mood: 'enchanting' },
+    { pattern: /(rocket|spaceship).*(inside|sat in|buckled|strapped)|(inside|sat in|buckled|strapped).*(rocket|spaceship)/, bucket: 'inside rocket ship with porthole windows showing stars', mood: 'exciting' },
+    // === UNDERWATER (specific, high priority) ===
+    { pattern: /underwater|beneath\s*the\s*water|ocean\s*floor/, bucket: 'underwater ocean with coral reef and sunbeams', mood: 'magical' },
+    // === ENVIRONMENT KEYWORDS FIRST (the scene IS the environment) ===
+    { pattern: /savann|grassland|tall\s*grass|open\s*plain/, bucket: 'golden savannah with scattered acacia trees and warm light', mood: 'warm' },
     { pattern: /waterfall/, bucket: 'forest clearing with cascading waterfall and mist', mood: 'magical' },
+    { pattern: /forest|woods|jungle/, bucket: 'lush green forest with tall trees and dappled sunlight', mood: 'enchanting' },
     { pattern: /dolphin/, bucket: 'sparkling open ocean with leaping dolphins', mood: 'playful' },
     { pattern: /ocean|sea\b|splash.*water|water.*splash/, bucket: 'open ocean with gentle waves under bright sky', mood: 'adventurous' },
+    { pattern: /moon.*(surface|landed|crater|walked|bounce|hop)|(surface|landed|crater|walked).*moon/, bucket: 'moon surface with craters and Earth visible in sky', mood: 'wondrous' },
     { pattern: /moon/, bucket: 'moon surface with craters and starry sky', mood: 'wondrous' },
-    { pattern: /space|galaxy|nebula/, bucket: 'deep space with colorful nebula and distant stars', mood: 'wondrous' },
-    { pattern: /rocket|spaceship|blast\s*off|launch/, bucket: 'rocket launching into bright blue sky with fluffy clouds', mood: 'exciting' },
     { pattern: /lion/, bucket: 'golden savannah with scattered acacia trees and warm light', mood: 'warm' },
-    { pattern: /savann|grassland/, bucket: 'golden savannah with scattered acacia trees', mood: 'warm' },
     { pattern: /beach|shore/, bucket: 'sandy tropical beach with palm trees and gentle waves', mood: 'cheerful' },
     { pattern: /mountain|hill/, bucket: 'rolling green mountains under bright blue sky', mood: 'majestic' },
     { pattern: /river|stream/, bucket: 'peaceful river flowing through green valley', mood: 'peaceful' },
@@ -213,6 +217,11 @@ function createFallbackSceneCard(
     { pattern: /desert/, bucket: 'vast desert with golden sand dunes under blue sky', mood: 'vast' },
     { pattern: /meadow|field/, bucket: 'sunny meadow with colorful wildflowers', mood: 'peaceful' },
     { pattern: /storm/, bucket: 'dramatic stormy sky over rocky landscape', mood: 'dramatic' },
+    { pattern: /starry|night\s*sky|under\s*the\s*stars/, bucket: 'open field under starry night sky with glowing stars', mood: 'wondrous' },
+    // === ROCKET/SPACE LAST (only if no environment keyword matched) ===
+    { pattern: /space|galaxy|nebula/, bucket: 'deep space with colorful nebula and distant stars', mood: 'wondrous' },
+    { pattern: /rocket|spaceship|blast\s*off|launch/, bucket: 'rocket launching into bright blue sky with fluffy clouds', mood: 'exciting' },
+    // === HOME (fallback for indoor scenes) ===
     { pattern: /home|house|bed/, bucket: 'cozy cottage interior with warm golden light', mood: 'warm' },
   ]
 
@@ -236,7 +245,7 @@ function createFallbackSceneCard(
   const CATEGORY_ALLOWED_NOUNS: Record<string, string[]> = {
     cockpit:    ['rocket ship', 'glowing control panel', 'twinkling stars', 'Earth in the sky', 'colorful planet'],
     'inside rocket': ['rocket ship', 'glowing control panel', 'twinkling stars', 'Earth in the sky'],
-    moon:       ['moon', 'craters', 'twinkling stars', 'Earth in the sky', 'rocket ship', 'colorful planet', 'friendly aliens'],
+    moon:       ['moon', 'craters', 'twinkling stars', 'Earth in the sky', 'rocket ship', 'colorful planet', 'friendly aliens', 'rabbits', 'moon rabbits in tiny spacesuits'],
     rocket:     ['rocket ship', 'fluffy clouds', 'twinkling stars', 'bright sun', 'Earth in the sky'],
     space:      ['twinkling stars', 'colorful planet', 'rocket ship', 'Earth in the sky', 'friendly aliens'],
     underwater: ['colorful coral', 'tropical fish', 'water', 'ocean waves', 'waves'],
@@ -321,7 +330,23 @@ function createFallbackSceneCard(
   // Extract concrete nouns from text, then gate by setting category
   const rawNouns = extractNounsFromText(pageText)
   const gatedNouns = gateNounsBySetting(setting, rawNouns, pageText)
-  const mustInclude = [`${characterName} full body`, ...gatedNouns]
+
+  // SPECIALIZE "friends" — convert generic "friends" to setting-appropriate creatures.
+  // This prevents vague "friends" from being ignored by SDXL and ensures the
+  // supporting characters match the story world (e.g., "moon rabbits in spacesuits").
+  const settingLower = setting.toLowerCase()
+  const specializedNouns = gatedNouns.map(noun => {
+    if (noun.toLowerCase() !== 'friends') return noun
+    if (settingLower.includes('moon') || settingLower.includes('crater')) return 'moon rabbits in tiny spacesuits'
+    if (settingLower.includes('ocean') || settingLower.includes('dolphin')) return 'playful dolphins'
+    if (settingLower.includes('forest') || settingLower.includes('trees')) return 'friendly forest animals'
+    if (settingLower.includes('savann') || settingLower.includes('lion')) return 'friendly lions'
+    if (settingLower.includes('space') || settingLower.includes('nebula')) return 'friendly aliens'
+    if (settingLower.includes('beach')) return 'friendly sea creatures'
+    return 'friendly small creatures'  // fallback
+  })
+
+  const mustInclude = [`${characterName} full body`, ...specializedNouns]
 
   // Pad to 4 items with generic illustration elements (no setting substrings)
   const padItems = ['vibrant colors', 'soft lighting', 'detailed background']
@@ -331,12 +356,13 @@ function createFallbackSceneCard(
   }
 
   // Extract supporting characters more thoroughly
+  // "friends" is specialized based on setting (same logic as noun specialization)
   const supportingCharacters: { type: string; count: number; notes: string }[] = [];
   const charPatterns: { pattern: RegExp; type: string; count: number; notes: string }[] = [
     { pattern: /alien/i, type: 'friendly alien', count: 2, notes: 'small colorful aliens' },
+    { pattern: /rabbit/i, type: 'rabbit in spacesuit', count: 3, notes: 'small rabbits in tiny spacesuits' },
     { pattern: /dolphins?/i, type: 'dolphin', count: 3, notes: 'playful cartoon dolphins' },
     { pattern: /lions?/i, type: 'lion', count: 2, notes: 'friendly cartoon lions' },
-    { pattern: /friends?\b/i, type: 'small creatures', count: 3, notes: 'friendly small creatures' },
     { pattern: /birds?/i, type: 'bird', count: 2, notes: 'colorful flying birds' },
     { pattern: /butterfl/i, type: 'butterfly', count: 3, notes: 'colorful butterflies' },
     { pattern: /fish/i, type: 'fish', count: 3, notes: 'colorful tropical fish' },
@@ -346,6 +372,22 @@ function createFallbackSceneCard(
   for (const { pattern, type, count, notes } of charPatterns) {
     if (pattern.test(lowerText) && supportingCharacters.length < 3) {
       supportingCharacters.push({ type, count, notes })
+    }
+  }
+
+  // Specialize "friends" into setting-appropriate supporting characters
+  // (only if no specific creature was already detected above)
+  if (/friends?\b/i.test(lowerText) && supportingCharacters.length === 0) {
+    if (settingLower.includes('moon') || settingLower.includes('crater')) {
+      supportingCharacters.push({ type: 'rabbit in spacesuit', count: 3, notes: 'small moon rabbits in tiny spacesuits' })
+    } else if (settingLower.includes('ocean') || settingLower.includes('dolphin')) {
+      supportingCharacters.push({ type: 'dolphin', count: 3, notes: 'playful cartoon dolphins' })
+    } else if (settingLower.includes('forest') || settingLower.includes('trees')) {
+      supportingCharacters.push({ type: 'forest animal', count: 2, notes: 'friendly woodland creatures' })
+    } else if (settingLower.includes('savann') || settingLower.includes('lion')) {
+      supportingCharacters.push({ type: 'lion', count: 2, notes: 'friendly cartoon lions' })
+    } else {
+      supportingCharacters.push({ type: 'small creature', count: 3, notes: 'friendly small creatures' })
     }
   }
 
