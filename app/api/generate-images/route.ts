@@ -145,17 +145,20 @@ const SDXL_VERSION = "39ed52f2a78e934b3ba6e2a89f5b1c712de7dfea535525255b1aa35c55
 /**
  * Build dynamic negative prompt — compact, scene-aware.
  * Only bans environments the page doesn't need.
- * Kept short so CLIP doesn't truncate important terms.
+ * FINAL STEP: subtract any negative that appears in the page prompt.
  */
 function buildDynamicNegativePrompt(pagePrompt: string, providedNegative: string | undefined): string {
   const lp = pagePrompt.toLowerCase()
 
-  // Core block: anti-sheet + anti-3D (always apply)
-  const neg = [
+  // Core block: anti-sheet + anti-3D (always apply, never subtracted)
+  const safeNeg = [
     'character sheet', 'reference sheet', 'turnaround', 'multiple poses', 'collage', 'grid', 'lineup',
     'photorealistic', '3D render', 'CGI', 'Pixar', 'DSLR',
     'text', 'watermark', 'logo', 'blurry', 'low quality',
   ]
+
+  // Subtractable negatives — will be removed if they appear in the prompt
+  const subNeg: string[] = []
 
   // Environment negatives — only add if the page doesn't need them
   const envRules: [string, string[]][] = [
@@ -170,23 +173,33 @@ function buildDynamicNegativePrompt(pagePrompt: string, providedNegative: string
 
   for (const [word, triggers] of envRules) {
     if (!triggers.some(t => lp.includes(t))) {
-      neg.push(word)
+      subNeg.push(word)
     }
   }
 
   // Species-confusion negatives
   if (lp.includes('rhinoceros') || lp.includes('rhino')) {
-    neg.push('cow', 'hippo', 'elephant', 'horse')
+    subNeg.push('cow', 'hippo', 'elephant', 'horse')
   }
 
   // Block humans for animal characters
   const animalKeywords = ['rhinoceros', 'rhino', 'elephant', 'lion', 'bear', 'rabbit', 'cat', 'dog', 'fox', 'tiger']
   if (animalKeywords.some(a => lp.includes(a))) {
-    neg.push('human', 'person', 'child')
+    subNeg.push('human', 'person', 'child')
   }
 
-  console.log(`[NEGATIVES] ${neg.join(', ')}`)
-  return neg.join(', ')
+  // FINAL SUBTRACTION: remove any subtractable negative that appears in the prompt
+  // This prevents banning scene keywords the page actually needs
+  const filteredSubNeg = subNeg.filter(n => !lp.includes(n.toLowerCase()))
+
+  const removed = subNeg.filter(n => lp.includes(n.toLowerCase()))
+  if (removed.length > 0) {
+    console.log(`[NEGATIVES] Removed (found in prompt): ${removed.join(', ')}`)
+  }
+
+  const finalNeg = [...safeNeg, ...filteredSubNeg]
+  console.log(`[NEGATIVES] ${finalNeg.join(', ')}`)
+  return finalNeg.join(', ')
 }
 
 // Helper function to generate image with anchor reference (img2img)

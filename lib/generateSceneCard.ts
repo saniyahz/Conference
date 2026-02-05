@@ -206,27 +206,33 @@ function createFallbackSceneCard(
   const lowerText = pageText.toLowerCase();
   console.log(`[FALLBACK SCENE] Page ${pageIndex}: extracting from "${pageText.substring(0, 80)}..."`)
 
-  // Extract setting - check multiple keywords, pick the most specific match
-  // Order matters: most specific first
+  // Extract setting — keyword classifier on actual page text
+  // PRIORITY ORDER: most distinctive scenes first, generic last
+  // Space/rocket/moon BEFORE ocean/water (a rocket scene mentioning water isn't ocean)
   const settingRules: { test: (t: string) => boolean; setting: string; mood: string }[] = [
-    { test: t => t.includes('splash') && t.includes('ocean'), setting: 'Ocean surface with splashing water and blue sky', mood: 'exciting, adventurous' },
-    { test: t => t.includes('swim') && (t.includes('ocean') || t.includes('sea')), setting: 'Open ocean with waves under blue sky', mood: 'adventurous, free' },
-    { test: t => t.includes('underwater') || t.includes('beneath the water'), setting: 'Underwater ocean scene with colorful coral and tropical fish', mood: 'magical, serene' },
-    { test: t => t.includes('ocean') || t.includes('sea') && t.includes('water'), setting: 'Open ocean with waves and blue sky', mood: 'vast, adventurous' },
-    { test: t => t.includes('dolphin'), setting: 'Ocean surface with dolphins jumping in waves', mood: 'playful, joyful' },
-    { test: t => t.includes('moon') && t.includes('surface'), setting: 'Gray moon surface with craters and Earth visible in the starry sky', mood: 'wondrous, adventurous' },
+    // --- SPACE / ROCKET / MOON (highest priority) ---
+    { test: t => t.includes('cockpit') || t.includes('control panel') || t.includes('pilot seat') || t.includes('dashboard'), setting: 'Inside a rocket ship cockpit with glowing controls', mood: 'exciting, adventurous' },
+    { test: t => (t.includes('rocket') || t.includes('spaceship')) && (t.includes('inside') || t.includes('sat in') || t.includes('buckled')), setting: 'Inside a rocket ship with glowing controls and a window showing sky', mood: 'exciting, adventurous' },
+    { test: t => t.includes('moon') && (t.includes('surface') || t.includes('landed') || t.includes('crater')), setting: 'Gray moon surface with craters and Earth in the starry sky', mood: 'wondrous, adventurous' },
     { test: t => t.includes('moon'), setting: 'The moon with craters and starry space background', mood: 'wondrous, magical' },
-    { test: t => (t.includes('rocket') || t.includes('spaceship')) && t.includes('inside'), setting: 'Inside a colorful rocket ship cockpit with glowing controls and windows showing space', mood: 'exciting, adventurous' },
-    { test: t => t.includes('rocket') || t.includes('spaceship'), setting: 'A shiny rocket ship ready for launch with clouds and sky', mood: 'exciting, adventurous' },
-    { test: t => t.includes('space') || t.includes('stars') && t.includes('galaxy'), setting: 'Outer space with colorful nebulae stars and planets', mood: 'wondrous, vast' },
-    { test: t => t.includes('lion') && t.includes('forest'), setting: 'A lush forest clearing with golden sunlight filtering through trees', mood: 'adventurous, warm' },
-    { test: t => t.includes('forest') || t.includes('woods') || t.includes('jungle'), setting: 'A magical forest with tall green trees and dappled sunlight', mood: 'enchanting, mysterious' },
-    { test: t => t.includes('beach') || t.includes('shore') || t.includes('sand'), setting: 'A sunny tropical beach with golden sand and gentle waves', mood: 'cheerful, relaxing' },
-    { test: t => t.includes('meadow') || t.includes('field') || t.includes('grass'), setting: 'A sunny meadow with colorful wildflowers and blue sky', mood: 'peaceful, sunny' },
+    { test: t => t.includes('rocket') || t.includes('spaceship') || t.includes('blast off') || t.includes('blasted off') || t.includes('launch'), setting: 'Rocket ship launching into sky with clouds and flames below', mood: 'exciting, adventurous' },
+    { test: t => t.includes('space') || (t.includes('stars') && t.includes('galaxy')), setting: 'Outer space with colorful nebulae, stars and planets', mood: 'wondrous, vast' },
+    // --- UNDERWATER / OCEAN ---
+    { test: t => t.includes('underwater') || t.includes('beneath the water') || t.includes('ocean floor'), setting: 'Underwater scene with colorful coral and tropical fish', mood: 'magical, serene' },
+    { test: t => t.includes('dolphin'), setting: 'Ocean surface with dolphins jumping in waves', mood: 'playful, joyful' },
+    { test: t => t.includes('ocean') || (t.includes('sea') && t.includes('water')), setting: 'Open ocean with waves and blue sky', mood: 'vast, adventurous' },
+    { test: t => t.includes('splash') && (t.includes('water') || t.includes('wave')), setting: 'Ocean surface with splashing water and blue sky', mood: 'exciting, adventurous' },
+    { test: t => t.includes('swim') && (t.includes('ocean') || t.includes('sea') || t.includes('water')), setting: 'Open ocean with waves under blue sky', mood: 'adventurous, free' },
+    // --- LAND / NATURE ---
+    { test: t => t.includes('lion') && (t.includes('savann') || t.includes('forest')), setting: 'Lush forest clearing with golden sunlight through trees', mood: 'adventurous, warm' },
+    { test: t => t.includes('forest') || t.includes('woods') || t.includes('jungle'), setting: 'Magical forest with tall green trees and dappled sunlight', mood: 'enchanting, mysterious' },
+    { test: t => t.includes('savann') || t.includes('grassland'), setting: 'Golden savannah with tall grass and acacia trees', mood: 'warm, vast' },
+    { test: t => t.includes('beach') || t.includes('shore') || t.includes('sand'), setting: 'Sunny tropical beach with golden sand and gentle waves', mood: 'cheerful, relaxing' },
+    { test: t => t.includes('meadow') || t.includes('field') || t.includes('grass'), setting: 'Sunny meadow with colorful wildflowers and blue sky', mood: 'peaceful, sunny' },
     { test: t => t.includes('mountain') || t.includes('hill'), setting: 'Rolling green mountains under a bright sky', mood: 'majestic, adventurous' },
-    { test: t => t.includes('river') || t.includes('stream'), setting: 'A gentle river flowing through a green landscape', mood: 'peaceful, serene' },
-    { test: t => t.includes('cave'), setting: 'A mysterious cave with glowing crystals', mood: 'mysterious, exciting' },
-    { test: t => t.includes('home') || t.includes('house'), setting: 'A cozy cottage surrounded by flowers and a garden', mood: 'warm, safe' },
+    { test: t => t.includes('river') || t.includes('stream'), setting: 'Gentle river flowing through a green landscape', mood: 'peaceful, serene' },
+    { test: t => t.includes('cave'), setting: 'Mysterious cave with glowing crystals', mood: 'mysterious, exciting' },
+    { test: t => t.includes('home') || t.includes('house') || t.includes('bed'), setting: 'Cozy cottage surrounded by flowers and a garden', mood: 'warm, safe' },
   ]
 
   let setting = 'A colorful storybook landscape with blue sky';
@@ -236,6 +242,7 @@ function createFallbackSceneCard(
     if (rule.test(lowerText)) {
       setting = rule.setting;
       mood = rule.mood;
+      console.log(`[FALLBACK SCENE] Page ${pageIndex} matched setting: "${setting}"`)
       break;
     }
   }
