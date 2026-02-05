@@ -285,7 +285,7 @@ CRITICAL: Every page must end with a COMPLETE sentence. Never cut off mid-senten
     // ==========================================
     // STEP 5: Build image prompts using new Universal system
     // ==========================================
-    const { prompts: imagePrompts, negativePrompts } = generateAllImagePrompts(universalBible, universalSceneCards)
+    const { prompts: imagePrompts, negativePrompts, settings: sceneSettings } = generateAllImagePrompts(universalBible, universalSceneCards)
 
     // Use same seed for all pages (character consistency)
     const seeds = universalSceneCards.map(() => baseSeed)
@@ -351,6 +351,8 @@ CRITICAL: Every page must end with a COMPLETE sentence. Never cut off mid-senten
       sceneCards,
       // Character Anchor for img2img identity lock
       characterAnchorUrl: characterAnchor?.imageUrl || null,
+      // Raw scene settings for scene plate generation (2-pass pipeline)
+      sceneSettings,
     })
 
   } catch (error: any) {

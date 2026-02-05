@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server'
 import Replicate from 'replicate'
+import { buildSceneOnlyPrompt } from '@/lib/buildImagePrompt'
 
 const replicate = new Replicate({
   auth: process.env.REPLICATE_API_TOKEN,
@@ -10,7 +11,7 @@ const sleep = (ms: number) => new Promise(resolve => setTimeout(resolve, ms))
 
 // Rate limit configuration
 // Replicate free tier: 6 requests per minute = 10 seconds between requests minimum
-const BASE_DELAY_BETWEEN_IMAGES = 10000 // 10 seconds to stay under rate limit
+const BASE_DELAY_BETWEEN_IMAGES = 15000 // 15 seconds between Replicate calls (2 calls per page now)
 const RATE_LIMIT_INITIAL_WAIT = 15000 // 15 seconds on first rate limit
 const RATE_LIMIT_MAX_WAIT = 60000 // 60 seconds max wait
 
@@ -221,27 +222,109 @@ function buildDynamicNegativePrompt(pagePrompt: string, providedNegative: string
   return finalNeg.join(', ')
 }
 
-// Helper function to generate image with anchor reference (img2img)
-// This is the PRIMARY method for character consistency
+/**
+ * Generate a scene plate (txt2img, background only, no characters).
+ * This is STEP 1 of the 2-pass pipeline.
+ * The plate provides the environment that img2img preserves in step 2.
+ */
+async function generateScenePlate(
+  replicate: Replicate,
+  scenePrompt: string,
+  seed: number,
+  pageIndex: number
+): Promise<string> {
+  // Scene plate negatives: block ALL characters/animals so the plate is pure background
+  const sceneNegative = 'rhinoceros, rhino, animal, character, person, human, face, creature, text, watermark, photorealistic, 3D render, CGI, Pixar, DSLR, blurry, low quality'
+
+  console.log(`\n========== SCENE PLATE ${pageIndex + 1} ==========`)
+  console.log(`PLATE PROMPT: ${scenePrompt}`)
+  console.log(`PLATE PROMPT LENGTH: ${scenePrompt.split(/\s+/).length} words / ${scenePrompt.length} chars`)
+  console.log(`PLATE NEGATIVE: ${sceneNegative}`)
+  console.log(`PLATE SEED: ${seed}`)
+
+  const prediction = await replicate.predictions.create({
+    version: SDXL_VERSION,
+    input: {
+      prompt: scenePrompt,
+      negative_prompt: sceneNegative,
+      width: 1024,
+      height: 1024,
+      num_outputs: 1,
+      scheduler: "K_EULER",
+      num_inference_steps: 30,
+      guidance_scale: 8,
+      seed,
+    }
+  })
+
+  console.log(`[PLATE ${pageIndex + 1}] Prediction created: ${prediction.id}`)
+
+  // Poll for completion
+  let completedPrediction = prediction
+  let pollCount = 0
+  const maxPolls = 60
+
+  while (completedPrediction.status !== 'succeeded' && completedPrediction.status !== 'failed' && completedPrediction.status !== 'canceled') {
+    pollCount++
+    if (pollCount > maxPolls) throw new Error('Scene plate timed out')
+    if (pollCount % 5 === 0) {
+      console.log(`[PLATE ${pageIndex + 1}] Polling... (${pollCount}/${maxPolls}) status: ${completedPrediction.status}`)
+    }
+    await sleep(2000)
+    completedPrediction = await replicate.predictions.get(prediction.id)
+  }
+
+  if (completedPrediction.status === 'failed') {
+    throw new Error(`Scene plate failed: ${completedPrediction.error || 'Unknown error'}`)
+  }
+  if (completedPrediction.status === 'canceled') {
+    throw new Error('Scene plate was canceled')
+  }
+
+  // Extract URL
+  const output = completedPrediction.output
+  let plateUrl = ''
+  if (Array.isArray(output) && output.length > 0) {
+    const first = output[0]
+    if (typeof first === 'string' && first.startsWith('http')) {
+      plateUrl = first
+    } else {
+      try { const s = String(first); if (s.startsWith('http')) plateUrl = s; } catch {}
+    }
+  } else if (typeof output === 'string' && output.startsWith('http')) {
+    plateUrl = output
+  }
+
+  if (!plateUrl) {
+    throw new Error(`Failed to extract scene plate URL for page ${pageIndex + 1}`)
+  }
+
+  console.log(`[PLATE ${pageIndex + 1}] URL: ${plateUrl.substring(0, 60)}...`)
+  return plateUrl
+}
+
+// Helper function to generate image with img2img
+// Used for: adding character to scene plate (primary) or anchor-based fallback
 // Uses predictions API instead of run() to avoid empty [{}] response issue
 async function generateImageWithAnchor(
   replicate: Replicate,
   prompt: string,
   negativePrompt: string | undefined,
-  anchorUrl: string,
+  baseImageUrl: string,
   seed: number,
-  imageIndex: number
+  imageIndex: number,
+  promptStrength: number = 0.80,
+  settingContext: string = ''  // Setting text appended for negative prompt trigger checks
 ): Promise<string> {
   const maxRetries = 3
-  // prompt_strength: 0.80 lets the scene prompt override the anchor's white background
-  // while still keeping character shape/identity from the anchor image
-  // 0.65 was too low — kept the anchor's plain background on every page
-  const PROMPT_STRENGTH = 0.80
 
   for (let attempt = 1; attempt <= maxRetries; attempt++) {
     try {
       // Build dynamic negative prompt that doesn't fight the scene
-      const dynamicNegative = buildDynamicNegativePrompt(prompt, negativePrompt)
+      // Append settingContext so env trigger checks still detect scene words
+      // (the final-pass prompt no longer contains the setting — it says "Keep the same background")
+      const promptForNegatives = settingContext ? `${prompt} ${settingContext}` : prompt
+      const dynamicNegative = buildDynamicNegativePrompt(promptForNegatives, negativePrompt)
 
       // Build input object for img2img
       const input: any = {
@@ -254,14 +337,14 @@ async function generateImageWithAnchor(
         num_inference_steps: 30,
         guidance_scale: 8,
         seed,  // Per-page seed (offset from baseSeed)
-        image: anchorUrl,  // Anchor for img2img
-        prompt_strength: PROMPT_STRENGTH,  // Allow scene to change
+        image: baseImageUrl,  // Scene plate (primary) or anchor (fallback)
+        prompt_strength: promptStrength,
       }
 
       // EXPLICIT DEBUG LOGS
       console.log(`\n========== IMG2IMG PAGE ${imageIndex + 1} (attempt ${attempt}) ==========`)
-      console.log(`ANCHOR URL: ${anchorUrl}`)
-      console.log(`PROMPT_STRENGTH: ${input.prompt_strength}`)
+      console.log(`BASE IMAGE: ${baseImageUrl.substring(0, 60)}...`)
+      console.log(`PROMPT_STRENGTH: ${promptStrength}`)
       console.log(`SEED: ${input.seed}`)
       console.log(`FINAL REPLICATE INPUT:`, JSON.stringify(input, null, 2))
       console.log(`================================================================\n`)
@@ -311,7 +394,7 @@ async function generateImageWithAnchor(
       }
 
       if (imageUrl) {
-        console.log(`SUCCESS: Page ${imageIndex + 1} generated with anchor: ${imageUrl.substring(0, 60)}...`)
+        console.log(`SUCCESS: Page ${imageIndex + 1} generated: ${imageUrl.substring(0, 60)}...`)
         return imageUrl
       } else {
         console.log(`[PAGE ${imageIndex + 1}] No URL in output:`, JSON.stringify(output).substring(0, 200))
@@ -329,7 +412,7 @@ async function generateImageWithAnchor(
 
 export async function POST(request: NextRequest) {
   try {
-    const { imagePrompts, negativePrompts, seed, characterAnchorUrl } = await request.json()
+    const { imagePrompts, negativePrompts, seed, characterAnchorUrl, sceneSettings } = await request.json()
 
     if (!imagePrompts || !Array.isArray(imagePrompts)) {
       return NextResponse.json(
@@ -360,52 +443,111 @@ export async function POST(request: NextRequest) {
     // Different seeds per page prevent identical compositions while staying deterministic
     const baseSeed = seed || Math.floor(Math.random() * 1000000)
 
+    const has2PassPipeline = sceneSettings && Array.isArray(sceneSettings) && sceneSettings.length > 0
+
     console.log(`\n========== IMAGE GENERATION CONFIG ==========`)
-    console.log(`CHARACTER ANCHOR MODE: ENABLED (required)`)
+    console.log(`PIPELINE: ${has2PassPipeline ? '2-PASS (scene plate → character img2img)' : 'SINGLE-PASS (anchor img2img)'}`)
     console.log(`ANCHOR URL: ${characterAnchorUrl}`)
+    console.log(`SCENE SETTINGS: ${has2PassPipeline ? sceneSettings.length + ' settings provided' : 'NONE'}`)
     console.log(`BASE SEED: ${baseSeed} (each page gets baseSeed + pageIndex*1000)`)
-    console.log(`PROMPT_STRENGTH: 0.80 (scene overrides anchor background)`)
+    console.log(`PLATE PROMPT_STRENGTH: 0.45 (character on plate) / FALLBACK: 0.80 (anchor)`)
+    console.log(`DELAY BETWEEN CALLS: ${BASE_DELAY_BETWEEN_IMAGES / 1000}s`)
     console.log(`TOTAL PAGES: ${imagePrompts.length}`)
     console.log(`==============================================\n`)
 
     // Generate images ONE AT A TIME to avoid rate limits
+    // 2-pass pipeline: scene plate (txt2img) → character on plate (img2img)
     const imageUrls: string[] = []
 
     for (let i = 0; i < imagePrompts.length; i++) {
       const prompt = imagePrompts[i]
       const negativePrompt = negativePrompts && negativePrompts[i] ? negativePrompts[i] : undefined
-      // Per-page seed: deterministic but different for each page
+      const setting = has2PassPipeline ? sceneSettings[i] : ''
       const pageSeed = baseSeed + i * 1000
 
-      console.log(`\n========== GENERATING IMAGE ${i + 1}/${imagePrompts.length} ==========`)
-      console.log(`SEED: ${pageSeed} (baseSeed ${baseSeed} + page ${i} * 1000)`)
+      console.log(`\n========== PAGE ${i + 1}/${imagePrompts.length} ==========`)
+      console.log(`SEED: ${pageSeed}`)
+      console.log(`SETTING: ${setting ? setting.substring(0, 80) : 'N/A'}`)
+      console.log(`FINAL PROMPT: ${prompt.substring(0, 120)}...`)
+      console.log(`FINAL PROMPT LENGTH: ${prompt.split(/\s+/).length} words / ${prompt.length} chars`)
+
+      let imageUrl = ''
 
       try {
-        // ALWAYS use anchor-based img2img - NO FALLBACK to txt2img
-        const imageUrl = await generateImageWithAnchor(
-          replicate,
-          prompt,
-          negativePrompt,
-          characterAnchorUrl,
-          pageSeed,  // Per-page seed for composition variety
-          i
-        )
+        if (setting) {
+          // ===== 2-PASS PIPELINE =====
+          // STEP 1: Generate scene plate (txt2img, background only)
+          const scenePrompt = buildSceneOnlyPrompt(setting)
+          const plateUrl = await generateScenePlate(replicate, scenePrompt, pageSeed, i)
+
+          // Delay between Replicate calls
+          console.log(`Waiting ${BASE_DELAY_BETWEEN_IMAGES / 1000}s before final pass...`)
+          await sleep(BASE_DELAY_BETWEEN_IMAGES)
+
+          // STEP 2: Add character to plate (img2img, plate as base)
+          imageUrl = await generateImageWithAnchor(
+            replicate,
+            prompt,
+            negativePrompt,
+            plateUrl,       // Scene plate as base image
+            pageSeed,
+            i,
+            0.45,           // prompt_strength: character shows but scene stays
+            setting          // Setting context for negative prompt building
+          )
+        } else {
+          // ===== FALLBACK: single-pass with anchor =====
+          imageUrl = await generateImageWithAnchor(
+            replicate,
+            prompt,
+            negativePrompt,
+            characterAnchorUrl,
+            pageSeed,
+            i,
+            0.80
+          )
+        }
 
         if (!imageUrl) {
-          // If img2img fails, throw error - do NOT fall back to txt2img
-          throw new Error(`Anchor-based generation failed for page ${i + 1}`)
+          throw new Error(`Image generation failed for page ${i + 1}`)
         }
 
         imageUrls.push(imageUrl)
-        console.log(`Image ${i + 1} done: SUCCESS`)
-      } catch (error) {
-        console.error(`Image ${i + 1} error:`, error)
+        console.log(`Page ${i + 1} done: SUCCESS`)
+      } catch (error: any) {
+        console.error(`Page ${i + 1} error: ${error.message}`)
+
+        // If 2-pass failed, try fallback with anchor
+        if (setting && characterAnchorUrl) {
+          console.log(`[PAGE ${i + 1}] 2-pass failed, falling back to anchor img2img...`)
+          try {
+            await sleep(BASE_DELAY_BETWEEN_IMAGES)
+            imageUrl = await generateImageWithAnchor(
+              replicate,
+              prompt,
+              negativePrompt,
+              characterAnchorUrl,
+              pageSeed,
+              i,
+              0.80,
+              setting
+            )
+            if (imageUrl) {
+              imageUrls.push(imageUrl)
+              console.log(`Page ${i + 1} fallback: SUCCESS`)
+              continue
+            }
+          } catch (fallbackError: any) {
+            console.error(`Page ${i + 1} fallback also failed: ${fallbackError.message}`)
+          }
+        }
+
         imageUrls.push('') // Push empty string for failed images
       }
 
-      // Delay between images to avoid rate limiting (6 requests/minute limit)
+      // Delay between pages (between the last call of this page and the first of next)
       if (i < imagePrompts.length - 1) {
-        console.log(`Waiting ${BASE_DELAY_BETWEEN_IMAGES / 1000}s before next image...`)
+        console.log(`Waiting ${BASE_DELAY_BETWEEN_IMAGES / 1000}s before next page...`)
         await sleep(BASE_DELAY_BETWEEN_IMAGES)
       }
     }
@@ -417,9 +559,8 @@ export async function POST(request: NextRequest) {
 
     console.log(`\n========== IMAGE GENERATION COMPLETE ==========`)
     console.log(`Success: ${successCount}/${imagePrompts.length} images`)
-    console.log(`BASE SEED: ${baseSeed} (per-page: baseSeed + page*1000)`)
-    console.log(`PROMPT_STRENGTH: 0.80`)
-    console.log(`ANCHOR URL: ${characterAnchorUrl}`)
+    console.log(`Pipeline: ${has2PassPipeline ? '2-PASS' : 'SINGLE-PASS'}`)
+    console.log(`BASE SEED: ${baseSeed}`)
     if (failedIndices.length > 0) {
       console.log(`Failed pages: ${failedIndices.map(i => i + 1).join(', ')}`)
     }

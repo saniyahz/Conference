@@ -45,7 +45,7 @@ export function cleanMustInclude(setting: string, mustInclude: string[]): string
     }
   }
   // Deduplicate
-  const uniqueBanned = [...new Set(bannedWords)];
+  const uniqueBanned = Array.from(new Set(bannedWords));
 
   if (uniqueBanned.length === 0) return mustInclude;
 
@@ -67,9 +67,19 @@ export function cleanMustInclude(setting: string, mustInclude: string[]): string
 }
 
 /**
- * Build image prompt from Universal Character Bible and SceneCard
- * COMPACT FORMAT — must fit CLIP's ~77 token window
- * Template: Character ID. Full body. Scene: {SETTING}. Action: {ACTION}. Include: {3-5}. Style tag.
+ * Build scene-only prompt for the scene plate (first pass).
+ * No characters — just the background environment.
+ * Setting comes directly from SceneCard.setting (source of truth).
+ */
+export function buildSceneOnlyPrompt(setting: string): string {
+  return `2D cartoon, bold outlines, flat cel shading, vibrant pastels. SCENE: ${setting}. Wide shot, detailed background. No characters. No animals. No text.`;
+}
+
+/**
+ * Build image prompt for the FINAL PASS (img2img from scene plate).
+ * Scene is already baked into the plate — prompt focuses on character + action.
+ * "Keep the same background scene" tells SDXL to preserve the plate.
+ * COMPACT FORMAT — must fit CLIP's ~77 token window.
  */
 export function buildImagePrompt(
   bible: UniversalCharacterBible,
@@ -100,15 +110,15 @@ export function buildImagePrompt(
     ? card.supporting_characters.map(c => `${c.count} ${c.type}`).join(', ')
     : '';
 
-  // BUILD COMPACT PROMPT — style + scene FIRST (CLIP sees these tokens first)
-  // "main character, centered" locks the named character as the focus subject
-  // When supporting characters exist, use WIDE SHOT and list them prominently
+  // FINAL PASS PROMPT — scene is already in the plate, CLIP tokens prioritize character
+  // "Keep the same background scene" preserves the plate's environment
+  // Character description comes immediately after for maximum CLIP weight
+  // Style at end (already in plate, just reinforcing)
   let prompt: string;
   if (hasSupporting) {
-    // Wide group scene — supporting chars + key objects right after setting, within CLIP window
-    prompt = `2D cartoon, bold outlines, flat cel shading, vibrant pastels. Wide shot: ${card.setting}. ${charId} as main character, centered, with ${supportingList}, ${card.action}. ${musts}. No text.`;
+    prompt = `Keep the same background scene. ${charId} as main character, centered, with ${supportingList}, ${card.action}. ${musts}. 2D cartoon, bold outlines, flat cel shading, vibrant pastels. No text.`;
   } else {
-    prompt = `2D cartoon, bold outlines, flat cel shading, vibrant pastels. ${card.setting}. ${charId} as main character, centered, full body, ${card.action}. ${musts}. No text.`;
+    prompt = `Keep the same background scene. ${charId} as main character, centered, full body, ${card.action}. ${musts}. 2D cartoon, bold outlines, flat cel shading, vibrant pastels. No text.`;
   }
 
   console.log(`[IMAGE PROMPT] Page ${card.page_index}: ${prompt}`);
@@ -168,14 +178,16 @@ function getSpeciesNegatives(species: string): string[] {
 }
 
 /**
- * Generate all image prompts for a story
+ * Generate all image prompts for a story.
+ * Returns settings separately so generate-images can build scene plates from them.
  */
 export function generateAllImagePrompts(
   bible: UniversalCharacterBible,
   cards: UniversalSceneCard[]
-): { prompts: string[]; negativePrompts: string[] } {
+): { prompts: string[]; negativePrompts: string[]; settings: string[] } {
   const prompts: string[] = [];
   const negativePrompts: string[] = [];
+  const settings: string[] = [];
 
   for (const card of cards) {
     const prompt = buildImagePrompt(bible, card);
@@ -183,7 +195,8 @@ export function generateAllImagePrompts(
 
     prompts.push(prompt);
     negativePrompts.push(negativePrompt);
+    settings.push(card.setting);
   }
 
-  return { prompts, negativePrompts };
+  return { prompts, negativePrompts, settings };
 }
