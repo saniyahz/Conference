@@ -107,13 +107,16 @@ function gateIndoorNouns(setting: string, mustInclude: string[]): string[] {
 
 /**
  * Build image prompt for the FINAL PASS (img2img from scene plate).
- * Scene is already baked into the plate — DO NOT repeat scene nouns here.
- * If both "rocket launching" and "ocean waves" and "forest trees" appear in
- * the final pass, SDXL averages them into a generic background.
+ * Scene is already baked into the plate — keep scene description minimal.
  *
- * Template: "Keep the same background scene. Add [character], full body,
- *   centered, [supporting chars], [action]. Bold outlines, vibrant pastels. No text."
- * Target: < 30 words for maximum CLIP impact.
+ * CRITICAL: Character goes FIRST in the prompt because CLIP gives strongest
+ * weight to early tokens. "Same background" goes LAST (low priority — the
+ * plate already handles scene preservation through prompt_strength).
+ *
+ * Key objects from must_include are added back so items like "rocket ship"
+ * or "lions" actually appear in the final frame.
+ *
+ * Target: < 40 words for CLIP token efficiency.
  */
 export function buildImagePrompt(
   bible: UniversalCharacterBible,
@@ -123,27 +126,44 @@ export function buildImagePrompt(
   const name = bible.name;
   const isAnimal = !bible.is_human;
 
-  // CHARACTER ID — short, 2 traits max for CLIP efficiency
+  // CHARACTER ID — FIRST for maximum CLIP attention
   let charId: string;
   if (isAnimal) {
-    const traits = bible.visual_fingerprint.slice(0, 2).join(', ');
-    charId = `${name} the ${species}, ${traits}`;
+    const trait = bible.visual_fingerprint[0] || species;
+    charId = `${name} the ${species}, ${trait}`;
   } else {
-    const traits = bible.visual_fingerprint.slice(0, 2).join(', ');
-    charId = `${name}, ${traits}`;
+    const trait = bible.visual_fingerprint[0] || 'cartoon child';
+    charId = `${name}, ${trait}`;
   }
 
-  // SUPPORTING CHARACTERS — include in final pass (plate blocks animals,
-  // so supporting chars like dolphins/lions come from this pass)
+  // SUPPORTING CHARACTERS (dolphins, lions, etc.)
   const hasSupporting = card.supporting_characters.length > 0;
   const supportingClause = hasSupporting
-    ? `, with ${card.supporting_characters.slice(0, 2).map(c => `${c.count} ${c.type}`).join(', ')}`
+    ? `, with ${card.supporting_characters.slice(0, 2).map(c => `${c.count} ${c.type}`).join(' and ')}`
     : '';
 
-  // FINAL PASS PROMPT — compact, NO scene nouns.
-  // "Keep the same background scene" anchors the plate.
-  // Character MUST be foreground + large to overcome plate preservation.
-  const prompt = `Keep the same background scene. ${charId} in the foreground, large, full body visible, centered, takes up 30% of the frame${supportingClause}, ${card.action}. Bold outlines, flat cel shading, vibrant pastel colors. No text.`;
+  // KEY OBJECTS from must_include that should be visible in frame
+  // Filter out character name, "full body", and generic filler items
+  const charNameLower = name.toLowerCase();
+  const keyObjects = card.must_include
+    .filter(item => {
+      const lower = item.toLowerCase();
+      return !lower.includes(charNameLower)
+        && !lower.includes('full body')
+        && !lower.includes('vibrant')
+        && !lower.includes('lighting')
+        && !lower.includes('background')
+        && !lower.includes('colors');
+    })
+    .slice(0, 3);
+
+  const objectsClause = keyObjects.length > 0
+    ? `. ${keyObjects.join(', ')} visible`
+    : '';
+
+  // PROMPT: Character FIRST (highest CLIP weight), scene anchoring LAST (lowest).
+  // The plate already preserves the scene — prompt_strength controls the balance.
+  const prompt = `${charId}, full body, large in foreground, centered${supportingClause}, ${card.action}${objectsClause}. Same background. 2D cartoon, bold outlines, vibrant pastels. No text.`;
 
   console.log(`[IMAGE PROMPT] Page ${card.page_index}: ${prompt}`);
   console.log(`[IMAGE PROMPT] Word count: ${prompt.split(/\s+/).length}`);

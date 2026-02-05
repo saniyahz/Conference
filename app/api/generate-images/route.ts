@@ -387,7 +387,7 @@ export async function POST(request: NextRequest) {
     console.log(`SCENE SETTINGS: ${has2PassPipeline ? sceneSettings.length + ' settings provided' : 'NONE'}`)
     console.log(`MUST INCLUDES: ${hasMustIncludes ? 'YES (per-page key objects for plate + sanitizer)' : 'NONE'}`)
     console.log(`BASE SEED: ${baseSeed} (each page gets baseSeed + pageIndex*1000)`)
-    console.log(`PLATE PROMPT_STRENGTH: 0.60 (character on plate) / FALLBACK: 0.80 (anchor)`)
+    console.log(`PLATE PROMPT_STRENGTH: 0.65 (character on plate) / FALLBACK: 0.80 (anchor)`)
     console.log(`NEGATIVES: quality-only for ALL paths (zero env words) + token sanitizer`)
     console.log(`DELAY BETWEEN CALLS: ${BASE_DELAY_BETWEEN_IMAGES / 1000}s`)
     console.log(`KEYFRAME OPTIMIZATION: reuse plates when scene category unchanged`)
@@ -452,7 +452,7 @@ export async function POST(request: NextRequest) {
             plateUrl,       // Scene plate as base image (cached or fresh)
             pageSeed,
             i,
-            0.60,           // prompt_strength: character appears prominently, scene mostly preserved
+            0.65,           // prompt_strength: character overrides plate (0.60 was too weak)
             setting,         // Setting context for sanitizer
             mustInclude      // Must-include items for negative sanitization
           )
