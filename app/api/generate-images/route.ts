@@ -223,6 +223,82 @@ function buildDynamicNegativePrompt(pagePrompt: string, providedNegative: string
 }
 
 /**
+ * Build MINIMAL negative for final pass (2-pass pipeline).
+ * Scene is already baked into the plate — negatives must NEVER contain env words.
+ * Focus: quality, anti-sheet, anti-3D, species confusion, replacement animals.
+ * NO environment words (ocean, forest, moon, rocket, etc.) — plate controls that.
+ */
+function buildFinalPassNegative(pagePrompt: string): string {
+  const lp = pagePrompt.toLowerCase()
+
+  // Quality + anti-sheet + anti-3D (always apply)
+  const neg = [
+    'character sheet', 'reference sheet', 'turnaround', 'multiple poses', 'collage', 'grid', 'lineup',
+    'photorealistic', 'realistic', '3D render', 'CGI', 'Pixar', 'DSLR',
+    'text', 'watermark', 'logo', 'signature',
+    'blurry', 'low quality', 'jpeg artifacts',
+    'extra limbs', 'extra arms', 'extra legs', 'extra heads',
+    'deformed', 'bad anatomy',
+  ]
+
+  // Replacement-animal blocking (no random substitutions) — skip if in prompt
+  const replacementAnimals = ['shark', 'whale', 'snake', 'spider', 'predator', 'monster']
+  for (const animal of replacementAnimals) {
+    if (!lp.includes(animal)) neg.push(animal)
+  }
+
+  // Species-confusion negatives
+  if (lp.includes('rhinoceros') || lp.includes('rhino')) {
+    neg.push('cow', 'hippo', 'elephant', 'horse')
+  }
+  if (lp.includes('elephant')) neg.push('hippo', 'rhino', 'cow')
+  if (lp.includes('lion')) neg.push('tiger', 'cat', 'dog')
+  if (lp.includes('tiger')) neg.push('lion', 'cat', 'leopard')
+  if (lp.includes('bear')) neg.push('dog', 'wolf', 'gorilla')
+  if (lp.includes('rabbit')) neg.push('cat', 'mouse', 'hamster')
+  if (lp.includes('penguin')) neg.push('duck', 'chicken')
+  if (lp.includes('dolphin')) neg.push('fish')
+
+  // Block humans for animal characters
+  const animalKeywords = ['rhinoceros', 'rhino', 'elephant', 'lion', 'bear', 'rabbit', 'cat', 'dog', 'fox', 'tiger', 'giraffe', 'penguin', 'dolphin', 'owl']
+  if (animalKeywords.some(a => lp.includes(a))) {
+    neg.push('human', 'person', 'child')
+  }
+
+  console.log(`[FINAL-PASS NEGATIVES] ${neg.join(', ')}`)
+  return neg.join(', ')
+}
+
+/**
+ * Anti-sabotage sanitizer: remove any negative term that appears in the prompt or setting.
+ * Last line of defense — catches edge cases where a negative accidentally matches
+ * a word the image actually needs.
+ */
+function sanitizeNegatives(negativePrompt: string, prompt: string, setting: string): string {
+  const contextLower = `${prompt} ${setting}`.toLowerCase()
+  const terms = negativePrompt.split(',').map(t => t.trim()).filter(t => t.length > 0)
+
+  const removed: string[] = []
+  const filtered = terms.filter(term => {
+    const termLower = term.toLowerCase()
+    // Check if the exact negative term appears in the prompt/setting context
+    // Only remove single-word or short terms that match — don't strip quality terms
+    // Quality terms (photorealistic, blurry, watermark, etc.) will never appear in story prompts
+    if (contextLower.includes(termLower)) {
+      removed.push(term)
+      return false
+    }
+    return true
+  })
+
+  if (removed.length > 0) {
+    console.log(`[SANITIZER] Removed from negatives (found in prompt/setting): ${removed.join(', ')}`)
+  }
+
+  return filtered.join(', ')
+}
+
+/**
  * Generate a scene plate (txt2img, background only, no characters).
  * This is STEP 1 of the 2-pass pipeline.
  * The plate provides the environment that img2img preserves in step 2.
@@ -314,17 +390,25 @@ async function generateImageWithAnchor(
   seed: number,
   imageIndex: number,
   promptStrength: number = 0.80,
-  settingContext: string = ''  // Setting text appended for negative prompt trigger checks
+  settingContext: string = '',  // Setting text for sanitizer context
+  useMinimalNegatives: boolean = false  // true = 2-pass final (quality only), false = fallback (full env rules)
 ): Promise<string> {
   const maxRetries = 3
 
   for (let attempt = 1; attempt <= maxRetries; attempt++) {
     try {
-      // Build dynamic negative prompt that doesn't fight the scene
-      // Append settingContext so env trigger checks still detect scene words
-      // (the final-pass prompt no longer contains the setting — it says "Keep the same background")
-      const promptForNegatives = settingContext ? `${prompt} ${settingContext}` : prompt
-      const dynamicNegative = buildDynamicNegativePrompt(promptForNegatives, negativePrompt)
+      // Choose negative strategy based on pipeline mode:
+      // 2-pass final pass: minimal negatives (quality/style only, NO env words — plate handles env)
+      // Fallback anchor pass: full dynamic negatives (env words needed since no plate)
+      let dynamicNegative: string
+      if (useMinimalNegatives) {
+        dynamicNegative = buildFinalPassNegative(prompt)
+      } else {
+        const promptForNegatives = settingContext ? `${prompt} ${settingContext}` : prompt
+        dynamicNegative = buildDynamicNegativePrompt(promptForNegatives, negativePrompt)
+      }
+      // Anti-sabotage sanitizer: last line of defense — remove any negative that matches prompt/setting
+      dynamicNegative = sanitizeNegatives(dynamicNegative, prompt, settingContext)
 
       // Build input object for img2img
       const input: any = {
@@ -451,6 +535,7 @@ export async function POST(request: NextRequest) {
     console.log(`SCENE SETTINGS: ${has2PassPipeline ? sceneSettings.length + ' settings provided' : 'NONE'}`)
     console.log(`BASE SEED: ${baseSeed} (each page gets baseSeed + pageIndex*1000)`)
     console.log(`PLATE PROMPT_STRENGTH: 0.45 (character on plate) / FALLBACK: 0.80 (anchor)`)
+    console.log(`NEGATIVES: 2-pass=quality-only (no env words) / fallback=full env rules`)
     console.log(`DELAY BETWEEN CALLS: ${BASE_DELAY_BETWEEN_IMAGES / 1000}s`)
     console.log(`TOTAL PAGES: ${imagePrompts.length}`)
     console.log(`==============================================\n`)
@@ -485,6 +570,7 @@ export async function POST(request: NextRequest) {
           await sleep(BASE_DELAY_BETWEEN_IMAGES)
 
           // STEP 2: Add character to plate (img2img, plate as base)
+          // useMinimalNegatives=true: quality-only negatives, NO env words (plate handles env)
           imageUrl = await generateImageWithAnchor(
             replicate,
             prompt,
@@ -493,10 +579,12 @@ export async function POST(request: NextRequest) {
             pageSeed,
             i,
             0.45,           // prompt_strength: character shows but scene stays
-            setting          // Setting context for negative prompt building
+            setting,         // Setting context for sanitizer
+            true             // MINIMAL negatives — no env words, plate controls scene
           )
         } else {
           // ===== FALLBACK: single-pass with anchor =====
+          // useMinimalNegatives=false: full env rules (no plate to handle scene)
           imageUrl = await generateImageWithAnchor(
             replicate,
             prompt,
@@ -504,7 +592,9 @@ export async function POST(request: NextRequest) {
             characterAnchorUrl,
             pageSeed,
             i,
-            0.80
+            0.80,
+            '',              // No setting context
+            false            // FULL negatives — env rules needed since no plate
           )
         }
 
@@ -522,6 +612,7 @@ export async function POST(request: NextRequest) {
           console.log(`[PAGE ${i + 1}] 2-pass failed, falling back to anchor img2img...`)
           try {
             await sleep(BASE_DELAY_BETWEEN_IMAGES)
+            // Fallback: useMinimalNegatives=false — full env rules since no plate
             imageUrl = await generateImageWithAnchor(
               replicate,
               prompt,
@@ -530,7 +621,8 @@ export async function POST(request: NextRequest) {
               pageSeed,
               i,
               0.80,
-              setting
+              setting,
+              false            // FULL negatives — env rules needed since no plate
             )
             if (imageUrl) {
               imageUrls.push(imageUrl)
