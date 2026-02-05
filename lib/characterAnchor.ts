@@ -135,16 +135,16 @@ export async function generateCharacterAnchor(
   const name = bible.name;
   const isAnimal = !bible.is_human;
 
-  // Build anchor prompt — COMPACT for CLIP ~77 token limit
-  // Plain background, full body, neutral pose
+  // Build anchor prompt — single character portrait, NOT a reference sheet
+  // 3/4 view, plain background, one drawing only
   let prompt: string;
 
   if (isAnimal) {
     const traits = bible.visual_fingerprint.slice(0, 4).join(', ');
-    prompt = `${name} the ${species}, ${species}, ${traits}. Full body, centered, plain white background. 2D cartoon, bold outlines, flat cel shading, vibrant pastels. No scenery, no text.`;
+    prompt = `Single character only: ${name} the ${species}, full body, facing 3/4 view, ${traits}. Cute 2D cartoon, bold outlines, flat cel shading, vibrant pastel colors. Plain light background. NO pose sheet. NO multiple drawings. NO character turnaround. NO text.`;
   } else {
     const traits = bible.visual_fingerprint.slice(0, 4).join(', ');
-    prompt = `${name}, cute cartoon child, ${traits}. Full body, centered, plain white background. 2D cartoon, bold outlines, flat cel shading, vibrant pastels. No scenery, no text.`;
+    prompt = `Single character only: ${name}, cute cartoon child, full body, facing 3/4 view, ${traits}. Cute 2D cartoon, bold outlines, flat cel shading, vibrant pastel colors. Plain light background. NO pose sheet. NO multiple drawings. NO character turnaround. NO text.`;
   }
 
   // Negative prompt for anchor - plain background, no scene elements
@@ -316,12 +316,18 @@ export async function generatePageWithAnchor(
 }
 
 /**
- * Build negative prompt for Character Anchor — compact
+ * Build negative prompt for Character Anchor
+ * Blocks reference sheet layout + 3D + scenery
  */
 function buildAnchorNegativePrompt(isAnimal: boolean, species: string): string {
   const neg = [
+    // Block reference sheet / multi-pose layout
+    'character sheet', 'reference sheet', 'turnaround', 'multiple poses',
+    'collage', 'grid', 'lineup', 'diagram', 'model sheet',
+    // Block 3D / photorealistic
     'photorealistic', '3D render', 'CGI', 'Pixar', 'DSLR',
-    'text', 'watermark', 'scenery', 'landscape', 'multiple characters'
+    // Block scenery and extras
+    'text', 'watermark', 'scenery', 'landscape', 'multiple characters',
   ];
 
   if (isAnimal) {
@@ -382,5 +388,5 @@ export function buildPagePromptWithAnchor(
   // Must-include — limit to 3-4
   const musts = mustInclude.slice(0, 4).join(', ');
 
-  return `${charId}. Full body.\nScene: ${setting}.\nAction: ${action}.${supporting}\nInclude: ${musts}.\n2D cartoon, bold outlines, flat cel shading, vibrant pastels. No text.`;
+  return `ONE SINGLE SCENE illustration (not a character sheet). One image only, not a collage.\n${charId}. Full body.\nScene: ${setting}.\nAction: ${action}.${supporting}\nInclude: ${musts}.\n2D cartoon, bold outlines, flat cel shading, vibrant pastels. No text.`;
 }

@@ -33,8 +33,8 @@ export function buildImagePrompt(
     ? ` With ${card.supporting_characters.map(c => `${c.count} ${c.type}`).join(', ')}.`
     : '';
 
-  // BUILD COMPACT PROMPT — every word counts
-  const prompt = `${charId}. Full body.\nScene: ${card.setting}.\nAction: ${card.action}.${supporting}\nInclude: ${musts}.\n2D cartoon, bold outlines, flat cel shading, vibrant pastels. No text.`;
+  // BUILD COMPACT PROMPT — anti-sheet prefix + scene details
+  const prompt = `ONE SINGLE SCENE illustration (not a character sheet). One image only, not a collage.\n${charId}. Full body.\nScene: ${card.setting}.\nAction: ${card.action}.${supporting}\nInclude: ${musts}.\n2D cartoon, bold outlines, flat cel shading, vibrant pastels. No text.`;
 
   console.log(`[IMAGE PROMPT] Page ${card.page_index}: ${prompt}`);
   return prompt;
@@ -50,9 +50,10 @@ export function buildNegativePrompt(
   bible: UniversalCharacterBible,
   card: UniversalSceneCard
 ): string {
-  // Core style negatives (always apply)
+  // Core style negatives (always apply) + anti-sheet
   const neg: string[] = [
-    'photorealistic', '3D render', 'CGI', 'Pixar', 'DSLR', 'film still',
+    'character sheet', 'reference sheet', 'turnaround', 'multiple poses', 'collage', 'grid', 'lineup',
+    'photorealistic', '3D render', 'CGI', 'Pixar', 'DSLR',
     'text', 'watermark', 'logo', 'blurry', 'low quality'
   ];
 

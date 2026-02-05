@@ -150,8 +150,9 @@ const SDXL_VERSION = "39ed52f2a78e934b3ba6e2a89f5b1c712de7dfea535525255b1aa35c55
 function buildDynamicNegativePrompt(pagePrompt: string, providedNegative: string | undefined): string {
   const lp = pagePrompt.toLowerCase()
 
-  // Core style block (always apply)
+  // Core block: anti-sheet + anti-3D (always apply)
   const neg = [
+    'character sheet', 'reference sheet', 'turnaround', 'multiple poses', 'collage', 'grid', 'lineup',
     'photorealistic', '3D render', 'CGI', 'Pixar', 'DSLR',
     'text', 'watermark', 'logo', 'blurry', 'low quality',
   ]
