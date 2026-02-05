@@ -1,5 +1,6 @@
 import Replicate from 'replicate';
 import { UniversalCharacterBible } from './generateCharacterBible';
+import { cleanMustInclude } from './buildImagePrompt';
 
 /**
  * Character Anchor system for guaranteed character consistency
@@ -385,8 +386,9 @@ export function buildPagePromptWithAnchor(
     ? ` With ${supportingCharacters.map(c => `${c.count} ${c.type}`).join(', ')}.`
     : '';
 
-  // Must-include — limit to 3-4
-  const musts = mustInclude.slice(0, 4).join(', ');
+  // Must-include — clean contradictions, then limit to 3-4
+  const cleanedMusts = cleanMustInclude(setting, mustInclude);
+  const musts = cleanedMusts.slice(0, 4).join(', ');
 
   return `ONE SINGLE SCENE illustration (not a character sheet). One image only, not a collage.\n${charId}. Full body.\nScene: ${setting}.\nAction: ${action}.${supporting}\nInclude: ${musts}.\n2D cartoon, bold outlines, flat cel shading, vibrant pastels. No text.`;
 }

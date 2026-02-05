@@ -2,6 +2,58 @@ import { UniversalCharacterBible } from './generateCharacterBible';
 import { UniversalSceneCard } from './generateSceneCard';
 
 /**
+ * Environment-specific words that don't belong in other environments.
+ * If the setting is "ocean", remove any must_include containing forest/moon/space words.
+ */
+const ENV_CONFLICT_MAP: Record<string, string[]> = {
+  ocean:      ['forest', 'trees', 'woods', 'jungle', 'moon', 'crater', 'stars', 'space', 'nebula', 'planet', 'desert', 'sand', 'dune', 'mountain', 'cave', 'savann', 'grass'],
+  underwater: ['forest', 'trees', 'woods', 'jungle', 'moon', 'crater', 'stars', 'space', 'nebula', 'planet', 'desert', 'sand', 'dune', 'mountain', 'cave', 'clouds', 'sky', 'savann'],
+  moon:       ['forest', 'trees', 'woods', 'jungle', 'ocean', 'waves', 'water', 'dolphin', 'fish', 'coral', 'sea', 'desert', 'sand', 'clouds', 'river', 'meadow', 'flower', 'grass'],
+  space:      ['forest', 'trees', 'woods', 'jungle', 'ocean', 'waves', 'water', 'dolphin', 'fish', 'coral', 'sea', 'desert', 'sand', 'river', 'meadow', 'flower', 'grass'],
+  rocket:     ['forest', 'trees', 'woods', 'jungle', 'ocean', 'waves', 'dolphin', 'fish', 'coral', 'moon', 'crater', 'desert', 'cave', 'meadow'],
+  forest:     ['ocean', 'waves', 'dolphin', 'fish', 'coral', 'sea', 'moon', 'crater', 'space', 'nebula', 'planet', 'rocket', 'spaceship', 'desert', 'sand', 'dune'],
+  savann:     ['ocean', 'waves', 'dolphin', 'fish', 'coral', 'sea', 'moon', 'crater', 'space', 'nebula', 'planet', 'rocket', 'spaceship', 'desert', 'sand', 'forest', 'woods', 'jungle'],
+  desert:     ['ocean', 'waves', 'dolphin', 'fish', 'coral', 'sea', 'forest', 'trees', 'woods', 'jungle', 'moon', 'crater', 'space', 'nebula', 'river', 'meadow'],
+  beach:      ['forest', 'trees', 'woods', 'jungle', 'moon', 'crater', 'space', 'nebula', 'planet', 'desert', 'cave', 'mountain'],
+  cave:       ['ocean', 'waves', 'dolphin', 'sea', 'moon', 'space', 'nebula', 'planet', 'rocket', 'desert', 'beach', 'meadow'],
+};
+
+/**
+ * Clean must_include list: remove items that contradict the page setting.
+ * A moon page should not include "forest trees" or "ocean waves".
+ */
+export function cleanMustInclude(setting: string, mustInclude: string[]): string[] {
+  const lowerSetting = setting.toLowerCase();
+
+  // Find which environment this setting belongs to
+  let bannedWords: string[] = [];
+  for (const [env, conflicts] of Object.entries(ENV_CONFLICT_MAP)) {
+    if (lowerSetting.includes(env)) {
+      bannedWords = conflicts;
+      break;
+    }
+  }
+
+  if (bannedWords.length === 0) return mustInclude;
+
+  const cleaned = mustInclude.filter(item => {
+    const lowerItem = item.toLowerCase();
+    return !bannedWords.some(banned => lowerItem.includes(banned));
+  });
+
+  const removed = mustInclude.filter(item => {
+    const lowerItem = item.toLowerCase();
+    return bannedWords.some(banned => lowerItem.includes(banned));
+  });
+
+  if (removed.length > 0) {
+    console.log(`[CLEAN] Removed from must_include (conflict with "${lowerSetting}"): ${removed.join(', ')}`);
+  }
+
+  return cleaned;
+}
+
+/**
  * Build image prompt from Universal Character Bible and SceneCard
  * COMPACT FORMAT — must fit CLIP's ~77 token window
  * Template: Character ID. Full body. Scene: {SETTING}. Action: {ACTION}. Include: {3-5}. Style tag.
@@ -25,8 +77,9 @@ export function buildImagePrompt(
     charId = `${name}, ${traits}`;
   }
 
-  // MUST-INCLUDE — limit to 3-4 items to save tokens
-  const musts = card.must_include.slice(0, 4).join(', ');
+  // MUST-INCLUDE — clean contradictions, then limit to 3-4 items
+  const cleanedMusts = cleanMustInclude(card.setting, card.must_include);
+  const musts = cleanedMusts.slice(0, 4).join(', ');
 
   // SUPPORTING CHARACTERS — very short
   const supporting = card.supporting_characters.length > 0
