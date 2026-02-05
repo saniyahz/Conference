@@ -15,7 +15,7 @@ const sleep = (ms: number) => new Promise(resolve => setTimeout(resolve, ms))
  * because CDN propagation lags behind the API response.
  * Retries HEAD requests with delays until ready or max attempts reached.
  */
-async function waitForUrlReady(url: string, maxAttempts = 10, delayMs = 3000): Promise<boolean> {
+async function waitForUrlReady(url: string, maxAttempts = 5, delayMs = 2000): Promise<boolean> {
   for (let attempt = 1; attempt <= maxAttempts; attempt++) {
     try {
       const response = await fetch(url, {
@@ -42,7 +42,7 @@ async function waitForUrlReady(url: string, maxAttempts = 10, delayMs = 3000): P
 
 // Rate limit configuration
 // Replicate free tier: 6 requests per minute = 10 seconds between requests minimum
-const BASE_DELAY_BETWEEN_IMAGES = 15000 // 15 seconds between Replicate calls (2 calls per page now)
+const BASE_DELAY_BETWEEN_IMAGES = 10000 // 10 seconds between Replicate calls
 const RATE_LIMIT_INITIAL_WAIT = 15000 // 15 seconds on first rate limit
 const RATE_LIMIT_MAX_WAIT = 60000 // 60 seconds max wait
 
@@ -171,9 +171,9 @@ async function generateScenePlate(
     throw new Error(`Failed to extract scene plate URL for page ${pageIndex + 1}`)
   }
 
-  // Probe: wait until CDN URL is fetchable before using as img2img base
-  await waitForUrlReady(plateUrl)
-
+  // No URL probe here — Replicate's img2img can fetch its own CDN URLs
+  // without waiting for global propagation. Probing is only needed for
+  // external consumers (PDF endpoint) and is done in a batch at the end.
   console.log(`[PLATE ${pageIndex + 1}] URL: ${plateUrl.substring(0, 60)}...`)
   return plateUrl
 }
@@ -270,8 +270,7 @@ async function generateImageWithAnchor(
       }
 
       if (imageUrl) {
-        // Probe: wait until CDN URL is fetchable (prevents PDF 404s)
-        await waitForUrlReady(imageUrl)
+        // URL probe is done in a parallel batch after all pages complete (faster)
         console.log(`SUCCESS: Page ${imageIndex + 1} generated: ${imageUrl.substring(0, 60)}...`)
         return imageUrl
       } else {
@@ -333,6 +332,7 @@ export async function POST(request: NextRequest) {
     console.log(`PLATE PROMPT_STRENGTH: 0.45 (character on plate) / FALLBACK: 0.80 (anchor)`)
     console.log(`NEGATIVES: quality-only for ALL paths (zero env words) + token sanitizer`)
     console.log(`DELAY BETWEEN CALLS: ${BASE_DELAY_BETWEEN_IMAGES / 1000}s`)
+    console.log(`URL PROBING: batch parallel after all pages (5 attempts × 2s)`)
     console.log(`TOTAL PAGES: ${imagePrompts.length}`)
     console.log(`==============================================\n`)
 
@@ -450,6 +450,24 @@ export async function POST(request: NextRequest) {
         console.log(`Waiting ${BASE_DELAY_BETWEEN_IMAGES / 1000}s before next page...`)
         await sleep(BASE_DELAY_BETWEEN_IMAGES)
       }
+    }
+
+    // BATCH URL PROBE: verify all image URLs are fetchable in PARALLEL
+    // This runs once after all generation completes — much faster than inline probing.
+    // Ensures CDN has propagated all URLs before the PDF endpoint tries to fetch them.
+    const urlsToProbe = imageUrls.filter(url => url)
+    if (urlsToProbe.length > 0) {
+      console.log(`\n[BATCH PROBE] Verifying ${urlsToProbe.length} image URLs are fetchable (parallel)...`)
+      const probeResults = await Promise.all(
+        imageUrls.map(async (url, i) => {
+          if (!url) return true // Skip empty (failed) slots
+          const ready = await waitForUrlReady(url)
+          if (!ready) console.warn(`[BATCH PROBE] Page ${i + 1} URL may not be ready for PDF`)
+          return ready
+        })
+      )
+      const readyCount = probeResults.filter(Boolean).length
+      console.log(`[BATCH PROBE] ${readyCount}/${imageUrls.length} URLs confirmed ready`)
     }
 
     const successCount = imageUrls.filter(url => url).length
