@@ -273,7 +273,7 @@ function createFallbackSceneCard(
     // savannah BEFORE forest — "acacia trees" contains "trees" but is savannah
     if (sl.includes('savann') || sl.includes('grassland') || sl.includes('acacia')) return 'savannah'
     if (sl.includes('waterfall')) return 'forest'
-    if (sl.includes('forest') || sl.includes('enchanting')) return 'forest'
+    if (sl.includes('forest') || sl.includes('woods') || sl.includes('jungle') || sl.includes('dappled sunlight') || sl.includes('lush green')) return 'forest'
     if (sl.includes('ocean') || sl.includes('dolphin') || sl.includes('waves')) return 'ocean'
     if (sl.includes('beach') || sl.includes('palm')) return 'ocean'
     if (sl.includes('moon') || sl.includes('crater')) return 'moon'
@@ -285,8 +285,6 @@ function createFallbackSceneCard(
     if (sl.includes('starry') || sl.includes('night sky')) return 'night'
     if (sl.includes('home') || sl.includes('cottage')) return 'home'
     if (sl.includes('storm')) return 'storm'
-    // "trees" last — only matches if nothing more specific matched above
-    if (sl.includes('trees')) return 'forest'
     return 'other'
   }
 
