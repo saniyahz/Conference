@@ -182,6 +182,9 @@ function extractNounsFromText(text: string): string[] {
     { pattern: /fish/i, noun: 'tropical fish' },
     { pattern: /alien/i, noun: 'friendly aliens' },
     { pattern: /cockpit|control\s*panel/i, noun: 'glowing control panel' },
+    { pattern: /waterfall/i, noun: 'waterfall' },
+    { pattern: /shelter|hut\b/i, noun: 'shelter' },
+    { pattern: /storm/i, noun: 'storm clouds' },
   ]
 
   for (const { pattern, noun } of nounPatterns) {
@@ -218,6 +221,7 @@ function createFallbackSceneCard(
     { pattern: /underwater|beneath\s*the\s*water|ocean\s*floor/, noun: 'underwater', mood: 'magical' },
     { pattern: /dolphin/, noun: 'ocean surface with dolphins', mood: 'playful' },
     { pattern: /ocean|sea\b/, noun: 'ocean', mood: 'adventurous' },
+    { pattern: /waterfall/, noun: 'forest with waterfall', mood: 'magical' },
     { pattern: /forest|woods|jungle/, noun: 'forest', mood: 'enchanting' },
     { pattern: /savann|grassland/, noun: 'savannah', mood: 'warm' },
     { pattern: /beach|shore/, noun: 'beach', mood: 'cheerful' },
@@ -226,6 +230,7 @@ function createFallbackSceneCard(
     { pattern: /cave/, noun: 'cave', mood: 'mysterious' },
     { pattern: /desert/, noun: 'desert', mood: 'vast' },
     { pattern: /meadow|field/, noun: 'meadow', mood: 'peaceful' },
+    { pattern: /storm/, noun: 'stormy landscape', mood: 'dramatic' },
     { pattern: /home|house|bed/, noun: 'cozy home', mood: 'warm' },
   ]
 
@@ -263,7 +268,9 @@ function createFallbackSceneCard(
     space:      ['twinkling stars', 'colorful planet', 'rocket ship', 'Earth in the sky', 'friendly aliens'],
     underwater: ['colorful coral', 'tropical fish', 'water', 'ocean waves', 'waves'],
     ocean:      ['ocean waves', 'waves', 'water', 'dolphins', 'water splash', 'island', 'bright sun', 'fluffy clouds', 'tropical fish'],
-    forest:     ['forest trees', 'tall trees', 'colorful flowers', 'green meadow', 'lions', 'rainbow', 'bridge', 'bright sun', 'fluffy clouds'],
+    forest:     ['forest trees', 'tall trees', 'colorful flowers', 'green meadow', 'lions', 'rainbow', 'bridge', 'bright sun', 'fluffy clouds', 'waterfall'],
+    waterfall:  ['waterfall', 'forest trees', 'tall trees', 'colorful flowers', 'flowing river', 'rainbow', 'bright sun'],
+    storm:      ['storm clouds', 'shelter', 'rocket ship', 'twinkling stars', 'moon', 'craters'],
     savann:     ['lions', 'bright sun', 'mountains', 'tall trees'],
     beach:      ['ocean waves', 'water splash', 'bright sun', 'island', 'fluffy clouds'],
     mountain:   ['mountains', 'fluffy clouds', 'bright sun', 'rainbow', 'flowing river'],

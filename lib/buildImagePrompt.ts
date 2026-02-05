@@ -71,10 +71,12 @@ export function cleanMustInclude(setting: string, mustInclude: string[]): string
  * No characters — just the background environment.
  * Setting comes directly from SceneCard.setting (source of truth).
  * keyObjects are must_include items to embed in the plate background.
+ * Template: style → composition → scene → objects → exclusions.
+ * Target: < 40 words for CLIP token efficiency.
  */
 export function buildSceneOnlyPrompt(setting: string, keyObjects: string[] = []): string {
-  const includeClause = keyObjects.length > 0 ? ` Include: ${keyObjects.slice(0, 5).join(', ')}.` : ''
-  return `2D cartoon, bold outlines, flat cel shading, vibrant pastels. SCENE: ${setting}.${includeClause} Wide shot, detailed background. No characters. No animals. No text.`;
+  const includeClause = keyObjects.length > 0 ? ` Must include: ${keyObjects.slice(0, 5).join(', ')}.` : ''
+  return `2D cartoon, bold outlines, flat cel shading, vibrant pastels. Wide establishing shot. Background detailed. Scene: ${setting}.${includeClause} No characters. No animals. No text.`;
 }
 
 /**
@@ -105,9 +107,13 @@ function gateIndoorNouns(setting: string, mustInclude: string[]): string[] {
 
 /**
  * Build image prompt for the FINAL PASS (img2img from scene plate).
- * Scene is already baked into the plate — prompt focuses on character + action.
- * COMPACT FORMAT — stay under ~40 words to fit CLIP's ~77 token window.
- * Order: scene anchor → character (CLIP priority) → Include: objects → style.
+ * Scene is already baked into the plate — DO NOT repeat scene nouns here.
+ * If both "rocket launching" and "ocean waves" and "forest trees" appear in
+ * the final pass, SDXL averages them into a generic background.
+ *
+ * Template: "Keep the same background scene. Add [character], full body,
+ *   centered, [supporting chars], [action]. Bold outlines, vibrant pastels. No text."
+ * Target: < 30 words for maximum CLIP impact.
  */
 export function buildImagePrompt(
   bible: UniversalCharacterBible,
@@ -127,26 +133,17 @@ export function buildImagePrompt(
     charId = `${name}, ${traits}`;
   }
 
-  // MUST-INCLUDE — clean contradictions, gate indoor nouns, limit to 3 items
-  const envCleaned = cleanMustInclude(card.setting, card.must_include);
-  const cleanedMusts = gateIndoorNouns(card.setting, envCleaned);
-  const musts = cleanedMusts.slice(0, 3).join(', ');
-
-  // SUPPORTING CHARACTERS — short
+  // SUPPORTING CHARACTERS — include in final pass (plate blocks animals,
+  // so supporting chars like dolphins/lions come from this pass)
   const hasSupporting = card.supporting_characters.length > 0;
-  const supportingList = hasSupporting
-    ? card.supporting_characters.slice(0, 2).map(c => `${c.count} ${c.type}`).join(', ')
+  const supportingClause = hasSupporting
+    ? `, with ${card.supporting_characters.slice(0, 2).map(c => `${c.count} ${c.type}`).join(', ')}`
     : '';
 
-  // FINAL PASS PROMPT — compact, ~35-40 words
-  // "Keep the same background scene" preserves the plate
-  // Character → Include → Style (front-load what matters for CLIP)
-  let prompt: string;
-  if (hasSupporting) {
-    prompt = `Keep the same background scene. ${charId}, centered, with ${supportingList}, ${card.action}. Include: ${musts}. 2D cartoon, bold outlines, flat cel shading, vibrant pastels. No text.`;
-  } else {
-    prompt = `Keep the same background scene. ${charId}, centered, full body, ${card.action}. Include: ${musts}. 2D cartoon, bold outlines, flat cel shading, vibrant pastels. No text.`;
-  }
+  // FINAL PASS PROMPT — compact, NO scene nouns.
+  // "Keep the same background scene" anchors the plate.
+  // Character + action only. Scene objects already in plate.
+  const prompt = `Keep the same background scene. Add ${charId}, full body, centered${supportingClause}, ${card.action}. Bold outlines, flat cel shading, vibrant pastel colors. No text.`;
 
   console.log(`[IMAGE PROMPT] Page ${card.page_index}: ${prompt}`);
   console.log(`[IMAGE PROMPT] Word count: ${prompt.split(/\s+/).length}`);
@@ -225,7 +222,7 @@ export function generateAllImagePrompts(
     const prompt = buildImagePrompt(bible, card);
     const negativePrompt = buildNegativePrompt(bible, card);
 
-    // Clean must_include for plate (same filtering as buildImagePrompt)
+    // Clean must_include for PLATE prompt (env conflict + indoor gate)
     // Filter out character-related items — plate has NO characters
     const envCleaned = cleanMustInclude(card.setting, card.must_include);
     const cleanedMusts = gateIndoorNouns(card.setting, envCleaned);

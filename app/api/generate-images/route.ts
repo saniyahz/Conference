@@ -303,6 +303,7 @@ export async function POST(request: NextRequest) {
     // Generate images ONE AT A TIME to avoid rate limits
     // 2-pass pipeline: scene plate (txt2img) → character on plate (img2img)
     const imageUrls: string[] = []
+    const plateUrls: string[] = []  // Debug: collect plate URLs to verify scenes
 
     for (let i = 0; i < imagePrompts.length; i++) {
       const prompt = imagePrompts[i]
@@ -339,6 +340,7 @@ export async function POST(request: NextRequest) {
           // Include key objects from must_include in plate prompt
           const scenePrompt = buildSceneOnlyPrompt(setting, mustInclude)
           const plateUrl = await generateScenePlate(replicate, scenePrompt, pageSeed, i)
+          plateUrls.push(plateUrl)  // Collect for debug response
 
           // Delay between Replicate calls
           console.log(`Waiting ${BASE_DELAY_BETWEEN_IMAGES / 1000}s before final pass...`)
@@ -357,6 +359,7 @@ export async function POST(request: NextRequest) {
           )
         } else {
           // ===== FALLBACK: single-pass with anchor =====
+          plateUrls.push('')  // No plate in single-pass mode
           imageUrl = await generateImageWithAnchor(
             replicate,
             prompt,
@@ -429,6 +432,7 @@ export async function POST(request: NextRequest) {
 
     return NextResponse.json({
       imageUrls,
+      plateUrls,  // Debug: inspect plates to verify scene backgrounds
       seed: baseSeed,
       success: successCount === imagePrompts.length,
       failedCount: failedIndices.length,
