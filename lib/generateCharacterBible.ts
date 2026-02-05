@@ -151,49 +151,10 @@ export async function generateCharacterBibleWithLLM(
 
   const fullPrompt = `${CHARACTER_BIBLE_PROMPT}\n${storySummary}\n\nOutput ONLY the JSON, no explanation:`;
 
-  console.log('\n========== GENERATING CHARACTER BIBLE WITH LLM ==========');
-  console.log('Story summary:', storySummary.substring(0, 500));
-
-  try {
-    const output = await replicate.run(
-      "meta/meta-llama-3.1-70b-instruct",
-      {
-        input: {
-          prompt: fullPrompt,
-          temperature: 0.3, // Low temperature for consistent output
-          max_tokens: 1500,
-          top_p: 0.9,
-        }
-      }
-    ) as string[];
-
-    const responseText = output.join('');
-    console.log('LLM Response:', responseText.substring(0, 1000));
-
-    // Extract JSON from response
-    const jsonMatch = responseText.match(/\{[\s\S]*\}/);
-    if (!jsonMatch) {
-      console.error('No JSON found in LLM response');
-      throw new Error('Failed to parse Character Bible JSON');
-    }
-
-    let bible = JSON.parse(jsonMatch[0]) as UniversalCharacterBible;
-
-    // POST-PROCESSING: Strip human attributes if character is NOT human
-    // This is a safety net in case the LLM doesn't follow instructions
-    if (!bible.is_human) {
-      bible = sanitizeAnimalBible(bible);
-    }
-
-    console.log('Parsed Character Bible (sanitized):', JSON.stringify(bible, null, 2));
-    console.log('==========================================================\n');
-
-    return bible;
-  } catch (error) {
-    console.error('Error generating Character Bible with LLM:', error);
-    // Return a fallback bible
-    return createFallbackBible(storyTitle, storyPages, originalPrompt);
-  }
+  // Skip LLM entirely — Replicate Llama 70B returns 500s consistently.
+  // Deterministic fallback is instant, reliable, and produces good results.
+  console.log('[BIBLE] Skipping LLM — using deterministic fallback (instant + reliable)');
+  return createFallbackBible(storyTitle, storyPages, originalPrompt);
 }
 
 /**

@@ -100,45 +100,21 @@ export async function generateSceneCardWithLLM(
 }
 
 /**
- * Generate SceneCards for all pages (batched to reduce API calls)
+ * Generate SceneCards for all pages — fully deterministic, no LLM calls.
+ * Uses rule-based extraction from page text (instant).
  */
 export async function generateAllSceneCardsWithLLM(
   replicate: Replicate,
   pages: { pageNumber: number; text: string }[],
   characterName: string
 ): Promise<UniversalSceneCard[]> {
-  console.log('\n========== GENERATING SCENE CARDS WITH LLM ==========');
+  console.log('\n========== GENERATING SCENE CARDS (DETERMINISTIC) ==========');
 
-  const sceneCards: UniversalSceneCard[] = [];
-
-  // Process pages in parallel batches of 3 to speed up
-  const batchSize = 3;
-  for (let i = 0; i < pages.length; i += batchSize) {
-    const batch = pages.slice(i, i + batchSize);
-
-    const batchPromises = batch.map(async (page) => {
-      console.log(`Generating SceneCard for page ${page.pageNumber}...`);
-      const card = await generateSceneCardWithLLM(
-        replicate,
-        page.pageNumber,
-        page.text,
-        characterName
-      );
-      console.log(`Page ${page.pageNumber} setting: ${card.setting.substring(0, 60)}...`);
-      return card;
-    });
-
-    const batchResults = await Promise.all(batchPromises);
-    sceneCards.push(...batchResults);
-
-    // Small delay between batches to avoid rate limiting
-    if (i + batchSize < pages.length) {
-      await new Promise(resolve => setTimeout(resolve, 1000));
-    }
-  }
-
-  // Sort by page index
-  sceneCards.sort((a, b) => a.page_index - b.page_index);
+  const sceneCards = pages.map((page) => {
+    const card = createFallbackSceneCard(page.pageNumber, page.text, characterName);
+    console.log(`Page ${page.pageNumber} setting: ${card.setting.substring(0, 60)}...`);
+    return card;
+  });
 
   console.log('==========================================================\n');
   return sceneCards;

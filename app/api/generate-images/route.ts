@@ -42,7 +42,7 @@ async function waitForUrlReady(url: string, maxAttempts = 5, delayMs = 2000): Pr
 
 // Rate limit configuration
 // Replicate free tier: 6 requests per minute = 10 seconds between requests minimum
-const BASE_DELAY_BETWEEN_IMAGES = 10000 // 10 seconds between Replicate calls
+const BASE_DELAY_BETWEEN_IMAGES = 5000 // 5 seconds between Replicate calls
 const RATE_LIMIT_INITIAL_WAIT = 15000 // 15 seconds on first rate limit
 const RATE_LIMIT_MAX_WAIT = 60000 // 60 seconds max wait
 
@@ -92,6 +92,32 @@ function sanitizeNegatives(negativePrompt: string, prompt: string, setting: stri
   }
 
   return filtered.join(', ')
+}
+
+/**
+ * Categorize a setting string into a canonical bucket for plate reuse.
+ * Pages with the same category reuse the same plate (keyframe optimization).
+ * This cuts ~6 plate generations per 10-page book.
+ */
+function getSettingCategory(setting: string): string {
+  const s = setting.toLowerCase()
+  if (s.includes('underwater') || s.includes('coral')) return 'underwater'
+  if (s.includes('cockpit') || s.includes('controls')) return 'rocket_interior'
+  if (s.includes('inside rocket') || s.includes('porthole')) return 'rocket_interior'
+  if (s.includes('moon surface') || s.includes('crater')) return 'moon_surface'
+  if (s.includes('forest') || s.includes('waterfall') || s.includes('tall trees')) return 'forest'
+  if (s.includes('dolphin')) return 'ocean'
+  if (s.includes('ocean') || s.includes('waves')) return 'ocean'
+  if (s.includes('moon')) return 'moon'
+  if (s.includes('space') || s.includes('nebula')) return 'space'
+  if (s.includes('rocket') || s.includes('launch') || s.includes('sky')) return 'rocket_launch'
+  if (s.includes('savannah') || s.includes('acacia')) return 'savannah'
+  if (s.includes('beach') || s.includes('palm')) return 'beach'
+  if (s.includes('mountain')) return 'mountain'
+  if (s.includes('cottage') || s.includes('home') || s.includes('warm golden')) return 'home'
+  if (s.includes('desert')) return 'desert'
+  if (s.includes('cave')) return 'cave'
+  return 'unique_' + s.substring(0, 30).replace(/\s+/g, '_')
 }
 
 /**
@@ -332,67 +358,73 @@ export async function POST(request: NextRequest) {
     console.log(`PLATE PROMPT_STRENGTH: 0.45 (character on plate) / FALLBACK: 0.80 (anchor)`)
     console.log(`NEGATIVES: quality-only for ALL paths (zero env words) + token sanitizer`)
     console.log(`DELAY BETWEEN CALLS: ${BASE_DELAY_BETWEEN_IMAGES / 1000}s`)
+    console.log(`KEYFRAME OPTIMIZATION: reuse plates when scene category unchanged`)
     console.log(`URL PROBING: batch parallel after all pages (5 attempts × 2s)`)
     console.log(`TOTAL PAGES: ${imagePrompts.length}`)
     console.log(`==============================================\n`)
 
-    // Generate images ONE AT A TIME to avoid rate limits
-    // 2-pass pipeline: scene plate (txt2img) → character on plate (img2img)
+    // Generate images with KEYFRAME PLATE CACHE to minimize API calls.
+    // Only generate a new plate when the scene category changes.
+    // Pages with the same scene category reuse the cached plate.
+    // This turns ~20 API calls → ~14 for a typical 10-page book.
     const imageUrls: string[] = []
     const plateUrls: string[] = []  // Debug: collect plate URLs to verify scenes
+    const plateCache: Map<string, string> = new Map()  // category → plateUrl
+    let totalApiCalls = 0
 
     for (let i = 0; i < imagePrompts.length; i++) {
       const prompt = imagePrompts[i]
       const setting = has2PassPipeline ? sceneSettings[i] : ''
       const mustInclude: string[] = hasMustIncludes ? (sceneMustIncludes[i] || []) : []
       const pageSeed = baseSeed + i * 1000
+      const category = setting ? getSettingCategory(setting) : ''
 
       console.log(`\n========== PAGE ${i + 1}/${imagePrompts.length} ==========`)
       console.log(`SEED: ${pageSeed}`)
       console.log(`SETTING: ${setting ? setting.substring(0, 80) : 'N/A'}`)
+      console.log(`CATEGORY: ${category || 'N/A'}`)
       console.log(`MUST INCLUDE: ${mustInclude.length > 0 ? mustInclude.join(', ') : 'NONE'}`)
       console.log(`FINAL PROMPT: ${prompt.substring(0, 120)}...`)
       console.log(`FINAL PROMPT LENGTH: ${prompt.split(/\s+/).length} words / ${prompt.length} chars`)
-
-      // ===== VALIDATION LOG =====
-      // Check: do any must_include keywords appear in the prompt? If not, warn.
-      const promptLower = prompt.toLowerCase()
-      const settingLower = setting.toLowerCase()
-      const sceneKeywords = [...settingLower.split(/\s+/), ...mustInclude.map(m => m.toLowerCase())]
-        .filter(w => w.length > 3)
-      const missingFromPrompt = sceneKeywords.filter(kw => !promptLower.includes(kw))
-      if (missingFromPrompt.length > 0 && missingFromPrompt.length < sceneKeywords.length) {
-        console.log(`[VALIDATION] Some scene keywords not in prompt (OK if in plate): ${missingFromPrompt.slice(0, 5).join(', ')}`)
-      }
-      console.log(`[VALIDATION] Setting: "${setting}" | Prompt has Include: ${prompt.includes('Include:')}`)
       console.log(`==============================`)
 
       let imageUrl = ''
 
       try {
         if (setting) {
-          // ===== 2-PASS PIPELINE =====
-          // STEP 1: Generate scene plate (txt2img, background only)
-          // Include key objects from must_include in plate prompt
-          const scenePrompt = buildSceneOnlyPrompt(setting, mustInclude)
-          const plateUrl = await generateScenePlate(replicate, scenePrompt, pageSeed, i)
-          plateUrls.push(plateUrl)  // Collect for debug response
+          let plateUrl: string
 
-          // Delay between Replicate calls
-          console.log(`Waiting ${BASE_DELAY_BETWEEN_IMAGES / 1000}s before final pass...`)
-          await sleep(BASE_DELAY_BETWEEN_IMAGES)
+          // KEYFRAME CHECK: reuse plate if same scene category
+          const cachedPlate = plateCache.get(category)
+          if (cachedPlate) {
+            plateUrl = cachedPlate
+            plateUrls.push(plateUrl)
+            console.log(`[PLATE REUSE] Category "${category}" — skipping plate generation (saved 1 API call + ${BASE_DELAY_BETWEEN_IMAGES / 1000}s)`)
+          } else {
+            // ===== NEW KEYFRAME: Generate scene plate =====
+            const scenePrompt = buildSceneOnlyPrompt(setting, mustInclude)
+            plateUrl = await generateScenePlate(replicate, scenePrompt, pageSeed, i)
+            plateUrls.push(plateUrl)
+            plateCache.set(category, plateUrl)
+            totalApiCalls++
+
+            // Delay between Replicate calls
+            console.log(`Waiting ${BASE_DELAY_BETWEEN_IMAGES / 1000}s before final pass...`)
+            await sleep(BASE_DELAY_BETWEEN_IMAGES)
+          }
 
           // STEP 2: Add character to plate (img2img, plate as base)
           imageUrl = await generateImageWithAnchor(
             replicate,
             prompt,
-            plateUrl,       // Scene plate as base image
+            plateUrl,       // Scene plate as base image (cached or fresh)
             pageSeed,
             i,
             0.45,           // prompt_strength: character shows but scene stays
             setting,         // Setting context for sanitizer
             mustInclude      // Must-include items for negative sanitization
           )
+          totalApiCalls++
         } else {
           // ===== FALLBACK: single-pass with anchor =====
           plateUrls.push('')  // No plate in single-pass mode
@@ -406,6 +438,7 @@ export async function POST(request: NextRequest) {
             '',              // No setting context
             mustInclude      // Must-include items for negative sanitization
           )
+          totalApiCalls++
         }
 
         if (!imageUrl) {
@@ -432,6 +465,7 @@ export async function POST(request: NextRequest) {
               setting,
               mustInclude
             )
+            totalApiCalls++
             if (imageUrl) {
               imageUrls.push(imageUrl)
               console.log(`Page ${i + 1} fallback: SUCCESS`)
@@ -445,12 +479,15 @@ export async function POST(request: NextRequest) {
         imageUrls.push('') // Push empty string for failed images
       }
 
-      // Delay between pages (between the last call of this page and the first of next)
+      // Delay between pages
       if (i < imagePrompts.length - 1) {
         console.log(`Waiting ${BASE_DELAY_BETWEEN_IMAGES / 1000}s before next page...`)
         await sleep(BASE_DELAY_BETWEEN_IMAGES)
       }
     }
+
+    console.log(`\n[KEYFRAME STATS] Plate cache: ${plateCache.size} unique plates for ${imagePrompts.length} pages`)
+    console.log(`[KEYFRAME STATS] Total API calls: ${totalApiCalls} (vs ${imagePrompts.length * 2} without cache)`)
 
     // BATCH URL PROBE: verify all image URLs are fetchable in PARALLEL
     // This runs once after all generation completes — much faster than inline probing.
