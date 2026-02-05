@@ -338,9 +338,10 @@ export function buildPagePromptWithAnchor(
   const cleanedMusts = cleanMustInclude(setting, mustInclude);
   const musts = cleanedMusts.slice(0, 4).join(', ');
 
-  // Style + scene FIRST. Wide shot when supporting characters present.
+  // Style + scene FIRST. "main character, centered" locks focus on named character.
+  // Wide shot when supporting characters present.
   if (hasSupporting) {
-    return `2D cartoon, bold outlines, flat cel shading, vibrant pastels. Wide shot: ${setting}. ${charId} with ${supportingList}, ${action}. ${musts}. No text.`;
+    return `2D cartoon, bold outlines, flat cel shading, vibrant pastels. Wide shot: ${setting}. ${charId} as main character, centered, with ${supportingList}, ${action}. ${musts}. No text.`;
   }
-  return `2D cartoon, bold outlines, flat cel shading, vibrant pastels. ${setting}. ${charId}, full body, ${action}. ${musts}. No text.`;
+  return `2D cartoon, bold outlines, flat cel shading, vibrant pastels. ${setting}. ${charId} as main character, centered, full body, ${action}. ${musts}. No text.`;
 }

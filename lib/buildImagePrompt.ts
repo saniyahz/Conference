@@ -36,25 +36,27 @@ const ENV_CONFLICT_MAP: Record<string, string[]> = {
 export function cleanMustInclude(setting: string, mustInclude: string[]): string[] {
   const lowerSetting = setting.toLowerCase();
 
-  // Find which environment this setting belongs to
-  let bannedWords: string[] = [];
+  // Accumulate ALL matching environment conflicts (don't stop at first match)
+  // A setting like "Rocket launching from savannah" matches both rocket AND savann
+  const bannedWords: string[] = [];
   for (const [env, conflicts] of Object.entries(ENV_CONFLICT_MAP)) {
     if (lowerSetting.includes(env)) {
-      bannedWords = conflicts;
-      break;
+      bannedWords.push(...conflicts);
     }
   }
+  // Deduplicate
+  const uniqueBanned = [...new Set(bannedWords)];
 
-  if (bannedWords.length === 0) return mustInclude;
+  if (uniqueBanned.length === 0) return mustInclude;
 
   const cleaned = mustInclude.filter(item => {
     const lowerItem = item.toLowerCase();
-    return !bannedWords.some(banned => lowerItem.includes(banned));
+    return !uniqueBanned.some(banned => lowerItem.includes(banned));
   });
 
   const removed = mustInclude.filter(item => {
     const lowerItem = item.toLowerCase();
-    return bannedWords.some(banned => lowerItem.includes(banned));
+    return uniqueBanned.some(banned => lowerItem.includes(banned));
   });
 
   if (removed.length > 0) {
@@ -99,13 +101,14 @@ export function buildImagePrompt(
     : '';
 
   // BUILD COMPACT PROMPT — style + scene FIRST (CLIP sees these tokens first)
+  // "main character, centered" locks the named character as the focus subject
   // When supporting characters exist, use WIDE SHOT and list them prominently
   let prompt: string;
   if (hasSupporting) {
     // Wide group scene — supporting chars + key objects right after setting, within CLIP window
-    prompt = `2D cartoon, bold outlines, flat cel shading, vibrant pastels. Wide shot: ${card.setting}. ${charId} with ${supportingList}, ${card.action}. ${musts}. No text.`;
+    prompt = `2D cartoon, bold outlines, flat cel shading, vibrant pastels. Wide shot: ${card.setting}. ${charId} as main character, centered, with ${supportingList}, ${card.action}. ${musts}. No text.`;
   } else {
-    prompt = `2D cartoon, bold outlines, flat cel shading, vibrant pastels. ${card.setting}. ${charId}, full body, ${card.action}. ${musts}. No text.`;
+    prompt = `2D cartoon, bold outlines, flat cel shading, vibrant pastels. ${card.setting}. ${charId} as main character, centered, full body, ${card.action}. ${musts}. No text.`;
   }
 
   console.log(`[IMAGE PROMPT] Page ${card.page_index}: ${prompt}`);

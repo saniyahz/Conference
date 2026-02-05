@@ -145,12 +145,12 @@ const SDXL_VERSION = "39ed52f2a78e934b3ba6e2a89f5b1c712de7dfea535525255b1aa35c55
 /**
  * Build dynamic negative prompt — compact, scene-aware.
  * Only bans environments the page doesn't need.
- * FINAL STEP: subtract any negative that appears in the page prompt.
+ * AGGRESSIVE SUBTRACTION: any negative term found in the prompt is removed.
  */
 function buildDynamicNegativePrompt(pagePrompt: string, providedNegative: string | undefined): string {
   const lp = pagePrompt.toLowerCase()
 
-  // Core block: anti-sheet + anti-3D (always apply, never subtracted)
+  // Core block: anti-sheet + anti-3D (always apply, NEVER subtracted)
   const safeNeg = [
     'character sheet', 'reference sheet', 'turnaround', 'multiple poses', 'collage', 'grid', 'lineup',
     'photorealistic', '3D render', 'CGI', 'Pixar', 'DSLR',
@@ -161,18 +161,18 @@ function buildDynamicNegativePrompt(pagePrompt: string, providedNegative: string
   const subNeg: string[] = []
 
   // Replacement-animal blocking — prevents SDXL from substituting random animals
-  // Only removed if the page prompt explicitly mentions them
   subNeg.push('shark', 'whale', 'snake', 'spider', 'predator', 'monster')
 
   // Environment negatives — only add if the page doesn't need them
+  // Trigger lists are BROAD: prefer not-banning over wrongly-banning
   const envRules: [string, string[]][] = [
-    ['underwater', ['underwater', 'ocean floor', 'coral']],
-    ['ocean', ['ocean', 'sea', 'water', 'splash', 'swim']],
-    ['space', ['space', 'stars', 'galaxy', 'cosmos']],
-    ['moon', ['moon', 'lunar', 'crater']],
-    ['rocket', ['rocket', 'spaceship']],
-    ['forest', ['forest', 'trees', 'woods', 'jungle']],
-    ['desert', ['desert', 'sand', 'dune']],
+    ['underwater', ['underwater', 'ocean floor', 'coral', 'beneath the water', 'under the sea', 'deep sea', 'seabed']],
+    ['ocean', ['ocean', 'sea', 'water', 'splash', 'swim', 'wave', 'shore', 'beach', 'dolphin', 'fish', 'sail', 'boat']],
+    ['space', ['space', 'star', 'stars', 'starry', 'galaxy', 'cosmos', 'nebula', 'planet', 'orbit', 'moon', 'lunar', 'asteroid', 'rocket', 'spaceship', 'launch', 'blast off', 'liftoff']],
+    ['moon', ['moon', 'lunar', 'crater', 'rocket', 'spaceship', 'launch', 'space', 'star', 'stars', 'starry']],
+    ['rocket', ['rocket', 'spaceship', 'launch', 'blast off', 'cockpit', 'liftoff', 'countdown']],
+    ['forest', ['forest', 'tree', 'trees', 'woods', 'jungle', 'woodland', 'leaf', 'leaves']],
+    ['desert', ['desert', 'sand', 'dune', 'oasis', 'cactus', 'arid']],
   ]
 
   for (const [word, triggers] of envRules) {
@@ -187,21 +187,36 @@ function buildDynamicNegativePrompt(pagePrompt: string, providedNegative: string
   }
 
   // Block humans for animal characters
-  const animalKeywords = ['rhinoceros', 'rhino', 'elephant', 'lion', 'bear', 'rabbit', 'cat', 'dog', 'fox', 'tiger']
+  const animalKeywords = ['rhinoceros', 'rhino', 'elephant', 'lion', 'bear', 'rabbit', 'cat', 'dog', 'fox', 'tiger', 'giraffe', 'penguin', 'dolphin', 'owl']
   if (animalKeywords.some(a => lp.includes(a))) {
     subNeg.push('human', 'person', 'child')
   }
 
-  // FINAL SUBTRACTION: remove any subtractable negative that appears in the prompt
-  // This prevents banning scene keywords the page actually needs
+  // AGGRESSIVE SUBTRACTION: remove any subtractable negative found in the prompt
+  // Uses substring match — "dolphins" in prompt removes "dolphin" from negatives
   const filteredSubNeg = subNeg.filter(n => !lp.includes(n.toLowerCase()))
 
-  const removed = subNeg.filter(n => lp.includes(n.toLowerCase()))
+  // CRITICAL TOKEN SAFETY NET: explicit list of tokens that must NEVER be
+  // in negatives if they appear anywhere in the prompt (catches edge cases)
+  const criticalTokens = [
+    'moon', 'space', 'star', 'stars', 'ocean', 'underwater', 'water',
+    'forest', 'trees', 'tree', 'rocket', 'dolphin', 'dolphins', 'lion',
+    'lions', 'earth', 'sea', 'waves', 'coral', 'fish', 'sand', 'desert',
+    'cave', 'mountain', 'river', 'meadow', 'beach', 'whale', 'shark',
+  ]
+  const safetyFiltered = filteredSubNeg.filter(term => {
+    const t = term.toLowerCase()
+    // If this term is a critical token AND appears in prompt, remove it
+    if (criticalTokens.includes(t) && lp.includes(t)) return false
+    return true
+  })
+
+  const removed = subNeg.filter(n => !safetyFiltered.includes(n))
   if (removed.length > 0) {
     console.log(`[NEGATIVES] Removed (found in prompt): ${removed.join(', ')}`)
   }
 
-  const finalNeg = [...safeNeg, ...filteredSubNeg]
+  const finalNeg = [...safeNeg, ...safetyFiltered]
   console.log(`[NEGATIVES] ${finalNeg.join(', ')}`)
   return finalNeg.join(', ')
 }
