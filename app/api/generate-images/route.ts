@@ -214,9 +214,10 @@ async function generateImageWithAnchor(
   imageIndex: number
 ): Promise<string> {
   const maxRetries = 3
-  // prompt_strength: 0.65 allows scene changes while keeping character identity from anchor
-  // Lower values (0.35) lock too hard to the anchor's studio background
-  const PROMPT_STRENGTH = 0.65
+  // prompt_strength: 0.80 lets the scene prompt override the anchor's white background
+  // while still keeping character shape/identity from the anchor image
+  // 0.65 was too low — kept the anchor's plain background on every page
+  const PROMPT_STRENGTH = 0.80
 
   for (let attempt = 1; attempt <= maxRetries; attempt++) {
     try {

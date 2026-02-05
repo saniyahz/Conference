@@ -86,8 +86,9 @@ export function buildImagePrompt(
     ? ` With ${card.supporting_characters.map(c => `${c.count} ${c.type}`).join(', ')}.`
     : '';
 
-  // BUILD COMPACT PROMPT — anti-sheet prefix + scene details
-  const prompt = `ONE SINGLE SCENE illustration (not a character sheet). One image only, not a collage.\n${charId}. Full body.\nScene: ${card.setting}.\nAction: ${card.action}.${supporting}\nInclude: ${musts}.\n2D cartoon, bold outlines, flat cel shading, vibrant pastels. No text.`;
+  // BUILD COMPACT PROMPT — style + scene FIRST (CLIP sees these tokens first)
+  // Anti-sheet language is handled in negatives, not here (wastes CLIP tokens)
+  const prompt = `2D cartoon, bold outlines, flat cel shading, vibrant pastels. ${card.setting}. ${charId}, full body, ${card.action}.${supporting} ${musts}. No text.`;
 
   console.log(`[IMAGE PROMPT] Page ${card.page_index}: ${prompt}`);
   return prompt;

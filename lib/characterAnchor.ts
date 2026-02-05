@@ -390,5 +390,6 @@ export function buildPagePromptWithAnchor(
   const cleanedMusts = cleanMustInclude(setting, mustInclude);
   const musts = cleanedMusts.slice(0, 4).join(', ');
 
-  return `ONE SINGLE SCENE illustration (not a character sheet). One image only, not a collage.\n${charId}. Full body.\nScene: ${setting}.\nAction: ${action}.${supporting}\nInclude: ${musts}.\n2D cartoon, bold outlines, flat cel shading, vibrant pastels. No text.`;
+  // Style + scene FIRST so CLIP prioritizes them over character details
+  return `2D cartoon, bold outlines, flat cel shading, vibrant pastels. ${setting}. ${charId}, full body, ${action}.${supporting} ${musts}. No text.`;
 }
