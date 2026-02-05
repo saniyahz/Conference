@@ -270,9 +270,10 @@ function createFallbackSceneCard(
     const sl = s.toLowerCase()
     if (sl.includes('cockpit') || sl.includes('inside rocket')) return 'rocket_interior'
     if (sl.includes('underwater') || sl.includes('coral reef')) return 'underwater'
-    if (sl.includes('waterfall')) return 'forest'
-    if (sl.includes('forest') || sl.includes('trees') || sl.includes('enchanting')) return 'forest'
+    // savannah BEFORE forest — "acacia trees" contains "trees" but is savannah
     if (sl.includes('savann') || sl.includes('grassland') || sl.includes('acacia')) return 'savannah'
+    if (sl.includes('waterfall')) return 'forest'
+    if (sl.includes('forest') || sl.includes('enchanting')) return 'forest'
     if (sl.includes('ocean') || sl.includes('dolphin') || sl.includes('waves')) return 'ocean'
     if (sl.includes('beach') || sl.includes('palm')) return 'ocean'
     if (sl.includes('moon') || sl.includes('crater')) return 'moon'
@@ -284,6 +285,8 @@ function createFallbackSceneCard(
     if (sl.includes('starry') || sl.includes('night sky')) return 'night'
     if (sl.includes('home') || sl.includes('cottage')) return 'home'
     if (sl.includes('storm')) return 'storm'
+    // "trees" last — only matches if nothing more specific matched above
+    if (sl.includes('trees')) return 'forest'
     return 'other'
   }
 
