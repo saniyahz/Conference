@@ -142,8 +142,8 @@ export function buildImagePrompt(
 
   // FINAL PASS PROMPT — compact, NO scene nouns.
   // "Keep the same background scene" anchors the plate.
-  // Character + action only. Scene objects already in plate.
-  const prompt = `Keep the same background scene. Add ${charId}, full body, centered${supportingClause}, ${card.action}. Bold outlines, flat cel shading, vibrant pastel colors. No text.`;
+  // Character MUST be foreground + large to overcome plate preservation.
+  const prompt = `Keep the same background scene. ${charId} in the foreground, large, full body visible, centered, takes up 30% of the frame${supportingClause}, ${card.action}. Bold outlines, flat cel shading, vibrant pastel colors. No text.`;
 
   console.log(`[IMAGE PROMPT] Page ${card.page_index}: ${prompt}`);
   console.log(`[IMAGE PROMPT] Word count: ${prompt.split(/\s+/).length}`);

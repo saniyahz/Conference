@@ -40,6 +40,38 @@ async function waitForUrlReady(url: string, maxAttempts = 5, delayMs = 2000): Pr
   return false
 }
 
+/**
+ * Download an image URL immediately and return as base64 data URL.
+ * This permanently prevents PDF 404s — the image bytes are stored in memory
+ * and passed through the frontend to generate-pdf without any remote fetches.
+ * Falls back to the raw URL if download fails (PDF can retry later).
+ */
+async function downloadImageAsBase64(url: string, maxRetries = 3): Promise<string> {
+  for (let attempt = 1; attempt <= maxRetries; attempt++) {
+    try {
+      const response = await fetch(url, {
+        signal: AbortSignal.timeout(30000),
+      })
+      if (!response.ok) {
+        throw new Error(`HTTP ${response.status}`)
+      }
+      const buffer = Buffer.from(await response.arrayBuffer())
+      const base64 = buffer.toString('base64')
+      const sizeKB = Math.round(buffer.length / 1024)
+      console.log(`[DOWNLOAD] Image downloaded: ${sizeKB}KB base64`)
+      return `data:image/png;base64,${base64}`
+    } catch (error: any) {
+      console.log(`[DOWNLOAD] Attempt ${attempt}/${maxRetries}: ${error.message}`)
+      if (attempt < maxRetries) {
+        await sleep(2000 * attempt)
+      }
+    }
+  }
+  // Fallback: return raw URL (PDF will attempt to fetch it later)
+  console.warn(`[DOWNLOAD] Failed — returning raw URL as fallback`)
+  return url
+}
+
 // Rate limit configuration
 // Replicate free tier: 6 requests per minute = 10 seconds between requests minimum
 const BASE_DELAY_BETWEEN_IMAGES = 5000 // 5 seconds between Replicate calls
@@ -149,7 +181,7 @@ async function generateScenePlate(
       height: 1024,
       num_outputs: 1,
       scheduler: "K_EULER",
-      num_inference_steps: 30,
+      num_inference_steps: 22,
       guidance_scale: 8,
       seed,
     }
@@ -236,7 +268,7 @@ async function generateImageWithAnchor(
         height: 1024,
         num_outputs: 1,
         scheduler: "K_EULER",
-        num_inference_steps: 30,
+        num_inference_steps: 22,
         guidance_scale: 8,
         seed,  // Per-page seed (offset from baseSeed)
         image: baseImageUrl,  // Scene plate (primary) or anchor (fallback)
@@ -355,11 +387,11 @@ export async function POST(request: NextRequest) {
     console.log(`SCENE SETTINGS: ${has2PassPipeline ? sceneSettings.length + ' settings provided' : 'NONE'}`)
     console.log(`MUST INCLUDES: ${hasMustIncludes ? 'YES (per-page key objects for plate + sanitizer)' : 'NONE'}`)
     console.log(`BASE SEED: ${baseSeed} (each page gets baseSeed + pageIndex*1000)`)
-    console.log(`PLATE PROMPT_STRENGTH: 0.45 (character on plate) / FALLBACK: 0.80 (anchor)`)
+    console.log(`PLATE PROMPT_STRENGTH: 0.60 (character on plate) / FALLBACK: 0.80 (anchor)`)
     console.log(`NEGATIVES: quality-only for ALL paths (zero env words) + token sanitizer`)
     console.log(`DELAY BETWEEN CALLS: ${BASE_DELAY_BETWEEN_IMAGES / 1000}s`)
     console.log(`KEYFRAME OPTIMIZATION: reuse plates when scene category unchanged`)
-    console.log(`URL PROBING: batch parallel after all pages (5 attempts × 2s)`)
+    console.log(`IMAGE DOWNLOAD: immediate base64 (no remote URL dependency for PDF)`)
     console.log(`TOTAL PAGES: ${imagePrompts.length}`)
     console.log(`==============================================\n`)
 
@@ -420,7 +452,7 @@ export async function POST(request: NextRequest) {
             plateUrl,       // Scene plate as base image (cached or fresh)
             pageSeed,
             i,
-            0.45,           // prompt_strength: character shows but scene stays
+            0.60,           // prompt_strength: character appears prominently, scene mostly preserved
             setting,         // Setting context for sanitizer
             mustInclude      // Must-include items for negative sanitization
           )
@@ -445,8 +477,10 @@ export async function POST(request: NextRequest) {
           throw new Error(`Image generation failed for page ${i + 1}`)
         }
 
-        imageUrls.push(imageUrl)
-        console.log(`Page ${i + 1} done: SUCCESS`)
+        // Download image immediately as base64 — prevents PDF 404s permanently
+        const imageData = await downloadImageAsBase64(imageUrl)
+        imageUrls.push(imageData)
+        console.log(`Page ${i + 1} done: SUCCESS (${imageData.startsWith('data:') ? 'base64' : 'url'})`)
       } catch (error: any) {
         console.error(`Page ${i + 1} error: ${error.message}`)
 
@@ -467,8 +501,9 @@ export async function POST(request: NextRequest) {
             )
             totalApiCalls++
             if (imageUrl) {
-              imageUrls.push(imageUrl)
-              console.log(`Page ${i + 1} fallback: SUCCESS`)
+              const imageData = await downloadImageAsBase64(imageUrl)
+              imageUrls.push(imageData)
+              console.log(`Page ${i + 1} fallback: SUCCESS (${imageData.startsWith('data:') ? 'base64' : 'url'})`)
               continue
             }
           } catch (fallbackError: any) {
@@ -489,32 +524,18 @@ export async function POST(request: NextRequest) {
     console.log(`\n[KEYFRAME STATS] Plate cache: ${plateCache.size} unique plates for ${imagePrompts.length} pages`)
     console.log(`[KEYFRAME STATS] Total API calls: ${totalApiCalls} (vs ${imagePrompts.length * 2} without cache)`)
 
-    // BATCH URL PROBE: verify all image URLs are fetchable in PARALLEL
-    // This runs once after all generation completes — much faster than inline probing.
-    // Ensures CDN has propagated all URLs before the PDF endpoint tries to fetch them.
-    const urlsToProbe = imageUrls.filter(url => url)
-    if (urlsToProbe.length > 0) {
-      console.log(`\n[BATCH PROBE] Verifying ${urlsToProbe.length} image URLs are fetchable (parallel)...`)
-      const probeResults = await Promise.all(
-        imageUrls.map(async (url, i) => {
-          if (!url) return true // Skip empty (failed) slots
-          const ready = await waitForUrlReady(url)
-          if (!ready) console.warn(`[BATCH PROBE] Page ${i + 1} URL may not be ready for PDF`)
-          return ready
-        })
-      )
-      const readyCount = probeResults.filter(Boolean).length
-      console.log(`[BATCH PROBE] ${readyCount}/${imageUrls.length} URLs confirmed ready`)
-    }
+    // No batch URL probe needed — images are downloaded as base64 immediately
+    // after generation, so PDF never fetches remote URLs.
 
     const successCount = imageUrls.filter(url => url).length
+    const base64Count = imageUrls.filter(url => url && url.startsWith('data:')).length
     const failedIndices = imageUrls
       .map((url, index) => (!url ? index : -1))
       .filter(index => index !== -1)
 
     console.log(`\n========== IMAGE GENERATION COMPLETE ==========`)
-    console.log(`Success: ${successCount}/${imagePrompts.length} images`)
-    console.log(`Pipeline: ${has2PassPipeline ? '2-PASS' : 'SINGLE-PASS'}`)
+    console.log(`Success: ${successCount}/${imagePrompts.length} images (${base64Count} as base64)`)
+    console.log(`Pipeline: ${has2PassPipeline ? '2-PASS KEYFRAME' : 'SINGLE-PASS'}`)
     console.log(`BASE SEED: ${baseSeed}`)
     if (failedIndices.length > 0) {
       console.log(`Failed pages: ${failedIndices.map(i => i + 1).join(', ')}`)

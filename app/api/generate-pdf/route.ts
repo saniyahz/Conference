@@ -3,7 +3,13 @@ import jsPDF from 'jspdf'
 import { Story } from '@/app/page'
 
 // Helper function to convert image URL to base64 with retry
+// If the URL is already a base64 data URL (from immediate download), pass through directly.
 async function getImageAsBase64(url: string, maxRetries = 5): Promise<string> {
+  // Base64 data URLs from generate-images are already ready — no fetch needed
+  if (url.startsWith('data:')) {
+    return url
+  }
+
   let lastError: Error | null = null
 
   for (let attempt = 0; attempt <= maxRetries; attempt++) {
