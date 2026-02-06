@@ -275,12 +275,18 @@ async function generateImageWithAnchor(
         prompt_strength: promptStrength,
       }
 
-      // EXPLICIT DEBUG LOGS
+      // EXPLICIT DEBUG LOGS (truncate base64 image for readability)
+      const inputForLog = {
+        ...input,
+        image: input.image?.startsWith('data:')
+          ? `[base64 data URL, ${Math.round(input.image.length / 1024)}KB]`
+          : input.image?.substring(0, 80) + '...'
+      }
       console.log(`\n========== IMG2IMG PAGE ${imageIndex + 1} (attempt ${attempt}) ==========`)
-      console.log(`BASE IMAGE: ${baseImageUrl.substring(0, 60)}...`)
+      console.log(`BASE IMAGE: ${baseImageUrl.startsWith('data:') ? `[base64, ${Math.round(baseImageUrl.length / 1024)}KB]` : baseImageUrl.substring(0, 60) + '...'}`)
       console.log(`PROMPT_STRENGTH: ${promptStrength}`)
       console.log(`SEED: ${input.seed}`)
-      console.log(`FINAL REPLICATE INPUT:`, JSON.stringify(input, null, 2))
+      console.log(`FINAL REPLICATE INPUT:`, JSON.stringify(inputForLog, null, 2))
       console.log(`================================================================\n`)
 
       // Use predictions API instead of run() to avoid empty [{}] response
@@ -381,9 +387,14 @@ export async function POST(request: NextRequest) {
     const has2PassPipeline = sceneSettings && Array.isArray(sceneSettings) && sceneSettings.length > 0
     const hasMustIncludes = sceneMustIncludes && Array.isArray(sceneMustIncludes) && sceneMustIncludes.length > 0
 
+    // Truncate base64 anchor URL for logging (can be 500KB+)
+    const anchorDisplay = characterAnchorUrl?.startsWith('data:')
+      ? `base64 data URL (${Math.round(characterAnchorUrl.length / 1024)}KB)`
+      : characterAnchorUrl?.substring(0, 80) + '...'
+
     console.log(`\n========== IMAGE GENERATION CONFIG ==========`)
     console.log(`PIPELINE: ${has2PassPipeline ? '2-PASS (scene plate → character img2img)' : 'SINGLE-PASS (anchor img2img)'}`)
-    console.log(`ANCHOR URL: ${characterAnchorUrl}`)
+    console.log(`ANCHOR URL: ${anchorDisplay}`)
     console.log(`SCENE SETTINGS: ${has2PassPipeline ? sceneSettings.length + ' settings provided' : 'NONE'}`)
     console.log(`MUST INCLUDES: ${hasMustIncludes ? 'YES (per-page key objects for plate + sanitizer)' : 'NONE'}`)
     console.log(`BASE SEED: ${baseSeed} (each page gets baseSeed + pageIndex*1000)`)
