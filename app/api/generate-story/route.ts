@@ -359,6 +359,8 @@ CRITICAL: Every page must end with a COMPLETE sentence. Never cut off mid-senten
       sceneSettings,
       // Must-include objects per page (for plate prompt + negative sanitization)
       sceneMustIncludes,
+      // Character species for caption scoring in candidate selection
+      characterSpecies: universalBible.species_or_type,
     })
 
   } catch (error: any) {

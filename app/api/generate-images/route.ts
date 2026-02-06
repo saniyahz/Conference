@@ -81,6 +81,215 @@ const RATE_LIMIT_MAX_WAIT = 60000 // 60 seconds max wait
 // SDXL model version - use consistent version throughout
 const SDXL_VERSION = "39ed52f2a78e934b3ba6e2a89f5b1c712de7dfea535525255b1aa35c5565e08b"
 
+// BLIP captioning model for character detection
+const BLIP_VERSION = "2e1dddc8621f72155f24cf2e0adbde548458d3cab9f00c0139eea840d0ac4746"
+
+/**
+ * Caption an image using BLIP to check if character is present.
+ * Returns the caption text for scoring.
+ */
+async function captionImage(replicate: Replicate, imageUrl: string): Promise<string> {
+  try {
+    const output = await replicate.run(
+      `salesforce/blip:${BLIP_VERSION}` as `${string}/${string}:${string}`,
+      {
+        input: {
+          image: imageUrl,
+          task: "image_captioning"
+        }
+      }
+    )
+    const caption = typeof output === 'string' ? output : String(output)
+    console.log(`[CAPTION] "${caption.substring(0, 100)}"`)
+    return caption.toLowerCase()
+  } catch (error: any) {
+    console.log(`[CAPTION] Error: ${error.message} — returning empty`)
+    return ''
+  }
+}
+
+/**
+ * Score a caption based on character presence.
+ * Returns score (higher = better) and reason.
+ */
+function scoreCaption(caption: string, characterSpecies: string = 'rhinoceros'): { score: number; reason: string } {
+  const c = caption.toLowerCase()
+  const speciesLower = characterSpecies.toLowerCase()
+  const speciesShort = speciesLower === 'rhinoceros' ? 'rhino' : speciesLower
+
+  // Check for character presence
+  const hasCharacter = c.includes(speciesLower) || c.includes(speciesShort) || c.includes('animal') || c.includes('creature')
+  const fullBody = /(full body|standing|walking|whole body|cartoon|character)/.test(c)
+  const closeUp = /(close[- ]?up|headshot|portrait|face only)/.test(c)
+  const multiple = /(two|three|multiple|group of|several)/.test(c) && (c.includes(speciesLower) || c.includes(speciesShort) || c.includes('animal'))
+
+  let score = 0
+  const reasons: string[] = []
+
+  if (hasCharacter) {
+    score += 2
+  } else {
+    reasons.push('No character detected')
+  }
+
+  if (fullBody) {
+    score += 2
+  } else if (!closeUp) {
+    // Neutral - neither confirmed full body nor close-up
+    score += 1
+  }
+
+  if (closeUp) {
+    score -= 2
+    reasons.push('Looks like close-up')
+  }
+
+  if (multiple) {
+    score -= 3
+    reasons.push('Multiple characters detected')
+  }
+
+  return {
+    score,
+    reason: reasons.length > 0 ? reasons.join('; ') : 'OK'
+  }
+}
+
+type CandidateResult = {
+  url: string
+  seed: number
+  score: number
+  reason: string
+}
+
+/**
+ * Generate a single image candidate and score it.
+ */
+async function generateAndScoreCandidate(
+  replicate: Replicate,
+  prompt: string,
+  baseImageUrl: string,
+  seed: number,
+  imageIndex: number,
+  promptStrength: number,
+  settingContext: string,
+  mustInclude: string[],
+  characterSpecies: string
+): Promise<CandidateResult> {
+  const url = await generateImageWithAnchor(
+    replicate,
+    prompt,
+    baseImageUrl,
+    seed,
+    imageIndex,
+    promptStrength,
+    settingContext,
+    mustInclude
+  )
+
+  if (!url) {
+    return { url: '', seed, score: -10, reason: 'Generation failed' }
+  }
+
+  // Caption and score
+  const caption = await captionImage(replicate, url)
+  const { score, reason } = scoreCaption(caption, characterSpecies)
+
+  return { url, seed, score, reason }
+}
+
+/**
+ * Generate best candidate from multiple attempts.
+ * Generates up to 3 candidates with different seeds and picks the highest scoring one.
+ * If all candidates score below threshold, escalates prompt_strength.
+ */
+async function generateBestCandidate(
+  replicate: Replicate,
+  prompt: string,
+  baseImageUrl: string,
+  baseSeed: number,
+  imageIndex: number,
+  settingContext: string,
+  mustInclude: string[],
+  characterSpecies: string = 'rhinoceros'
+): Promise<{ url: string; seed: number; attempts: number }> {
+  const SCORE_THRESHOLD = 2  // Minimum acceptable score
+  const seedOffsets = [0, 11, 29]  // Different seeds for variety
+
+  // ========== ATTEMPT 1: Standard parameters, 3 candidates ==========
+  console.log(`[CANDIDATE SELECTION] Page ${imageIndex + 1}: Generating 3 candidates...`)
+
+  let candidates: CandidateResult[] = []
+  for (const offset of seedOffsets) {
+    const candidate = await generateAndScoreCandidate(
+      replicate,
+      prompt,
+      baseImageUrl,
+      baseSeed + offset,
+      imageIndex,
+      0.85,  // Standard prompt_strength
+      settingContext,
+      mustInclude,
+      characterSpecies
+    )
+    candidates.push(candidate)
+    console.log(`[CANDIDATE ${seedOffsets.indexOf(offset) + 1}] Seed ${baseSeed + offset}: score=${candidate.score} (${candidate.reason})`)
+
+    // Early exit if we find a good one
+    if (candidate.score >= SCORE_THRESHOLD) {
+      console.log(`[CANDIDATE SELECTION] Page ${imageIndex + 1}: Found good candidate (score=${candidate.score})`)
+      return { url: candidate.url, seed: baseSeed + offset, attempts: seedOffsets.indexOf(offset) + 1 }
+    }
+
+    // Small delay between candidates
+    await sleep(2000)
+  }
+
+  // Pick best from first attempt
+  candidates.sort((a, b) => b.score - a.score)
+  let best = candidates[0]
+
+  if (best.score >= SCORE_THRESHOLD) {
+    console.log(`[CANDIDATE SELECTION] Page ${imageIndex + 1}: Best candidate score=${best.score}`)
+    return { url: best.url, seed: best.seed, attempts: 3 }
+  }
+
+  // ========== ATTEMPT 2: Higher prompt_strength, stronger composition ==========
+  console.log(`[CANDIDATE SELECTION] Page ${imageIndex + 1}: Score too low (${best.score}), escalating...`)
+
+  // Modify prompt to emphasize character size
+  const strongerPrompt = prompt.replace(
+    'occupies 30-45% of frame',
+    'occupies 40-55% of frame, character is the main focus'
+  )
+
+  const escalatedCandidate = await generateAndScoreCandidate(
+    replicate,
+    strongerPrompt,
+    baseImageUrl,
+    baseSeed + 100,
+    imageIndex,
+    0.90,  // Higher prompt_strength
+    settingContext,
+    mustInclude,
+    characterSpecies
+  )
+  console.log(`[ESCALATED] Seed ${baseSeed + 100}: score=${escalatedCandidate.score} (${escalatedCandidate.reason})`)
+
+  if (escalatedCandidate.score > best.score) {
+    best = escalatedCandidate
+  }
+
+  if (best.score >= SCORE_THRESHOLD) {
+    console.log(`[CANDIDATE SELECTION] Page ${imageIndex + 1}: Escalated candidate acceptable (score=${best.score})`)
+    return { url: best.url, seed: best.seed, attempts: 4 }
+  }
+
+  // ========== FINAL: Return best available even if below threshold ==========
+  console.log(`[CANDIDATE SELECTION] Page ${imageIndex + 1}: Using best available (score=${best.score}, reason: ${best.reason})`)
+  return { url: best.url, seed: best.seed, attempts: 4 }
+}
+
 /**
  * Build QUALITY-ONLY negative prompt. Used for ALL image generation paths.
  * NEVER contains environment words (ocean, forest, moon, rocket, etc.).
@@ -353,7 +562,16 @@ async function generateImageWithAnchor(
 
 export async function POST(request: NextRequest) {
   try {
-    const { imagePrompts, negativePrompts, seed, characterAnchorUrl, sceneSettings, sceneMustIncludes } = await request.json()
+    const {
+      imagePrompts,
+      negativePrompts,
+      seed,
+      characterAnchorUrl,
+      sceneSettings,
+      sceneMustIncludes,
+      characterSpecies = 'rhinoceros',  // For caption scoring
+      useCandidateSelection = true       // Enable 3-candidate selection with scoring
+    } = await request.json()
 
     if (!imagePrompts || !Array.isArray(imagePrompts)) {
       return NextResponse.json(
@@ -394,6 +612,8 @@ export async function POST(request: NextRequest) {
 
     console.log(`\n========== IMAGE GENERATION CONFIG ==========`)
     console.log(`PIPELINE: ${has2PassPipeline ? '2-PASS (scene plate → character img2img)' : 'SINGLE-PASS (anchor img2img)'}`)
+    console.log(`CANDIDATE SELECTION: ${useCandidateSelection ? 'ENABLED (3 candidates + BLIP scoring)' : 'DISABLED (single pass)'}`)
+    console.log(`CHARACTER SPECIES: ${characterSpecies}`)
     console.log(`ANCHOR URL: ${anchorDisplay}`)
     console.log(`SCENE SETTINGS: ${has2PassPipeline ? sceneSettings.length + ' settings provided' : 'NONE'}`)
     console.log(`MUST INCLUDES: ${hasMustIncludes ? 'YES (per-page key objects for plate + sanitizer)' : 'NONE'}`)
@@ -473,33 +693,63 @@ export async function POST(request: NextRequest) {
           }
 
           // STEP 2: Add character to plate (img2img, plate as base)
-          // prompt_strength 0.85 = strongly override plate to insert character
-          // Lower values (0.65) preserved plate too much, character often missing
-          imageUrl = await generateImageWithAnchor(
-            replicate,
-            prompt,
-            plateUrl,       // Scene plate as base image (cached or fresh)
-            pageSeed,
-            i,
-            0.85,           // prompt_strength: HIGH so character actually appears
-            setting,         // Setting context for sanitizer
-            mustInclude      // Must-include items for negative sanitization
-          )
-          totalApiCalls++
+          // Use candidate selection if enabled (generates 3 candidates, picks best)
+          if (useCandidateSelection) {
+            const result = await generateBestCandidate(
+              replicate,
+              prompt,
+              plateUrl,
+              pageSeed,
+              i,
+              setting,
+              mustInclude,
+              characterSpecies
+            )
+            imageUrl = result.url
+            totalApiCalls += result.attempts  // Each candidate is an API call
+          } else {
+            // Single pass (faster but less reliable)
+            imageUrl = await generateImageWithAnchor(
+              replicate,
+              prompt,
+              plateUrl,
+              pageSeed,
+              i,
+              0.85,
+              setting,
+              mustInclude
+            )
+            totalApiCalls++
+          }
         } else {
           // ===== FALLBACK: single-pass with anchor =====
           plateUrls.push('')  // No plate in single-pass mode
-          imageUrl = await generateImageWithAnchor(
-            replicate,
-            prompt,
-            characterAnchorUrl,
-            pageSeed,
-            i,
-            0.80,
-            '',              // No setting context
-            mustInclude      // Must-include items for negative sanitization
-          )
-          totalApiCalls++
+          if (useCandidateSelection) {
+            const result = await generateBestCandidate(
+              replicate,
+              prompt,
+              characterAnchorUrl,
+              pageSeed,
+              i,
+              '',
+              mustInclude,
+              characterSpecies
+            )
+            imageUrl = result.url
+            totalApiCalls += result.attempts
+          } else {
+            imageUrl = await generateImageWithAnchor(
+              replicate,
+              prompt,
+              characterAnchorUrl,
+              pageSeed,
+              i,
+              0.80,
+              '',
+              mustInclude
+            )
+            totalApiCalls++
+          }
         }
 
         if (!imageUrl) {

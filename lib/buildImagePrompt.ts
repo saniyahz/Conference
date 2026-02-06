@@ -131,8 +131,9 @@ export function buildImagePrompt(
   // ========== 5. STYLE ==========
   const style = '2D children\'s picture book illustration, bold clean outlines, flat cel shading, vibrant pastel colors.';
 
-  // ========== 6. COMPOSITION ==========
-  let composition = `Composition: ${name} full body visible, centered in foreground, clear storytelling, no text.`;
+  // ========== 6. COMPOSITION (with size + visibility constraints) ==========
+  // These constraints help ensure character is actually visible and prominent
+  let composition = `Composition: ${name} full body visible, centered in foreground, occupies 30-45% of frame, not cropped, not hidden, clear storytelling, no text.`;
 
   // Add singularity for animals
   if (isAnimal) {
