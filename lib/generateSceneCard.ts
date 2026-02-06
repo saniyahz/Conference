@@ -184,7 +184,10 @@ function createFallbackSceneCard(
   characterName: string
 ): UniversalSceneCard {
   const lowerText = pageText.toLowerCase();
-  console.log(`[FALLBACK SCENE] Page ${pageIndex}: extracting from "${pageText.substring(0, 80)}..."`)
+  // DEBUG: Log first 160 chars to verify page segmentation is correct
+  // If Page 1 includes "cockpit/blast off", page splitter is off by one
+  console.log(`[PAGE_TEXT] Page ${pageIndex}: "${pageText.substring(0, 160).replace(/\n/g, ' ')}"`)
+  console.log(`[FALLBACK SCENE] Page ${pageIndex}: extracting setting...`)
 
   // CANONICAL SCENE BUCKETS — each page maps to exactly ONE scene.
   // No more "near" compound strings that confuse SDXL.
@@ -199,8 +202,8 @@ function createFallbackSceneCard(
     // === DISCOVERY OUTDOORS (highest priority — "found/stumbled rocket" = outdoor scene) ===
     { pattern: /(stumbled upon|found|discovered|spotted).*(rocket|spaceship)/, bucket: 'golden savannah with scattered acacia trees and warm light', mood: 'warm' },
     // === INTERIOR (only if text explicitly says "inside" the rocket) ===
-    { pattern: /cockpit|control\s*panel|pilot\s*seat|dashboard/, bucket: 'rocket cockpit interior with glowing controls and stars through window', mood: 'exciting' },
-    { pattern: /(rocket|spaceship).*(inside|sat in|buckled|strapped)|(inside|sat in|buckled|strapped).*(rocket|spaceship)/, bucket: 'inside rocket ship with porthole windows showing stars', mood: 'exciting' },
+    { pattern: /cockpit|control\s*panel|pilot\s*seat|dashboard|strange\s*instruments/, bucket: 'rocket cockpit interior with glowing controls and stars through window', mood: 'exciting' },
+    { pattern: /(rocket|spaceship).*(inside|sat in|buckled|strapped|blast\s*off|lift\s*off)|(inside|sat in|buckled|strapped).*(rocket|spaceship)/, bucket: 'inside rocket ship with porthole windows showing stars', mood: 'exciting' },
     // === UNDERWATER (specific, high priority) ===
     { pattern: /underwater|beneath\s*the\s*water|ocean\s*floor/, bucket: 'underwater ocean with coral reef and sunbeams', mood: 'magical' },
     // === ENVIRONMENT KEYWORDS FIRST (the scene IS the environment) ===
@@ -234,7 +237,7 @@ function createFallbackSceneCard(
   const hasOutdoorEnv =
     /(forest|woods|jungle|savann|grassland|tall\s*grass|open\s*plain|meadow|field|waterfall|river|stream|beach|shore|desert|mountain|hill)/.test(lowerText)
   const hasInteriorSignal =
-    /(cockpit|control\s*panel|pilot\s*seat|dashboard|inside|sat in|sat down|buckled|strapped|buttons|lever|controls)/.test(lowerText)
+    /(cockpit|control\s*panel|pilot\s*seat|dashboard|inside|sat in|sat down|buckled|strapped|buttons?|lever|controls|instruments|blast\s*off|lift\s*off|launched|taking\s*off)/.test(lowerText)
   const blockRocketInterior = hasOutdoorEnv && !hasInteriorSignal
 
   // First match wins — scenes are ordered by priority

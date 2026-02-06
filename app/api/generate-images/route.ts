@@ -87,7 +87,20 @@ const SDXL_VERSION = "39ed52f2a78e934b3ba6e2a89f5b1c712de7dfea535525255b1aa35c55
  * Scene is controlled by the plate + prompt + must_include, not by negatives.
  */
 function buildQualityOnlyNegative(): string {
-  return 'text, watermark, logo, signature, photorealistic, realistic, 3D render, CGI, blurry, low quality, jpeg artifacts, bad anatomy, bad proportions, deformed, extra limbs, extra arms, extra legs, extra heads, extra faces, duplicate character, twin, clone, multiple main characters, character sheet, reference sheet, turnaround, collage, grid, monster, horror, gore, weapon'
+  return [
+    // Quality issues
+    'text, watermark, logo, signature, photorealistic, realistic, 3D render, CGI, blurry, low quality, jpeg artifacts',
+    // Anatomy issues
+    'bad anatomy, bad proportions, deformed, extra limbs, extra arms, extra legs, extra heads, extra faces',
+    // DUPLICATE CHARACTER PREVENTION — critical for main character consistency
+    'duplicate character, twin, clone, multiple main characters, two rhinos, two rhinoceros, multiple rhinos, extra animal, extra creature',
+    // Reference sheet / layout issues
+    'character sheet, reference sheet, turnaround, collage, grid, lineup, model sheet',
+    // COMPOSITION — prevent giant heads / extreme close-ups
+    'close-up, extreme close-up, cropped head, giant face, portrait, headshot, face only',
+    // Content issues
+    'monster, horror, gore, weapon'
+  ].join(', ')
 }
 
 /**

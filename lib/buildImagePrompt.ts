@@ -165,9 +165,13 @@ export function buildImagePrompt(
   // This is critical for animal characters which SDXL loves to duplicate.
   const singularity = isAnimal ? ` Only one ${species}.` : '';
 
+  // COMPOSITION CONSTRAINT: prevent giant heads / extreme close-ups.
+  // "full body only" + "wide shot" + "fits fully in frame" tells SDXL to show the whole character.
+  const composition = 'full body only, wide shot, character fits fully in frame';
+
   // PROMPT: Character FIRST (highest CLIP weight), scene anchoring LAST (lowest).
   // The plate already preserves the scene — prompt_strength controls the balance.
-  const prompt = `${charId}, full body, large in foreground, centered${supportingClause}, ${card.action}${objectsClause}.${singularity} Same background. 2D cartoon, bold outlines, vibrant pastels. No text.`;
+  const prompt = `${charId}, ${composition}, centered${supportingClause}, ${card.action}${objectsClause}.${singularity} Same background. 2D cartoon, bold outlines, vibrant pastels. No text.`;
 
   console.log(`[IMAGE PROMPT] Page ${card.page_index}: ${prompt}`);
   console.log(`[IMAGE PROMPT] Word count: ${prompt.split(/\s+/).length}`);
