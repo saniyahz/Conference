@@ -130,16 +130,21 @@ function extractNounsFromText(text: string): string[] {
   const secondaryNouns: string[] = []  // Environment/background — go after
 
   // HIGH PRIORITY: Key story objects that MUST appear in illustrations
+  // These get CLIP attention priority — character and plot-critical objects
   const priorityPatterns: { pattern: RegExp; noun: string }[] = [
     { pattern: /rocket\s*(ship)?/i, noun: 'rocket ship' },
     { pattern: /cockpit|control\s*panel|instruments/i, noun: 'glowing control panel' },
-    { pattern: /lunar\s*(friend|creature|being)/i, noun: 'lunar friends with big eyes and fuzzy white fur' },
-    { pattern: /moon\s*(rabbit|bunny|creature)/i, noun: 'moon rabbits in spacesuits' },
+    { pattern: /lunar\s*(friend|creature|being)s?/i, noun: 'lunar friends with big eyes and fuzzy white fur' },
+    { pattern: /moon\s*(rabbit|bunny|creature)s?/i, noun: 'moon rabbits in spacesuits' },
+    { pattern: /new\s*friends?/i, noun: 'new friends' },
     { pattern: /dolphin/i, noun: 'dolphins' },
     { pattern: /lion/i, noun: 'lions' },
     { pattern: /rabbit|bunny|bunnies/i, noun: 'rabbits' },
     { pattern: /alien/i, noun: 'friendly aliens' },
     { pattern: /earth/i, noun: 'Earth visible in sky' },
+    { pattern: /splash\s*(down|into|landing)/i, noun: 'water splash' },
+    { pattern: /helmet/i, noun: 'space helmet' },
+    { pattern: /spacesuit/i, noun: 'spacesuit' },
   ]
 
   // SECONDARY: Environment elements (background, less critical)
@@ -209,28 +214,33 @@ function createFallbackSceneCard(
   // CANONICAL SCENE BUCKETS — each page maps to exactly ONE scene.
   // No more "near" compound strings that confuse SDXL.
   //
-  // RULE: Pick scene by ENVIRONMENT keywords first, rocket/space second.
-  // A rocket can appear in ANY environment (savannah, ocean, forest), but
-  // a savannah/ocean IS the environment. Only pick "rocket interior" if
-  // text explicitly describes being inside (cockpit, controls, sat in, buckled).
+  // RULE: Explicit environment keywords ALWAYS win over generic patterns.
+  // If text says "forest" → forest, if text says "ocean" → ocean.
+  // Only use rocket/discovery fallbacks when NO environment keyword is present.
   //
-  // Priority: interior > underwater > savannah > forest > ocean > moon > space > rocket > others
+  // Priority: interior > explicit_environment > underwater > creatures > space > rocket > home
   const CANONICAL_SCENES: { pattern: RegExp; bucket: string; mood: string }[] = [
-    // === DISCOVERY OUTDOORS (highest priority — "found/stumbled rocket" = outdoor scene) ===
-    { pattern: /(stumbled upon|found|discovered|spotted).*(rocket|spaceship)/, bucket: 'golden savannah with scattered acacia trees and warm light', mood: 'warm' },
-    // === INTERIOR (only if text explicitly says "inside" the rocket) ===
+    // === INTERIOR (only if text explicitly says "inside" or has cockpit/controls language) ===
     { pattern: /cockpit|control\s*panel|pilot\s*seat|dashboard|strange\s*instruments/, bucket: 'rocket cockpit interior with glowing controls and stars through window', mood: 'exciting' },
-    { pattern: /(rocket|spaceship).*(inside|sat in|buckled|strapped|blast\s*off|lift\s*off)|(inside|sat in|buckled|strapped).*(rocket|spaceship)/, bucket: 'inside rocket ship with porthole windows showing stars', mood: 'exciting' },
+    { pattern: /(inside|sat in|buckled|strapped|climbed into).*(rocket|spaceship)/, bucket: 'inside rocket ship with porthole windows showing stars', mood: 'exciting' },
+    { pattern: /(rocket|spaceship).*(inside|sat in|buckled|strapped)/, bucket: 'inside rocket ship with porthole windows showing stars', mood: 'exciting' },
+    { pattern: /blast\s*off|blasting\s*off|blasted\s*off|lift\s*off|lifting\s*off|took\s*off|taking\s*off|launched|launching/, bucket: 'rocket launching into bright blue sky with fluffy clouds', mood: 'exciting' },
     // === UNDERWATER (specific, high priority) ===
     { pattern: /underwater|beneath\s*the\s*water|ocean\s*floor/, bucket: 'underwater ocean with coral reef and sunbeams', mood: 'magical' },
-    // === ENVIRONMENT KEYWORDS FIRST (the scene IS the environment) ===
-    { pattern: /savann|grassland|tall\s*grass|open\s*plain/, bucket: 'golden savannah with scattered acacia trees and warm light', mood: 'warm' },
-    { pattern: /waterfall/, bucket: 'forest clearing with cascading waterfall and mist', mood: 'magical' },
+    // === EXPLICIT ENVIRONMENT KEYWORDS (these MUST come before discovery/creatures) ===
+    { pattern: /lush\s*forest|deep\s*forest|thick\s*forest|tall\s*trees|winding\s*stream/, bucket: 'lush green forest with tall trees and dappled sunlight', mood: 'enchanting' },
     { pattern: /forest|woods|jungle/, bucket: 'lush green forest with tall trees and dappled sunlight', mood: 'enchanting' },
+    { pattern: /savann|grassland|tall\s*grass|open\s*plain|acacia/, bucket: 'golden savannah with scattered acacia trees and warm light', mood: 'warm' },
+    { pattern: /waterfall/, bucket: 'forest clearing with cascading waterfall and mist', mood: 'magical' },
+    // === WATER SCENES (dolphin/ocean/splash = ocean) ===
     { pattern: /dolphin/, bucket: 'sparkling open ocean with leaping dolphins', mood: 'playful' },
-    { pattern: /ocean|sea\b|splash.*water|water.*splash/, bucket: 'open ocean with gentle waves under bright sky', mood: 'adventurous' },
+    { pattern: /splash\s*(down|into)|splashing/, bucket: 'open ocean with gentle waves under bright sky', mood: 'adventurous' },
+    { pattern: /ocean|sea\b/, bucket: 'open ocean with gentle waves under bright sky', mood: 'adventurous' },
+    // === MOON/SPACE ===
     { pattern: /moon.*(surface|landed|crater|walked|bounce|hop)|(surface|landed|crater|walked).*moon/, bucket: 'moon surface with craters and Earth visible in sky', mood: 'wondrous' },
+    { pattern: /lunar\s*friend|moon\s*rabbit|moon\s*creature/, bucket: 'moon surface with craters and Earth visible in sky', mood: 'wondrous' },
     { pattern: /moon/, bucket: 'moon surface with craters and starry sky', mood: 'wondrous' },
+    // === OTHER ENVIRONMENTS ===
     { pattern: /lion/, bucket: 'golden savannah with scattered acacia trees and warm light', mood: 'warm' },
     { pattern: /beach|shore/, bucket: 'sandy tropical beach with palm trees and gentle waves', mood: 'cheerful' },
     { pattern: /mountain|hill/, bucket: 'rolling green mountains under bright blue sky', mood: 'majestic' },
@@ -242,7 +252,7 @@ function createFallbackSceneCard(
     { pattern: /starry|night\s*sky|under\s*the\s*stars/, bucket: 'open field under starry night sky with glowing stars', mood: 'wondrous' },
     // === ROCKET/SPACE LAST (only if no environment keyword matched) ===
     { pattern: /space|galaxy|nebula/, bucket: 'deep space with colorful nebula and distant stars', mood: 'wondrous' },
-    { pattern: /rocket|spaceship|blast\s*off|launch/, bucket: 'rocket launching into bright blue sky with fluffy clouds', mood: 'exciting' },
+    { pattern: /rocket|spaceship/, bucket: 'rocket launching into bright blue sky with fluffy clouds', mood: 'exciting' },
     // === HOME (fallback for indoor scenes) ===
     { pattern: /home|house|bed/, bucket: 'cozy cottage interior with warm golden light', mood: 'warm' },
   ]
@@ -254,7 +264,7 @@ function createFallbackSceneCard(
   const hasOutdoorEnv =
     /(forest|woods|jungle|savann|grassland|tall\s*grass|open\s*plain|meadow|field|waterfall|river|stream|beach|shore|desert|mountain|hill)/.test(lowerText)
   const hasInteriorSignal =
-    /(cockpit|control\s*panel|pilot\s*seat|dashboard|inside|sat in|sat down|buckled|strapped|buttons?|lever|controls|instruments|blast\s*off|lift\s*off|launched|taking\s*off)/.test(lowerText)
+    /(cockpit|control\s*panel|pilot\s*seat|dashboard|inside|sat in|sat down|buckled|strapped|climbed into|buttons?|lever|controls|instruments|blast\s*off|blasting\s*off|lift\s*off|lifting\s*off|launched|launching|took\s*off|taking\s*off)/.test(lowerText)
   const blockRocketInterior = hasOutdoorEnv && !hasInteriorSignal
 
   // First match wins — scenes are ordered by priority
@@ -280,10 +290,13 @@ function createFallbackSceneCard(
   // This replaces the old multi-category union approach which accidentally
   // allowed cross-environment nouns (waterfall inside rocket, etc).
 
-  // Nouns that can appear in ANY scene (transportable objects, celestial bodies)
+  // Nouns that can appear in ANY scene (transportable objects, celestial bodies, key story props)
+  // These bypass noun gating — they're too important to the story to be removed
   const CROSS_SCENE_NOUNS = new Set([
-    'rocket ship', 'twinkling stars', 'earth in the sky', 'moon', 'colorful planet',
-    'glowing control panel',
+    'rocket ship', 'twinkling stars', 'earth in the sky', 'earth visible in sky', 'moon', 'colorful planet',
+    'glowing control panel', 'space helmet', 'spacesuit', 'new friends',
+    'lunar friends with big eyes and fuzzy white fur', 'moon rabbits in spacesuits',
+    'dolphins', 'water splash',
   ])
 
   function categoryForSetting(s: string): string {

@@ -398,7 +398,7 @@ export async function POST(request: NextRequest) {
     console.log(`SCENE SETTINGS: ${has2PassPipeline ? sceneSettings.length + ' settings provided' : 'NONE'}`)
     console.log(`MUST INCLUDES: ${hasMustIncludes ? 'YES (per-page key objects for plate + sanitizer)' : 'NONE'}`)
     console.log(`BASE SEED: ${baseSeed} (each page gets baseSeed + pageIndex*1000)`)
-    console.log(`PLATE PROMPT_STRENGTH: 0.65 (character on plate) / FALLBACK: 0.80 (anchor)`)
+    console.log(`PLATE PROMPT_STRENGTH: 0.85 (character on plate) / FALLBACK: 0.80 (anchor)`)
     console.log(`NEGATIVES: quality-only for ALL paths (zero env words) + token sanitizer`)
     console.log(`DELAY BETWEEN CALLS: ${BASE_DELAY_BETWEEN_IMAGES / 1000}s`)
     console.log(`KEYFRAME OPTIMIZATION: reuse plates only when exact setting string matches`)
@@ -473,13 +473,15 @@ export async function POST(request: NextRequest) {
           }
 
           // STEP 2: Add character to plate (img2img, plate as base)
+          // prompt_strength 0.85 = strongly override plate to insert character
+          // Lower values (0.65) preserved plate too much, character often missing
           imageUrl = await generateImageWithAnchor(
             replicate,
             prompt,
             plateUrl,       // Scene plate as base image (cached or fresh)
             pageSeed,
             i,
-            0.65,           // prompt_strength: character overrides plate (0.60 was too weak)
+            0.85,           // prompt_strength: HIGH so character actually appears
             setting,         // Setting context for sanitizer
             mustInclude      // Must-include items for negative sanitization
           )
