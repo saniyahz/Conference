@@ -98,6 +98,9 @@ function buildQualityOnlyNegative(): string {
     'character sheet, reference sheet, turnaround, collage, grid, lineup, model sheet',
     // COMPOSITION — prevent giant heads / extreme close-ups
     'close-up, extreme close-up, cropped head, giant face, portrait, headshot, face only',
+    // HUMAN BLOCKING — prevent realistic humans/astronauts in anthropomorphic animal stories
+    // "astronaut" often triggers photorealistic humans; we want cartoon animals in spacesuits
+    'human, realistic human, human astronaut, person in spacesuit, astronaut in suit, real person, realistic person',
     // Content issues
     'monster, horror, gore, weapon'
   ].join(', ')

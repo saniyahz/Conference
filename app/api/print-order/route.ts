@@ -35,7 +35,7 @@ export async function POST(request: NextRequest) {
 
     // Calculate price with discount
     const totalPrice = calculatePrintPrice(subscription.plan as PlanType)
-    const discount = PRINT_BASE_PRICE - totalPrice
+    const discountAmount = PRINT_BASE_PRICE - totalPrice
 
     // Create print order
     const order = await prisma.printOrder.create({
@@ -44,7 +44,7 @@ export async function POST(request: NextRequest) {
         storyId,
         status: 'pending',
         basePrice: PRINT_BASE_PRICE,
-        discount,
+        discountAmount,
         totalPrice,
         shippingAddress,
       },

@@ -1,9 +1,14 @@
 import { NextRequest, NextResponse } from 'next/server'
 import OpenAI from 'openai'
 
-const openai = new OpenAI({
-  apiKey: process.env.OPENAI_API_KEY,
-})
+// Lazy-initialized OpenAI client (avoids build-time errors when OPENAI_API_KEY is not set)
+let openai: OpenAI | null = null
+function getOpenAI(): OpenAI {
+  if (!openai) {
+    openai = new OpenAI({ apiKey: process.env.OPENAI_API_KEY })
+  }
+  return openai
+}
 
 export async function POST(request: NextRequest) {
   try {
@@ -25,7 +30,7 @@ export async function POST(request: NextRequest) {
     }
 
     // Convert File to the format OpenAI expects
-    const transcription = await openai.audio.transcriptions.create({
+    const transcription = await getOpenAI().audio.transcriptions.create({
       file: audioFile,
       model: 'whisper-1',
       language: 'en',

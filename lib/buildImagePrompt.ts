@@ -124,13 +124,17 @@ function gateIndoorNouns(setting: string, mustInclude: string[]): string[] {
 /**
  * Build image prompt for the FINAL PASS (img2img from scene plate).
  *
- * CRITICAL PROMPT STRUCTURE (for CLIP token weighting):
- * 1. REQUIRED OBJECTS FIRST — rocket, lunar friends, etc. get highest attention
- * 2. SCENE reinforcement — not just "Same background"
- * 3. CHARACTER — concise identifier
- * 4. ACTION — specific verb (buckled, blasting off, splashing)
- * 5. COMPOSITION — full body, centered
- * 6. STYLE — 2D cartoon (last = lowest priority, plate already has this)
+ * CRITICAL PROMPT STRUCTURE (CLIP token weighting):
+ * =====================================================
+ * 1. MAIN CHARACTER FIRST (mandatory, with visual traits) — highest attention
+ * 2. ACTION (specific verb: touching, wearing, pressing)
+ * 3. KEY PROPS (golden helmet, red button, rocket)
+ * 4. SUPPORTING CHARACTERS (with exact counts)
+ * 5. SCENE (brief reinforcement)
+ * 6. STYLE (last = lowest priority)
+ *
+ * The main character MUST be the first thing in the prompt.
+ * Objects like "rocket" come AFTER the character, not before.
  *
  * Target: < 50 words for CLIP token efficiency.
  */
@@ -143,46 +147,44 @@ export function buildImagePrompt(
   const isAnimal = !bible.is_human;
   const charNameLower = name.toLowerCase();
 
-  // 1. REQUIRED OBJECTS — FIRST for maximum CLIP attention
-  // These are the KEY items that MUST appear in the image
-  const requiredObjects = card.must_include
+  // 1. MAIN CHARACTER — FIRST AND MANDATORY (highest CLIP attention)
+  // Include 2-3 visual traits for character lock
+  const traits = bible.visual_fingerprint.slice(0, 2).join(', ');
+  let charId: string;
+  if (isAnimal) {
+    charId = traits
+      ? `${name} the ${species}, ${traits}, anthropomorphic cartoon ${species}`
+      : `${name} the ${species}, anthropomorphic cartoon ${species}`;
+  } else {
+    charId = traits ? `${name}, ${traits}` : name;
+  }
+
+  // 2. KEY PROPS from must_include (rocket, helmet, button, etc.)
+  // These go AFTER character but before scene
+  const keyProps = card.must_include
     .filter(item => {
       const lower = item.toLowerCase();
-      // Keep objects like "rocket ship", "lunar friends", "dolphins"
-      // Skip character name, filler, and generic terms
       return !lower.includes(charNameLower)
         && !lower.includes('full body')
         && !lower.includes('vibrant')
         && !lower.includes('lighting')
         && !lower.includes('background')
-        && !lower.includes('colors');
+        && !lower.includes('colors')
+        && !lower.includes('friends');  // friends handled separately
     })
-    .slice(0, 4);
+    .slice(0, 3);
 
-  const objectsClause = requiredObjects.length > 0
-    ? `${requiredObjects.join(', ')}, `
+  const propsClause = keyProps.length > 0
+    ? `, ${keyProps.join(', ')}`
     : '';
 
-  // 2. SCENE — reinforce setting (plate has it, but prompt_strength may dilute)
-  const sceneShort = extractSceneKeywords(card.setting);
-
-  // 3. CHARACTER — concise identifier with one visual trait
-  let charId: string;
-  if (isAnimal) {
-    const trait = bible.visual_fingerprint[0] || '';
-    charId = trait ? `${name} the ${species} (${trait})` : `${name} the ${species}`;
-  } else {
-    const trait = bible.visual_fingerprint[0] || '';
-    charId = trait ? `${name} (${trait})` : name;
-  }
-
-  // 4. SUPPORTING CHARACTERS — strong description when present
+  // 3. SUPPORTING CHARACTERS — with EXACT counts
   const hasSupporting = card.supporting_characters.length > 0;
   let supportingClause = '';
   if (hasSupporting) {
     const supporters = card.supporting_characters.slice(0, 2);
-    supportingClause = ` with ${supporters.map(c => {
-      // Use notes for richer description if available
+    supportingClause = `, with exactly ${supporters.map(c => {
+      // Use notes for richer description
       if (c.notes && c.notes.length > 5) {
         return `${c.count} ${c.notes}`;
       }
@@ -190,12 +192,15 @@ export function buildImagePrompt(
     }).join(' and ')}`;
   }
 
-  // 5. SINGULARITY — prevent duplicate main character
-  const singularity = isAnimal ? ` Only one ${species}.` : '';
+  // 4. SCENE — brief reinforcement (plate has full scene)
+  const sceneShort = extractSceneKeywords(card.setting);
 
-  // 6. BUILD PROMPT — objects FIRST, then scene, then character, then action
-  // This ensures key story elements get maximum CLIP attention
-  const prompt = `${objectsClause}${sceneShort}. ${charId}${supportingClause}, ${card.action}, full body, centered.${singularity} 2D cartoon, bold outlines. No text.`;
+  // 5. SINGULARITY — prevent duplicate main character
+  const singularity = isAnimal ? ` Only one ${species}, no duplicate animals.` : '';
+
+  // 6. BUILD PROMPT — CHARACTER FIRST, then action, props, supporters, scene
+  // This is the critical fix: Riri must be the first thing CLIP sees
+  const prompt = `${charId}, ${card.action}${propsClause}${supportingClause}. ${sceneShort}. Full body visible, centered in frame.${singularity} 2D cartoon, bold outlines, vibrant colors. No text.`;
 
   console.log(`[IMAGE PROMPT] Page ${card.page_index}: ${prompt}`);
   console.log(`[IMAGE PROMPT] Word count: ${prompt.split(/\s+/).length}`);
@@ -278,9 +283,9 @@ export function buildNegativePrompt(
     'text', 'watermark', 'logo', 'blurry', 'low quality'
   ];
 
-  // Block humans for animal characters
+  // Block humans for animal characters — CRITICAL for preventing human astronauts
   if (!bible.is_human) {
-    neg.push('human', 'person', 'child');
+    neg.push('human', 'person', 'child', 'man', 'woman', 'astronaut in suit', 'human astronaut', 'realistic human');
     // Top 3 species-confusion negatives
     const confused = getSpeciesNegatives(bible.species_or_type);
     neg.push(...confused.slice(0, 3));

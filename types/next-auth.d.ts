@@ -1,4 +1,5 @@
 import 'next-auth'
+import { Subscription } from '@prisma/client'
 
 declare module 'next-auth' {
   interface Session {
@@ -7,11 +8,7 @@ declare module 'next-auth' {
       email: string
       name?: string | null
       image?: string | null
-      subscription?: {
-        plan: string
-        status: string
-        storiesSavedThisMonth: number
-      } | null
+      subscription?: Subscription | null
     }
   }
 
