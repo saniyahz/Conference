@@ -121,22 +121,33 @@ export async function generateAllSceneCardsWithLLM(
 }
 
 /**
- * Extract concrete nouns from page text for must_include
+ * Extract concrete nouns from page text for must_include.
+ * PRIORITY ORDER: Key story objects (rocket, creatures) FIRST for CLIP attention.
  */
 function extractNounsFromText(text: string): string[] {
   const lowerText = text.toLowerCase()
-  const nouns: string[] = []
+  const priorityNouns: string[] = []  // Key objects — go first
+  const secondaryNouns: string[] = []  // Environment/background — go after
 
-  // Visual nouns that make good illustration elements
-  const nounPatterns: { pattern: RegExp; noun: string }[] = [
+  // HIGH PRIORITY: Key story objects that MUST appear in illustrations
+  const priorityPatterns: { pattern: RegExp; noun: string }[] = [
     { pattern: /rocket\s*(ship)?/i, noun: 'rocket ship' },
+    { pattern: /cockpit|control\s*panel|instruments/i, noun: 'glowing control panel' },
+    { pattern: /lunar\s*(friend|creature|being)/i, noun: 'lunar friends with big eyes and fuzzy white fur' },
+    { pattern: /moon\s*(rabbit|bunny|creature)/i, noun: 'moon rabbits in spacesuits' },
+    { pattern: /dolphin/i, noun: 'dolphins' },
+    { pattern: /lion/i, noun: 'lions' },
+    { pattern: /rabbit|bunny|bunnies/i, noun: 'rabbits' },
+    { pattern: /alien/i, noun: 'friendly aliens' },
+    { pattern: /earth/i, noun: 'Earth visible in sky' },
+  ]
+
+  // SECONDARY: Environment elements (background, less critical)
+  const secondaryPatterns: { pattern: RegExp; noun: string }[] = [
     { pattern: /moon/i, noun: 'moon' },
     { pattern: /crater/i, noun: 'craters' },
     { pattern: /star/i, noun: 'twinkling stars' },
-    { pattern: /earth/i, noun: 'Earth in the sky' },
     { pattern: /planet/i, noun: 'colorful planet' },
-    { pattern: /dolphin/i, noun: 'dolphins' },
-    { pattern: /lion/i, noun: 'lions' },
     { pattern: /ocean|sea\b/i, noun: 'ocean waves' },
     { pattern: /water/i, noun: 'water' },
     { pattern: /splash/i, noun: 'water splash' },
@@ -156,21 +167,27 @@ function extractNounsFromText(text: string): string[] {
     { pattern: /bridge/i, noun: 'bridge' },
     { pattern: /coral/i, noun: 'colorful coral' },
     { pattern: /fish/i, noun: 'tropical fish' },
-    { pattern: /rabbit|bunny|bunnies/i, noun: 'rabbits' },
-    { pattern: /alien/i, noun: 'friendly aliens' },
-    { pattern: /cockpit|control\s*panel/i, noun: 'glowing control panel' },
     { pattern: /waterfall/i, noun: 'waterfall' },
     { pattern: /shelter|hut\b/i, noun: 'shelter' },
     { pattern: /storm/i, noun: 'storm clouds' },
   ]
 
-  for (const { pattern, noun } of nounPatterns) {
-    if (pattern.test(lowerText) && !nouns.includes(noun)) {
-      nouns.push(noun)
+  // Extract priority nouns first
+  for (const { pattern, noun } of priorityPatterns) {
+    if (pattern.test(lowerText) && !priorityNouns.includes(noun)) {
+      priorityNouns.push(noun)
     }
   }
 
-  return nouns
+  // Then secondary nouns
+  for (const { pattern, noun } of secondaryPatterns) {
+    if (pattern.test(lowerText) && !secondaryNouns.includes(noun) && !priorityNouns.includes(noun)) {
+      secondaryNouns.push(noun)
+    }
+  }
+
+  // Return priority first, then secondary
+  return [...priorityNouns, ...secondaryNouns]
 }
 
 /**
@@ -299,8 +316,8 @@ function createFallbackSceneCard(
     forest:          /(rocket|spaceship|forest|trees?|waterfall|river|stream|sunlight|clearing|lions?|flowers?|meadow|rainbow|bridge|bright sun)/i,
     savannah:        /(rocket|spaceship|savann|grass|acacia|trees?|lions?|sun|mountains?|meadow|clouds?|river|flowers?)/i,
     ocean:           /(rocket|spaceship|ocean|waves?|water|splash|dolphins?|beach|shore|island|sun|clouds?|fish)/i,
-    moon:            /(rocket|spaceship|moon|crater|earth|stars|rabbits?|spacesuit|aliens?|planet)/i,
-    space:           /(rocket|spaceship|stars|moon|earth|nebula|planet|aliens?)/i,
+    moon:            /(rocket|spaceship|moon|crater|earth|stars|rabbits?|spacesuit|aliens?|planet|lunar|friends?|fuzzy|creatures?)/i,
+    space:           /(rocket|spaceship|stars|moon|earth|nebula|planet|aliens?|lunar|friends?|creatures?)/i,
     rocket_launch:   /(rocket|spaceship|clouds?|stars|sun|earth|sky)/i,
     desert:          /(rocket|spaceship|desert|sand|dune|sun|mountains?|cave)/i,
     cave:            /(rocket|spaceship|cave|flowers?|mountains?|crystals?)/i,
@@ -330,25 +347,50 @@ function createFallbackSceneCard(
     return gated
   }
 
-  // Extract action from text - more specific patterns
+  // Extract action from text - SPECIFIC patterns for story beats
+  // Order matters: most specific first, generic last
   const actionRules: { test: (t: string) => boolean; action: string }[] = [
-    { test: t => t.includes('splash') || t.includes('landed in water'), action: `${characterName} splashes into the water` },
-    { test: t => t.includes('swim'), action: `${characterName} swims through the water` },
-    { test: t => t.includes('flew') || t.includes('flying') || t.includes('soar'), action: `${characterName} flies through the air` },
-    { test: t => t.includes('pilot') || t.includes('drove') || t.includes('steer'), action: `${characterName} pilots the rocket ship` },
-    { test: t => t.includes('sat in') && t.includes('rocket'), action: `${characterName} sits inside the rocket ship` },
-    { test: t => t.includes('stumble') || t.includes('discover') || t.includes('found'), action: `${characterName} discovers something amazing` },
-    { test: t => t.includes('walk') || t.includes('wander'), action: `${characterName} walks with curiosity` },
-    { test: t => t.includes('run') || t.includes('ran') || t.includes('dash'), action: `${characterName} runs with excitement` },
-    { test: t => t.includes('jump') || t.includes('leap'), action: `${characterName} jumps with joy` },
-    { test: t => t.includes('hug') || t.includes('embrace'), action: `${characterName} hugs a friend warmly` },
-    { test: t => t.includes('wave') && t.includes('goodbye'), action: `${characterName} waves goodbye` },
-    { test: t => t.includes('smile') || t.includes('laugh') || t.includes('happy'), action: `${characterName} smiles happily` },
-    { test: t => t.includes('look') || t.includes('saw') || t.includes('gaze'), action: `${characterName} looks around with wonder` },
-    { test: t => t.includes('brought') || t.includes('carried'), action: `${characterName} carries friends along` },
+    // ROCKET/SPACE ACTIONS — specific story moments
+    { test: t => t.includes('buckled') || t.includes('strapped'), action: `${characterName} buckled in cockpit, ready for launch` },
+    { test: t => t.includes('blast off') || t.includes('blasted off') || t.includes('lift off'), action: `${characterName} in rocket blasting off` },
+    { test: t => t.includes('launched') || t.includes('launching'), action: `${characterName} launching into space` },
+    { test: t => (t.includes('land') || t.includes('touch')) && t.includes('moon'), action: `${characterName} landing on the moon` },
+    { test: t => t.includes('step') && (t.includes('out') || t.includes('onto')) && (t.includes('rocket') || t.includes('moon')), action: `${characterName} stepping out of rocket onto moon surface` },
+    { test: t => t.includes('board') || t.includes('climb') && t.includes('rocket'), action: `${characterName} boarding the rocket` },
+    { test: t => t.includes('cockpit') || t.includes('control panel') || t.includes('instruments'), action: `${characterName} at rocket controls` },
+    { test: t => t.includes('pilot') || t.includes('drove') || t.includes('steer'), action: `${characterName} piloting the rocket ship` },
+    { test: t => t.includes('sat in') && t.includes('rocket'), action: `${characterName} sitting inside rocket cockpit` },
+    { test: t => t.includes('flew') || t.includes('flying') || t.includes('soar'), action: `${characterName} flying through space` },
+
+    // WATER ACTIONS
+    { test: t => t.includes('splash') && (t.includes('ocean') || t.includes('water')), action: `${characterName} splashing down into ocean` },
+    { test: t => t.includes('splash'), action: `${characterName} splashing into water` },
+    { test: t => t.includes('swim'), action: `${characterName} swimming through water` },
+
+    // SOCIAL ACTIONS — meeting friends/creatures
+    { test: t => t.includes('met') || t.includes('greet') || t.includes('welcomed'), action: `${characterName} meeting new friends` },
+    { test: t => t.includes('hug') || t.includes('embrace'), action: `${characterName} hugging friends warmly` },
+    { test: t => t.includes('wave') && t.includes('goodbye'), action: `${characterName} waving goodbye to friends` },
+    { test: t => t.includes('together') || t.includes('joined'), action: `${characterName} standing with friends` },
+
+    // DISCOVERY ACTIONS
+    { test: t => t.includes('stumble') || t.includes('discover') || t.includes('found'), action: `${characterName} discovering something amazing` },
+    { test: t => t.includes('look') || t.includes('saw') || t.includes('gaze'), action: `${characterName} gazing with wonder` },
+
+    // MOVEMENT ACTIONS
+    { test: t => t.includes('walk') || t.includes('wander'), action: `${characterName} walking curiously` },
+    { test: t => t.includes('run') || t.includes('ran') || t.includes('dash'), action: `${characterName} running excitedly` },
+    { test: t => t.includes('jump') || t.includes('leap') || t.includes('bounce'), action: `${characterName} jumping with joy` },
+
+    // HOME/END ACTIONS
+    { test: t => t.includes('home') && (t.includes('return') || t.includes('back') || t.includes('arrived')), action: `${characterName} arriving home safely` },
+    { test: t => t.includes('bed') || t.includes('sleep') || t.includes('dream'), action: `${characterName} dreaming of adventures` },
+
+    // EMOTION ACTIONS
+    { test: t => t.includes('smile') || t.includes('laugh') || t.includes('happy'), action: `${characterName} smiling happily` },
   ]
 
-  let action = `${characterName} explores with curiosity`;
+  let action = `${characterName} in the scene`;  // More neutral fallback
   for (const rule of actionRules) {
     if (rule.test(lowerText)) {
       action = rule.action;

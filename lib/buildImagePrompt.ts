@@ -69,14 +69,30 @@ export function cleanMustInclude(setting: string, mustInclude: string[]): string
 /**
  * Build scene-only prompt for the scene plate (first pass).
  * No characters — just the background environment.
- * Setting comes directly from SceneCard.setting (source of truth).
- * keyObjects are must_include items to embed in the plate background.
- * Template: style → composition → scene → objects → exclusions.
+ *
+ * CRITICAL: Key objects (rocket ship, Earth, etc.) go FIRST for CLIP attention.
+ * The scene plate must include these objects so they appear in the final image.
+ *
+ * Template: KEY OBJECTS → scene → style → exclusions.
  * Target: < 40 words for CLIP token efficiency.
  */
 export function buildSceneOnlyPrompt(setting: string, keyObjects: string[] = []): string {
-  const includeClause = keyObjects.length > 0 ? ` Must include: ${keyObjects.slice(0, 5).join(', ')}.` : ''
-  return `2D cartoon, bold outlines, flat cel shading, vibrant pastels. Wide establishing shot. Background detailed. Scene: ${setting}.${includeClause} No characters. No animals. No text.`;
+  // KEY OBJECTS FIRST — highest CLIP attention
+  const objects = keyObjects.slice(0, 4);
+  const objectsClause = objects.length > 0 ? `${objects.join(', ')}, ` : '';
+
+  // Extract scene type for composition hint
+  const lower = setting.toLowerCase();
+  let compositionHint = 'wide establishing shot';
+  if (lower.includes('cockpit') || lower.includes('inside')) {
+    compositionHint = 'interior view, detailed controls';
+  } else if (lower.includes('moon') || lower.includes('space')) {
+    compositionHint = 'vast space scene, Earth visible';
+  } else if (lower.includes('ocean') || lower.includes('splash')) {
+    compositionHint = 'ocean scene, waves and sky';
+  }
+
+  return `${objectsClause}${setting}. ${compositionHint}. 2D cartoon, bold outlines, vibrant pastels, detailed background. No characters. No animals. No text.`;
 }
 
 /**
@@ -107,16 +123,16 @@ function gateIndoorNouns(setting: string, mustInclude: string[]): string[] {
 
 /**
  * Build image prompt for the FINAL PASS (img2img from scene plate).
- * Scene is already baked into the plate — keep scene description minimal.
  *
- * CRITICAL: Character goes FIRST in the prompt because CLIP gives strongest
- * weight to early tokens. "Same background" goes LAST (low priority — the
- * plate already handles scene preservation through prompt_strength).
+ * CRITICAL PROMPT STRUCTURE (for CLIP token weighting):
+ * 1. REQUIRED OBJECTS FIRST — rocket, lunar friends, etc. get highest attention
+ * 2. SCENE reinforcement — not just "Same background"
+ * 3. CHARACTER — concise identifier
+ * 4. ACTION — specific verb (buckled, blasting off, splashing)
+ * 5. COMPOSITION — full body, centered
+ * 6. STYLE — 2D cartoon (last = lowest priority, plate already has this)
  *
- * Key objects from must_include are added back so items like "rocket ship"
- * or "lions" actually appear in the final frame.
- *
- * Target: < 40 words for CLIP token efficiency.
+ * Target: < 50 words for CLIP token efficiency.
  */
 export function buildImagePrompt(
   bible: UniversalCharacterBible,
@@ -125,29 +141,15 @@ export function buildImagePrompt(
   const species = bible.species_or_type;
   const name = bible.name;
   const isAnimal = !bible.is_human;
-
-  // CHARACTER ID — FIRST for maximum CLIP attention
-  let charId: string;
-  if (isAnimal) {
-    const trait = bible.visual_fingerprint[0] || species;
-    charId = `${name} the ${species}, ${trait}`;
-  } else {
-    const trait = bible.visual_fingerprint[0] || 'cartoon child';
-    charId = `${name}, ${trait}`;
-  }
-
-  // SUPPORTING CHARACTERS (dolphins, lions, etc.)
-  const hasSupporting = card.supporting_characters.length > 0;
-  const supportingClause = hasSupporting
-    ? `, with ${card.supporting_characters.slice(0, 2).map(c => `${c.count} ${c.type}`).join(' and ')}`
-    : '';
-
-  // KEY OBJECTS from must_include that should be visible in frame
-  // Filter out character name, "full body", and generic filler items
   const charNameLower = name.toLowerCase();
-  const keyObjects = card.must_include
+
+  // 1. REQUIRED OBJECTS — FIRST for maximum CLIP attention
+  // These are the KEY items that MUST appear in the image
+  const requiredObjects = card.must_include
     .filter(item => {
       const lower = item.toLowerCase();
+      // Keep objects like "rocket ship", "lunar friends", "dolphins"
+      // Skip character name, filler, and generic terms
       return !lower.includes(charNameLower)
         && !lower.includes('full body')
         && !lower.includes('vibrant')
@@ -155,27 +157,108 @@ export function buildImagePrompt(
         && !lower.includes('background')
         && !lower.includes('colors');
     })
-    .slice(0, 3);
+    .slice(0, 4);
 
-  const objectsClause = keyObjects.length > 0
-    ? `. ${keyObjects.join(', ')} visible`
+  const objectsClause = requiredObjects.length > 0
+    ? `${requiredObjects.join(', ')}, `
     : '';
 
-  // SINGULARITY CONSTRAINT: "only one {species}" prevents SDXL from generating duplicates.
-  // This is critical for animal characters which SDXL loves to duplicate.
+  // 2. SCENE — reinforce setting (plate has it, but prompt_strength may dilute)
+  const sceneShort = extractSceneKeywords(card.setting);
+
+  // 3. CHARACTER — concise identifier with one visual trait
+  let charId: string;
+  if (isAnimal) {
+    const trait = bible.visual_fingerprint[0] || '';
+    charId = trait ? `${name} the ${species} (${trait})` : `${name} the ${species}`;
+  } else {
+    const trait = bible.visual_fingerprint[0] || '';
+    charId = trait ? `${name} (${trait})` : name;
+  }
+
+  // 4. SUPPORTING CHARACTERS — strong description when present
+  const hasSupporting = card.supporting_characters.length > 0;
+  let supportingClause = '';
+  if (hasSupporting) {
+    const supporters = card.supporting_characters.slice(0, 2);
+    supportingClause = ` with ${supporters.map(c => {
+      // Use notes for richer description if available
+      if (c.notes && c.notes.length > 5) {
+        return `${c.count} ${c.notes}`;
+      }
+      return `${c.count} ${c.type}`;
+    }).join(' and ')}`;
+  }
+
+  // 5. SINGULARITY — prevent duplicate main character
   const singularity = isAnimal ? ` Only one ${species}.` : '';
 
-  // COMPOSITION CONSTRAINT: prevent giant heads / extreme close-ups.
-  // "full body only" + "wide shot" + "fits fully in frame" tells SDXL to show the whole character.
-  const composition = 'full body only, wide shot, character fits fully in frame';
-
-  // PROMPT: Character FIRST (highest CLIP weight), scene anchoring LAST (lowest).
-  // The plate already preserves the scene — prompt_strength controls the balance.
-  const prompt = `${charId}, ${composition}, centered${supportingClause}, ${card.action}${objectsClause}.${singularity} Same background. 2D cartoon, bold outlines, vibrant pastels. No text.`;
+  // 6. BUILD PROMPT — objects FIRST, then scene, then character, then action
+  // This ensures key story elements get maximum CLIP attention
+  const prompt = `${objectsClause}${sceneShort}. ${charId}${supportingClause}, ${card.action}, full body, centered.${singularity} 2D cartoon, bold outlines. No text.`;
 
   console.log(`[IMAGE PROMPT] Page ${card.page_index}: ${prompt}`);
   console.log(`[IMAGE PROMPT] Word count: ${prompt.split(/\s+/).length}`);
   return prompt;
+}
+
+/**
+ * Extract key scene words from setting string.
+ * Returns a concise scene description (3-5 words) for prompt reinforcement.
+ */
+function extractSceneKeywords(setting: string): string {
+  const lower = setting.toLowerCase();
+
+  // Interior scenes
+  if (lower.includes('cockpit') || lower.includes('inside rocket')) {
+    return 'Inside rocket cockpit, glowing controls';
+  }
+  if (lower.includes('porthole')) {
+    return 'Inside rocket, stars through window';
+  }
+
+  // Moon scenes
+  if (lower.includes('moon surface') || lower.includes('crater')) {
+    return 'Moon surface with craters, Earth in sky';
+  }
+  if (lower.includes('moon')) {
+    return 'Lunar landscape, starry sky';
+  }
+
+  // Ocean scenes
+  if (lower.includes('underwater') || lower.includes('coral')) {
+    return 'Underwater, coral reef, sunbeams';
+  }
+  if (lower.includes('ocean') && lower.includes('dolphin')) {
+    return 'Open ocean, dolphins leaping';
+  }
+  if (lower.includes('splash') || lower.includes('ocean')) {
+    return 'Ocean waves, bright sky';
+  }
+
+  // Nature scenes
+  if (lower.includes('savann') || lower.includes('acacia')) {
+    return 'Golden savannah, acacia trees';
+  }
+  if (lower.includes('forest') || lower.includes('trees')) {
+    return 'Lush green forest, dappled sunlight';
+  }
+
+  // Space scenes
+  if (lower.includes('space') || lower.includes('nebula')) {
+    return 'Deep space, colorful nebula';
+  }
+  if (lower.includes('rocket launching') || lower.includes('blast')) {
+    return 'Rocket launching, blue sky, clouds';
+  }
+
+  // Home scenes
+  if (lower.includes('home') || lower.includes('cottage')) {
+    return 'Cozy home interior, warm light';
+  }
+
+  // Generic fallback — use first few words of setting
+  return setting.split(',')[0].slice(0, 40);
 }
 
 /**
