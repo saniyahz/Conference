@@ -262,7 +262,11 @@ CRITICAL: Every page must end with a COMPLETE sentence. Never cut off mid-senten
       throw new Error('Failed to generate character anchor - cannot proceed without anchor')
     }
 
-    console.log(`Character Anchor URL: ${characterAnchor.imageUrl}`)
+    // Truncate base64 in logs to avoid huge output
+    const anchorDisplay = characterAnchor.imageUrl.startsWith('data:')
+      ? `base64 data URL (${Math.round(characterAnchor.imageUrl.length / 1024)}KB)`
+      : characterAnchor.imageUrl.substring(0, 80);
+    console.log(`Character Anchor: ${anchorDisplay}`)
     console.log('==================================================\n')
 
     // ==========================================

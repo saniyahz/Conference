@@ -165,9 +165,12 @@ export async function generateCharacterAnchor(
   const cacheKey = anchorCacheKey(bible, seed)
   const cached = anchorCache.get(cacheKey)
   if (cached) {
+    const imageDisplay = cached.imageUrl.startsWith('data:')
+      ? `base64 (${Math.round(cached.imageUrl.length / 1024)}KB)`
+      : cached.imageUrl.substring(0, 60);
     console.log(`\n========== ANCHOR CACHE HIT ==========`)
     console.log(`Key: ${cacheKey}`)
-    console.log(`Image: ${cached.imageUrl.substring(0, 60)}...`)
+    console.log(`Image: ${imageDisplay}`)
     console.log(`Skipping 30-step SDXL generation — reusing cached anchor`)
     console.log(`========================================\n`)
     return cached
