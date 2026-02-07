@@ -60,6 +60,8 @@ export interface DetectionResult {
   detections: Detection[];
   scoreContribution: number;
   reason: string;
+  /** Area of the best detection bbox as fraction of frame (0.0–1.0) */
+  bestBboxArea: number;
 }
 
 /**
@@ -225,6 +227,21 @@ export async function detectRhinoceros(
     ? Math.max(...rhinoDetections.map((d) => d.confidence))
     : 0;
 
+  // Compute bbox area of best detection as fraction of frame.
+  // bbox is [x1, y1, x2, y2] normalized to 0–1.
+  // If coords look like pixels (>1), normalize against 1024.
+  const bestDetection = rhinoDetections.reduce<Detection | null>((best, d) =>
+    !best || d.confidence > best.confidence ? d : best, null);
+  let bestBboxArea = 0;
+  if (bestDetection) {
+    let [x1, y1, x2, y2] = bestDetection.bbox;
+    // Normalize pixel coords to 0–1 if needed
+    if (x1 > 1 || y1 > 1 || x2 > 1 || y2 > 1) {
+      x1 /= 1024; y1 /= 1024; x2 /= 1024; y2 /= 1024;
+    }
+    bestBboxArea = Math.abs(x2 - x1) * Math.abs(y2 - y1);
+  }
+
   const detected = bestConfidence >= 0.3;
 
   let scoreContribution: number;
@@ -232,13 +249,13 @@ export async function detectRhinoceros(
 
   if (bestConfidence >= 0.7) {
     scoreContribution = 3;
-    reason = `Detection: +3 strong rhinoceros (conf=${bestConfidence.toFixed(2)} >= 0.70)`;
+    reason = `Detection: +3 strong rhinoceros (conf=${bestConfidence.toFixed(2)}, bbox=${(bestBboxArea * 100).toFixed(1)}%)`;
   } else if (bestConfidence >= 0.5) {
     scoreContribution = 2;
-    reason = `Detection: +2 good rhinoceros (conf=${bestConfidence.toFixed(2)} >= 0.50)`;
+    reason = `Detection: +2 good rhinoceros (conf=${bestConfidence.toFixed(2)}, bbox=${(bestBboxArea * 100).toFixed(1)}%)`;
   } else if (bestConfidence >= 0.3) {
     scoreContribution = 1;
-    reason = `Detection: +1 weak rhinoceros (conf=${bestConfidence.toFixed(2)} >= 0.30)`;
+    reason = `Detection: +1 weak rhinoceros (conf=${bestConfidence.toFixed(2)}, bbox=${(bestBboxArea * 100).toFixed(1)}%)`;
   } else {
     scoreContribution = -2;
     reason = detections.length === 0
@@ -248,7 +265,8 @@ export async function detectRhinoceros(
 
   console.log(
     `[Detection] ${detected ? "FOUND" : "MISSING"} rhinoceros ` +
-    `(${rhinoDetections.length} detections, best conf=${bestConfidence.toFixed(2)}) → ${reason}`
+    `(${rhinoDetections.length} detections, best conf=${bestConfidence.toFixed(2)}, ` +
+    `bbox=${(bestBboxArea * 100).toFixed(1)}%) → ${reason}`
   );
 
   return {
@@ -257,5 +275,6 @@ export async function detectRhinoceros(
     detections: rhinoDetections,
     scoreContribution,
     reason,
+    bestBboxArea,
   };
 }

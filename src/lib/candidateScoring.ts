@@ -3,36 +3,38 @@ import { scoreClipSimilarity, scoreClipWithCachedAnchor, ClipResult } from "./cl
 import { detectRhinoceros, DetectionResult, DetectorModel } from "./objectDetection";
 
 /**
- * Candidate scoring with three validation signals:
+ * Candidate scoring with deterministic accept/reject gate.
  *
- *   1. BLIP captioning  — hard rejection gates (existing, fast)
- *   2. CLIP similarity  — compares candidate to Riri anchor image (visual)
- *   3. GroundingDINO    — object detection for "rhinoceros" (spatial)
+ * The accept gate is a single function with four hard rules.
+ * A candidate is ACCEPTED if and only if ALL four pass:
  *
- * Gate order for BLIP (early exit on reject):
- *   Gate 0: Human/astronaut/pilot/cockpit cues → -20
- *   Gate 1: Wrong animal without rhino          → -15
- *   Gate 2: No rhino/rhinoceros detected        → -10
- *   Gate 3: Must-include enforcement (optional)  → -20
- *   Pass:   Base score 6, with quality bonuses
+ *   Rule 1: No human/cockpit in BLIP caption
+ *   Rule 2: No wrong animal UNLESS rhinoceros is confirmed
+ *   Rule 3: Rhinoceros confirmed by at least ONE signal:
+ *           - BLIP caption contains "rhino"/"rhinoceros"
+ *           - GroundingDINO conf >= 0.5
+ *           - CLIP similarity >= 0.80
+ *   Rule 4: Character is not tiny/background:
+ *           - If GroundingDINO active: best bbox >= 15% of frame
+ *           - If GroundingDINO not active: BLIP must say "standing"/"full body"
+ *             or CLIP similarity >= 0.70
  *
- * Rescue mechanism:
- *   If BLIP rejects a candidate (score < 0), CLIP and detection can
- *   override the rejection — BLIP is known to be weak on cartoon content.
- *   - GroundingDINO detects rhinoceros with conf >= 0.5  → rescue to 4
- *   - CLIP similarity to anchor >= 0.80                  → rescue to 3
+ * If ANY rule fails → REJECT. No rescue, no override, no ambiguity.
  *
- * After BLIP passes (or rescue), CLIP and detection bonuses/penalties
- * are added to the base score.
+ * Score is still computed for ranking among accepted candidates,
+ * but the accept/reject decision is binary and separate.
  */
 
 export interface CandidateResult {
   url: string;
   score: number;
+  accepted: boolean;
+  rejectReason: string;
   caption: string;
   reasons: string[];
   clipSimilarity?: number;
   detectionConfidence?: number;
+  detectionBboxArea?: number;
 }
 
 export interface ScoreOptions {
@@ -83,6 +85,9 @@ const EXPANSIONS: Record<string, string[]> = {
 
 export const SCORE_THRESHOLD = 6;
 
+/** Minimum bbox area (fraction of frame) to count as foreground character */
+const MIN_BBOX_AREA = 0.15;
+
 function norm(s: string): string {
   return s.toLowerCase().replace(/[^\w\s]/g, " ").replace(/\s+/g, " ").trim();
 }
@@ -118,14 +123,89 @@ function countMustIncludes(
   return { hits, hitList, total: cleaned.length };
 }
 
+// ─── DETERMINISTIC ACCEPT GATE ──────────────────────────────────────────
+
 /**
- * Score a BLIP caption with hard rejection gates.
+ * Deterministic accept/reject. Four rules, all must pass.
  *
- * Gate 0: Human/astronaut/pilot/cockpit → instant reject (-20)
- * Gate 1: Wrong animal without rhino → reject (-15)
- * Gate 2: No rhino detected → reject (-10)
- * Gate 3: Must-includes not met → reject (-20)
- * Pass: Base 6 + bonuses for cartoon/full-body/gray/horn
+ * Rule 1: No human/cockpit           → hard reject, never rescuable
+ * Rule 2: No wrong animal            → unless rhinoceros confirmed by ANY signal
+ * Rule 3: Rhinoceros must be present → confirmed by BLIP, DINO, or CLIP
+ * Rule 4: Character must be visible  → not tiny/background
+ *
+ * Returns { accepted, rejectReason }.
+ */
+export function acceptCandidate(
+  caption: string,
+  clipResult: ClipResult | null,
+  detectionResult: DetectionResult | null
+): { accepted: boolean; rejectReason: string } {
+  const c = norm(caption);
+
+  // ── Derive confirmation signals ──
+  const blipHasRhino = /\brhino\b|\brhinoceros\b/.test(c);
+  const dinoHasRhino = !!(detectionResult?.detected && detectionResult.confidence >= 0.5);
+  const clipConfirmsRiri = !!(clipResult && clipResult.similarity >= 0.80);
+  const rhinoConfirmed = blipHasRhino || dinoHasRhino || clipConfirmsRiri;
+
+  // ── RULE 1: No human/cockpit ──
+  if (includesAny(c, HUMAN_TERMS) || includesAny(c, COCKPIT_TERMS)) {
+    return { accepted: false, rejectReason: "RULE 1: HUMAN/COCKPIT detected in caption" };
+  }
+
+  // ── RULE 2: No wrong animal unless rhino confirmed ──
+  const wrongAnimal = WRONG_ANIMALS.find((a) => c.includes(a));
+  if (wrongAnimal && !rhinoConfirmed) {
+    return {
+      accepted: false,
+      rejectReason: `RULE 2: WRONG ANIMAL "${wrongAnimal}" — no signal confirmed rhinoceros`,
+    };
+  }
+
+  // ── RULE 3: Rhinoceros must be confirmed by at least one signal ──
+  if (!rhinoConfirmed) {
+    const signals = [
+      `BLIP=${blipHasRhino}`,
+      `DINO=${detectionResult ? `conf=${detectionResult.confidence.toFixed(2)}` : "off"}`,
+      `CLIP=${clipResult ? `sim=${clipResult.similarity.toFixed(3)}` : "off"}`,
+    ].join(", ");
+    return {
+      accepted: false,
+      rejectReason: `RULE 3: MISSING CHARACTER — no signal confirmed rhinoceros (${signals})`,
+    };
+  }
+
+  // ── RULE 4: Character must not be tiny/background ──
+  if (detectionResult?.detected) {
+    // GroundingDINO is active — use bbox area as ground truth
+    if (detectionResult.bestBboxArea < MIN_BBOX_AREA) {
+      return {
+        accepted: false,
+        rejectReason: `RULE 4: TINY CHARACTER — bbox area ${(detectionResult.bestBboxArea * 100).toFixed(1)}% < ${MIN_BBOX_AREA * 100}% of frame`,
+      };
+    }
+  } else {
+    // GroundingDINO not active — use BLIP composition cues + CLIP as fallback
+    const hasCompositionCue = /\bstanding\b|\bfull body\b|\bwhole body\b|\bcentered\b|\bforeground\b/.test(c);
+    const clipIsStrong = !!(clipResult && clipResult.similarity >= 0.70);
+
+    if (!hasCompositionCue && !clipIsStrong) {
+      return {
+        accepted: false,
+        rejectReason: `RULE 4: CHARACTER SIZE UNVERIFIED — no "standing/full body" in caption and CLIP ${clipResult ? clipResult.similarity.toFixed(3) : "off"} < 0.70`,
+      };
+    }
+  }
+
+  return { accepted: true, rejectReason: "" };
+}
+
+// ─── SCORE (for ranking among accepted candidates) ──────────────────────
+
+/**
+ * Compute a ranking score from BLIP caption.
+ * This is ONLY used to rank accepted candidates against each other.
+ * The accept/reject decision is made by acceptCandidate() above.
  */
 export function scoreCaption(
   caption: string,
@@ -135,42 +215,15 @@ export function scoreCaption(
   const reasons: string[] = [];
 
   const hasRhino = /\brhino\b|\brhinoceros\b/.test(c);
-  const wrongAnimal = WRONG_ANIMALS.find((a) => c.includes(a));
 
-  // ── GATE 0: Human/astronaut/pilot/cockpit = hard reject ──
-  if (includesAny(c, HUMAN_TERMS) || includesAny(c, COCKPIT_TERMS)) {
-    reasons.push("-20 HUMAN/COCKPIT CUE DETECTED");
-    return { score: -20, reasons };
-  }
-
-  // ── GATE 1: Wrong animal without rhino = hard reject ──
-  if (wrongAnimal && !hasRhino) {
-    reasons.push(`-15 WRONG ANIMAL: "${wrongAnimal}" (no rhino detected)`);
-    return { score: -15, reasons };
-  }
-
-  // ── GATE 2: Species must be detected ──
   if (!hasRhino) {
-    reasons.push("-10 SPECIES NOT DETECTED (no rhino/rhinoceros)");
-    return { score: -10, reasons };
+    reasons.push("0 base: rhino not in caption (may be confirmed by other signals)");
+    return { score: 0, reasons };
   }
 
-  // ── GATE 3: Must-include enforcement ──
-  const must = opts?.mustInclude ?? [];
-  const requireCount = opts?.requireMustIncludeCount ?? 0;
-
-  if (must.length > 0 && requireCount > 0) {
-    const { hits, total, hitList } = countMustIncludes(c, must);
-    reasons.push(`mustInclude: ${hits}/${total} (${hitList.join(", ") || "none"})`);
-    if (hits < requireCount) {
-      reasons.push(`-20 MISSING MUST-INCLUDES (need ${requireCount}, got ${hits})`);
-      return { score: -20, reasons };
-    }
-  }
-
-  // ── Species confirmed — base score 6 ──
+  // ── Species in caption — base score 6 ──
   let score = 6;
-  reasons.push("+6 base: rhino/rhinoceros detected");
+  reasons.push("+6 base: rhino/rhinoceros in caption");
 
   // Quality bonuses
   if (/\bcartoon\b|\billustration\b|\banimated\b|\bdrawing\b/.test(c)) {
@@ -190,7 +243,7 @@ export function scoreCaption(
     reasons.push("+1 horn");
   }
 
-  // Penalties (non-fatal — rhino is present but quality issues)
+  // Penalties
   if (/\btwo\b.*\brhino|\bmultiple\b.*\brhino|\bsecond\b.*\brhino/.test(c)) {
     score -= 4;
     reasons.push("-4 duplicate rhino");
@@ -199,15 +252,22 @@ export function scoreCaption(
     score -= 2;
     reasons.push("-2 text/watermark");
   }
+  const wrongAnimal = WRONG_ANIMALS.find((a) => c.includes(a));
   if (wrongAnimal) {
     score -= 3;
     reasons.push(`-3 wrong animal "${wrongAnimal}" also present`);
   }
 
-  // Must-include bonus (if checked and passed)
+  // Must-include bonus
+  const must = opts?.mustInclude ?? [];
+  const requireCount = opts?.requireMustIncludeCount ?? 0;
   if (must.length > 0 && requireCount > 0) {
-    score += 1;
-    reasons.push("+1 must-includes satisfied");
+    const { hits, total, hitList } = countMustIncludes(c, must);
+    reasons.push(`mustInclude: ${hits}/${total} (${hitList.join(", ") || "none"})`);
+    if (hits >= requireCount) {
+      score += 1;
+      reasons.push("+1 must-includes satisfied");
+    }
   }
 
   return { score, reasons };
@@ -241,29 +301,31 @@ export async function captionImage(
   }
 }
 
+// ─── MAIN SCORING FUNCTION ──────────────────────────────────────────────
+
 /**
- * Score a single candidate with multi-signal validation.
+ * Score a single candidate with deterministic accept/reject.
  *
- * Runs BLIP, CLIP, and detection in parallel where possible.
+ * Runs BLIP, CLIP, and detection in parallel.
  *
  * Flow:
- *   1. Run all signals in parallel (BLIP caption, CLIP embedding, detection)
- *   2. Apply BLIP gated score (may be negative = rejected)
- *   3. If rejected: try rescue via detection or CLIP
- *      - GroundingDINO rhinoceros conf >= 0.5 → rescue to base 4
- *      - CLIP similarity >= 0.80 → rescue to base 3
- *   4. If passed (or rescued): add CLIP and detection bonuses/penalties
- *   5. Return combined score + all reasons
+ *   1. Run all signals in parallel
+ *   2. acceptCandidate() — binary yes/no, four hard rules
+ *   3. scoreCaption() — ranking score for ordering accepted candidates
+ *   4. Add CLIP/detection bonuses to ranking score
+ *
+ * The `accepted` field is the ONLY thing that matters for the pipeline.
+ * The `score` field is ONLY for choosing between multiple accepted candidates.
  */
 export async function scoreCandidate(
   replicate: Replicate,
   imageUrl: string,
   opts?: ScoreOptions
 ): Promise<CandidateResult> {
-  // Run all signals in parallel for speed
   const hasClip = !!(opts?.anchorImageUrl || opts?.cachedAnchorEmbedding?.length);
   const hasDetection = opts?.enableDetection ?? false;
 
+  // Run all signals in parallel
   const [caption, clipResult, detectionResult] = await Promise.all([
     captionImage(replicate, imageUrl),
     hasClip
@@ -276,88 +338,55 @@ export async function scoreCandidate(
       : Promise.resolve(null as DetectionResult | null),
   ]);
 
-  // 1. Start with BLIP gated score
+  // ── 1. Deterministic accept/reject ──
+  const { accepted, rejectReason } = acceptCandidate(caption, clipResult, detectionResult);
+
+  // ── 2. Compute ranking score ──
   let { score, reasons } = scoreCaption(caption, opts);
-  const blipRejected = score < 0;
 
-  console.log(
-    `[Score] BLIP: caption="${caption}" → score=${score} ` +
-    `[${reasons.join(" | ")}]`
-  );
-
-  // 2. If BLIP rejected, try rescue via detection or CLIP
-  if (blipRejected) {
-    // Gate 0 (human/cockpit) is never rescuable — those are structural errors
-    const isHumanReject = reasons.some((r) => r.includes("HUMAN/COCKPIT"));
-
-    if (!isHumanReject) {
-      // Rescue via GroundingDINO: if rhinoceros detected with high confidence,
-      // BLIP was probably wrong about the species on a cartoon image
-      if (detectionResult?.detected && detectionResult.confidence >= 0.5) {
-        const rescuedScore = 4;
-        reasons.push(
-          `RESCUED by detection: rhinoceros detected ` +
-          `(conf=${detectionResult.confidence.toFixed(2)} >= 0.50), ` +
-          `overriding BLIP score ${score} → ${rescuedScore}`
-        );
-        score = rescuedScore;
-        console.log(`[Score] RESCUE via detection: ${score}`);
-      }
-
-      // Rescue via CLIP: if very similar to Riri anchor,
-      // the image probably IS Riri even though BLIP didn't see it
-      if (score < 0 && clipResult && clipResult.similarity >= 0.80) {
-        const rescuedScore = 3;
-        reasons.push(
-          `RESCUED by CLIP: high anchor similarity ` +
-          `(${clipResult.similarity.toFixed(3)} >= 0.80), ` +
-          `overriding BLIP score ${score} → ${rescuedScore}`
-        );
-        score = rescuedScore;
-        console.log(`[Score] RESCUE via CLIP: ${score}`);
-      }
-    }
+  // Add signal info to reasons regardless of accept/reject
+  if (clipResult) {
+    reasons.push(`CLIP: ${clipResult.similarity.toFixed(3)}`);
+    if (accepted) score += clipResult.scoreContribution;
+  }
+  if (detectionResult) {
+    reasons.push(`DINO: conf=${detectionResult.confidence.toFixed(2)} bbox=${(detectionResult.bestBboxArea * 100).toFixed(1)}%`);
+    if (accepted) score += detectionResult.scoreContribution;
   }
 
-  // 3. If passed (or rescued), add CLIP and detection bonuses/penalties
-  if (score >= 0) {
-    if (clipResult) {
-      // Don't double-count if CLIP already rescued
-      if (!blipRejected || score > 3) {
-        score += clipResult.scoreContribution;
-        reasons.push(clipResult.reason);
-      }
-    }
-
-    if (detectionResult) {
-      // Don't double-count if detection already rescued
-      if (!blipRejected || score > 4) {
-        score += detectionResult.scoreContribution;
-        reasons.push(detectionResult.reason);
-      }
-    }
+  // If rejected, force score negative so rejected candidates always rank below accepted ones
+  if (!accepted) {
+    score = Math.min(score, -1);
+    reasons.push(`REJECTED: ${rejectReason}`);
   }
 
   console.log(
-    `[Score] FINAL: score=${score} ` +
-    `(BLIP=${blipRejected ? "rejected" : "passed"}, ` +
-    `CLIP=${clipResult ? clipResult.similarity.toFixed(3) : "n/a"}, ` +
-    `Detection=${detectionResult ? detectionResult.confidence.toFixed(2) : "n/a"})`
+    `[Score] ${accepted ? "ACCEPTED" : "REJECTED"}: ` +
+    `caption="${caption}" score=${score} ` +
+    `BLIP-rhino=${/\brhino|\brhinoceros/.test(norm(caption))} ` +
+    `CLIP=${clipResult ? clipResult.similarity.toFixed(3) : "off"} ` +
+    `DINO=${detectionResult ? `conf=${detectionResult.confidence.toFixed(2)},bbox=${(detectionResult.bestBboxArea * 100).toFixed(1)}%` : "off"}` +
+    (rejectReason ? ` reason="${rejectReason}"` : "")
   );
 
   return {
     url: imageUrl,
     score,
+    accepted,
+    rejectReason,
     caption,
     reasons,
     clipSimilarity: clipResult?.similarity,
     detectionConfidence: detectionResult?.confidence,
+    detectionBboxArea: detectionResult?.bestBboxArea,
   };
 }
 
 /**
  * Generate candidates with seed variation, score each, return best.
- * Supports mask escalation and multi-signal scoring.
+ *
+ * Uses the deterministic `accepted` field — not the score threshold.
+ * Score is only used to rank among accepted candidates.
  */
 export async function generateAndSelectBest(
   generateFn: (seed: number, maskDataUrl: string) => Promise<string>,
@@ -384,13 +413,16 @@ export async function generateAndSelectBest(
     const result = await scoreCandidate(replicate, url, scoreOpts);
     allCandidates.push(result);
 
-    if (result.score >= SCORE_THRESHOLD) {
+    if (result.accepted) {
       console.log(
-        `[Select ${pageIndex}] ACCEPTED candidate ${i + 1} ` +
-        `(score ${result.score} >= ${SCORE_THRESHOLD})`
+        `[Select ${pageIndex}] ACCEPTED candidate ${i + 1} (score ${result.score})`
       );
       return result;
     }
+
+    console.log(
+      `[Select ${pageIndex}] REJECTED candidate ${i + 1}: ${result.rejectReason}`
+    );
   }
 
   // ── Round 2: escalated (larger) mask ──
@@ -404,28 +436,35 @@ export async function generateAndSelectBest(
       const result = await scoreCandidate(replicate, url, scoreOpts);
       allCandidates.push(result);
 
-      if (result.score >= SCORE_THRESHOLD) {
+      if (result.accepted) {
         console.log(
-          `[Select ${pageIndex}] ACCEPTED escalated candidate ${i + 1} ` +
-          `(score ${result.score} >= ${SCORE_THRESHOLD})`
+          `[Select ${pageIndex}] ACCEPTED escalated candidate ${i + 1} (score ${result.score})`
         );
         return result;
       }
+
+      console.log(
+        `[Select ${pageIndex}] REJECTED escalated candidate ${i + 1}: ${result.rejectReason}`
+      );
     }
   }
 
-  // ── No candidate passed — return best of all ──
+  // ── No candidate accepted — return highest-scored rejected ──
   if (allCandidates.length === 0) {
-    return { url: "", score: -999, caption: "", reasons: ["all candidates failed"] };
+    return {
+      url: "", score: -999, accepted: false,
+      rejectReason: "all candidates failed to generate",
+      caption: "", reasons: ["all candidates failed"],
+    };
   }
 
   allCandidates.sort((a, b) => b.score - a.score);
   const best = allCandidates[0];
 
   console.warn(
-    `[Select ${pageIndex}] WARNING: No candidate met threshold ${SCORE_THRESHOLD}. ` +
-    `Best score: ${best.score}. Caption: "${best.caption}". ` +
-    `Returning best of ${allCandidates.length} candidates.`
+    `[Select ${pageIndex}] WARNING: No candidate accepted. ` +
+    `Returning best rejected (score=${best.score}, reason="${best.rejectReason}"). ` +
+    `${allCandidates.length} total candidates tried.`
   );
 
   return best;

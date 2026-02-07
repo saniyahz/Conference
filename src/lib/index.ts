@@ -29,8 +29,9 @@ export {
 } from "./sceneSettings";
 export type { SceneSetting } from "./sceneSettings";
 
-// Candidate scoring — multi-signal: BLIP + CLIP + GroundingDINO
+// Candidate scoring — deterministic accept gate + multi-signal ranking
 export {
+  acceptCandidate,
   scoreCaption,
   captionImage,
   scoreCandidate,

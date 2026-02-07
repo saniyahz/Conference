@@ -127,7 +127,11 @@ export async function generateStoryPageImage(opts: {
 
   if (!plateUrl) {
     console.error(`[Page ${pageIndex}] Plate generation failed`);
-    return { url: "", score: -999, caption: "", reasons: ["plate failed"] };
+    return {
+      url: "", score: -999, accepted: false,
+      rejectReason: "plate generation failed",
+      caption: "", reasons: ["plate failed"],
+    };
   }
 
   // ── 4. Build masks: initial + escalated (larger) ──

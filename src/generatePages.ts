@@ -28,7 +28,7 @@ import Replicate from "replicate";
 import { makeRiriZoneMaskDataUrl, makeRiriZoneLargeMaskDataUrl } from "./lib/maskGenerator";
 import { generatePlate, generateInpaintCharacter } from "./lib/imageGeneration";
 import { resolveSceneSetting, enforceMustInclude } from "./lib/sceneSettings";
-import { scoreCandidate, SCORE_THRESHOLD, CandidateResult, ScoreOptions } from "./lib/candidateScoring";
+import { scoreCandidate, CandidateResult, ScoreOptions } from "./lib/candidateScoring";
 import { cacheAnchorEmbedding } from "./lib/clipScoring";
 import { LoraConfig, prependTriggerWord } from "./lib/loraTraining";
 
@@ -45,11 +45,14 @@ export interface PageResult {
   plateUrl: string;
   finalUrl: string;
   score: number;
+  accepted: boolean;
+  rejectReason: string;
   caption: string;
   mode: string;           // always "INPAINT" — logged proof
   reasons: string[];
   clipSimilarity?: number;
   detectionConfidence?: number;
+  detectionBboxArea?: number;
 }
 
 export interface GenerationOptions {
@@ -172,6 +175,8 @@ export async function generateOnePage(
       plateUrl: "",
       finalUrl: "",
       score: -999,
+      accepted: false,
+      rejectReason: "plate generation failed",
       caption: "",
       mode: "PLATE_FAILED",
       reasons: ["plate generation failed"],
@@ -227,11 +232,15 @@ export async function generateOnePage(
 
   // No candidate passed — return best of all
   allCandidates.sort((a, b) => b.score - a.score);
-  const best = allCandidates[0] || { url: "", score: -999, caption: "", reasons: ["no candidates"] };
+  const best = allCandidates[0] || {
+    url: "", score: -999, accepted: false,
+    rejectReason: "no candidates", caption: "", reasons: ["no candidates"],
+  };
 
   console.warn(
-    `[Page ${pageIndex + 1}] WARNING: No candidate met threshold ${SCORE_THRESHOLD}. ` +
-    `Best score: ${best.score}. Returning best of ${allCandidates.length}.`
+    `[Page ${pageIndex + 1}] WARNING: No candidate accepted. ` +
+    `Best score: ${best.score}. Reject: ${best.rejectReason}. ` +
+    `Returning best of ${allCandidates.length}.`
   );
 
   return buildPageResult(pageIndex, plateUrl, best);
@@ -282,17 +291,16 @@ async function runCandidateRound(
     const result = await scoreCandidate(replicate, url, scoreOpts);
     candidates.push(result);
 
-    if (result.score >= SCORE_THRESHOLD) {
+    if (result.accepted) {
       console.log(
         `[Page ${pageIndex + 1}] ACCEPTED candidate ${i + 1} ` +
-        `(score ${result.score} >= ${SCORE_THRESHOLD})`
+        `(score ${result.score})`
       );
       return { candidates, accepted: result };
     }
 
     console.log(
-      `[Page ${pageIndex + 1}] REJECTED candidate ${i + 1} ` +
-      `(score ${result.score} < ${SCORE_THRESHOLD})`
+      `[Page ${pageIndex + 1}] REJECTED candidate ${i + 1}: ${result.rejectReason}`
     );
   }
 
@@ -311,11 +319,14 @@ function buildPageResult(
     plateUrl,
     finalUrl: candidate.url,
     score: candidate.score,
+    accepted: candidate.accepted,
+    rejectReason: candidate.rejectReason,
     caption: candidate.caption,
     mode: "INPAINT",
     reasons: candidate.reasons,
     clipSimilarity: candidate.clipSimilarity,
     detectionConfidence: candidate.detectionConfidence,
+    detectionBboxArea: candidate.detectionBboxArea,
   };
 }
 
