@@ -207,27 +207,35 @@ export async function generateOnePage(
     enableDetection,
   };
 
-  // Round 1: initial mask
+  // Round 1: initial mask — run ALL candidates, pick BEST accepted
   console.log(`\n[Page ${pageIndex + 1}] --- Round 1: initial mask ---`);
-  const round1Result = await runCandidateRound(
+  const round1Candidates = await runCandidateRound(
     replicate, charPrompt, plateUrl, initialMask,
     baseSeed, CANDIDATES_PER_ROUND, pageIndex, mustInclude, scene.setting, scoreOpts, lora
   );
-  allCandidates.push(...round1Result.candidates);
-  if (round1Result.accepted) {
-    return buildPageResult(pageIndex, plateUrl, round1Result.accepted);
+  allCandidates.push(...round1Candidates);
+
+  const accepted1 = round1Candidates.filter((x) => x.accepted);
+  if (accepted1.length > 0) {
+    accepted1.sort((a, b) => b.score - a.score);
+    console.log(`[Page ${pageIndex + 1}] Best accepted from round 1: score=${accepted1[0].score} (${accepted1.length} accepted)`);
+    return buildPageResult(pageIndex, plateUrl, accepted1[0]);
   }
 
-  // Round 2: escalated (larger) mask
+  // Round 2: escalated (larger) mask — run ALL, pick BEST accepted
   console.log(`\n[Page ${pageIndex + 1}] --- Round 2: ESCALATED mask ---`);
   const round2Seed = baseSeed + CANDIDATES_PER_ROUND * SEED_STRIDE;
-  const round2Result = await runCandidateRound(
+  const round2Candidates = await runCandidateRound(
     replicate, charPrompt, plateUrl, escalatedMask,
     round2Seed, CANDIDATES_PER_ROUND, pageIndex, mustInclude, scene.setting, scoreOpts, lora
   );
-  allCandidates.push(...round2Result.candidates);
-  if (round2Result.accepted) {
-    return buildPageResult(pageIndex, plateUrl, round2Result.accepted);
+  allCandidates.push(...round2Candidates);
+
+  const accepted2 = allCandidates.filter((x) => x.accepted);
+  if (accepted2.length > 0) {
+    accepted2.sort((a, b) => b.score - a.score);
+    console.log(`[Page ${pageIndex + 1}] Best accepted from round 2: score=${accepted2[0].score} (${accepted2.length} accepted)`);
+    return buildPageResult(pageIndex, plateUrl, accepted2[0]);
   }
 
   // No candidate passed — return best of all
@@ -260,14 +268,12 @@ async function runCandidateRound(
   settingContext: string,
   scoreOpts: ScoreOptions,
   lora?: LoraConfig
-): Promise<{ candidates: CandidateResult[]; accepted: CandidateResult | null }> {
+): Promise<CandidateResult[]> {
   const candidates: CandidateResult[] = [];
 
   for (let i = 0; i < count; i++) {
     const seed = baseSeed + i * SEED_STRIDE;
 
-    // This is the ONLY character generation call. It uses inpaint.
-    // generateInpaintCharacter throws if mask is missing.
     console.log(`\n[Page ${pageIndex + 1}] Candidate ${i + 1}/${count} seed=${seed}`);
     console.log(`[MODE] INPAINT page=${pageIndex + 1} seed=${seed} strength=0.65 mask=present`);
 
@@ -291,20 +297,14 @@ async function runCandidateRound(
     const result = await scoreCandidate(replicate, url, scoreOpts);
     candidates.push(result);
 
-    if (result.accepted) {
-      console.log(
-        `[Page ${pageIndex + 1}] ACCEPTED candidate ${i + 1} ` +
-        `(score ${result.score})`
-      );
-      return { candidates, accepted: result };
-    }
-
     console.log(
-      `[Page ${pageIndex + 1}] REJECTED candidate ${i + 1}: ${result.rejectReason}`
+      `[Page ${pageIndex + 1}] Candidate ${i + 1}: ` +
+      `${result.accepted ? "ACCEPTED" : "REJECTED"} score=${result.score}` +
+      (result.rejectReason ? ` reason="${result.rejectReason}"` : "")
     );
   }
 
-  return { candidates, accepted: null };
+  return candidates;
 }
 
 // ─── HELPERS ────────────────────────────────────────────────────────────
