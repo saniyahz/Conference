@@ -270,13 +270,15 @@ async function runCandidateRound(
   scoreOpts: ScoreOptions,
   lora?: LoraConfig
 ): Promise<CandidateResult[]> {
-  const candidates: CandidateResult[] = [];
+  // Run ALL candidates in parallel — biggest speed win.
+  // Each candidate: generate (~20s) + score (~15s) = ~35s serial.
+  // 3 candidates sequential = ~105s. Parallel = ~35s.
+  console.log(`[Page ${pageIndex + 1}] Generating ${count} candidates in parallel...`);
 
-  for (let i = 0; i < count; i++) {
+  const tasks = Array.from({ length: count }, async (_, i) => {
     const seed = baseSeed + i * SEED_STRIDE;
 
-    console.log(`\n[Page ${pageIndex + 1}] Candidate ${i + 1}/${count} seed=${seed}`);
-    console.log(`[MODE] INPAINT page=${pageIndex + 1} seed=${seed} strength=0.65 mask=present`);
+    console.log(`[Page ${pageIndex + 1}] Candidate ${i + 1}/${count} seed=${seed} [MODE] INPAINT strength=0.65`);
 
     const url = await generateInpaintCharacter(
       replicate,
@@ -292,20 +294,22 @@ async function runCandidateRound(
 
     if (!url) {
       console.warn(`[Page ${pageIndex + 1}] Candidate ${i + 1} generation failed`);
-      continue;
+      return null;
     }
 
     const result = await scoreCandidate(replicate, url, scoreOpts);
-    candidates.push(result);
 
     console.log(
       `[Page ${pageIndex + 1}] Candidate ${i + 1}: ` +
       `${result.accepted ? "ACCEPTED" : "REJECTED"} score=${result.score}` +
       (result.rejectReason ? ` reason="${result.rejectReason}"` : "")
     );
-  }
 
-  return candidates;
+    return result;
+  });
+
+  const results = await Promise.all(tasks);
+  return results.filter((r): r is CandidateResult => r !== null);
 }
 
 // ─── HELPERS ────────────────────────────────────────────────────────────

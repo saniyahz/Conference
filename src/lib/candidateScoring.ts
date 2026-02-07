@@ -450,22 +450,29 @@ export async function generateAndSelectBest(
   const all: CandidateResult[] = [];
 
   async function runRound(maskDataUrl: string, seedBase: number, roundLabel: string) {
-    console.log(`[Select ${pageIndex}] ${roundLabel} (${numCandidates} candidates)`);
-    for (let i = 0; i < numCandidates; i++) {
+    console.log(`[Select ${pageIndex}] ${roundLabel} (${numCandidates} candidates in parallel)`);
+
+    const tasks = Array.from({ length: numCandidates }, async (_, i) => {
       const seed = seedBase + i * 29;
       const url = await generateFn(seed, maskDataUrl);
       if (!url) {
         console.warn(`[Select ${pageIndex}] Candidate ${i + 1} generation failed`);
-        continue;
+        return null;
       }
 
       const result = await scoreCandidate(replicate, url, scoreOpts);
-      all.push(result);
 
       console.log(
         `[Select ${pageIndex}] Candidate ${i + 1}: ${result.accepted ? "ACCEPTED" : "REJECTED"} ` +
         `score=${result.score}${result.rejectReason ? ` reason="${result.rejectReason}"` : ""}`
       );
+
+      return result;
+    });
+
+    const results = await Promise.all(tasks);
+    for (const r of results) {
+      if (r) all.push(r);
     }
   }
 
