@@ -1,16 +1,14 @@
 import Replicate from "replicate";
 
 /**
- * Candidate scoring with hard rejection gates.
+ * Candidate scoring with hard rejection gates + must-include enforcement.
  *
- * The old scorer let elephants/cats/bears pass because it only
- * checked for positive rhino signals. Now scoring is gated:
- *
- *  Gate 1: Wrong animal detected → instant reject (-10)
- *  Gate 2: Species not detected  → reject (-5)
- *  Gate 3: Human detected        → reject (-5)
- *  Gate 4: Text/watermark        → penalty (-2)
- *  Pass:   Species confirmed     → base score 4, with quality bonuses
+ * Gate order (early exit on reject):
+ *   Gate 0: Human/astronaut/pilot/cockpit cues → -20
+ *   Gate 1: Wrong animal without rhino          → -15
+ *   Gate 2: No rhino/rhinoceros detected        → -10
+ *   Gate 3: Must-include enforcement (optional)  → -20
+ *   Pass:   Base score 6, with quality bonuses
  */
 
 export interface CandidateResult {
@@ -20,11 +18,14 @@ export interface CandidateResult {
   reasons: string[];
 }
 
+export interface ScoreOptions {
+  mustInclude?: string[];
+  requireMustIncludeCount?: number;
+}
+
 const BLIP_VERSION =
   "2e1dddc8621f72155f24cf2e0adbde548458d3cab9f00c0139eea840d0ac4746" as const;
 
-/** Animals that are NOT Riri. If BLIP sees one of these without also
- *  seeing "rhino"/"rhinoceros", it's a hard reject. */
 const WRONG_ANIMALS = [
   "elephant", "cat", "dog", "bear", "lion", "tiger", "monkey",
   "rabbit", "horse", "cow", "giraffe", "zebra", "hippo",
@@ -33,74 +34,151 @@ const WRONG_ANIMALS = [
   "penguin", "frog", "turtle", "snake", "fish",
 ];
 
-export const SCORE_THRESHOLD = 4;
+const HUMAN_TERMS = [
+  "human", "boy", "girl", "man", "woman", "person", "people",
+  "child", "kid", "baby", "astronaut", "pilot", "captain",
+  "crew", "spacesuit", "space suit", "helmet visor",
+];
+
+const COCKPIT_TERMS = [
+  "cockpit", "control panel", "dashboard", "joystick", "steering",
+  "airplane cockpit", "spaceship cockpit", "fighter jet",
+];
+
+/** Must-include keyword expansions for fuzzy matching */
+const EXPANSIONS: Record<string, string[]> = {
+  "rocket ship": ["rocket", "spaceship"],
+  "rhinoceros": ["rhino"],
+  "water splash": ["splash", "spray"],
+};
+
+export const SCORE_THRESHOLD = 6;
+
+function norm(s: string): string {
+  return s.toLowerCase().replace(/[^\w\s]/g, " ").replace(/\s+/g, " ").trim();
+}
+
+function includesAny(c: string, terms: string[]): boolean {
+  return terms.some((t) => c.includes(t));
+}
+
+function countMustIncludes(
+  c: string,
+  mustInclude: string[]
+): { hits: number; hitList: string[]; total: number } {
+  const cleaned = mustInclude
+    .map((m) =>
+      norm(m)
+        .replace(/\bexactly\b/g, "")
+        .replace(/\b\d+\b/g, "")
+        .trim()
+    )
+    .filter(Boolean);
+
+  let hits = 0;
+  const hitList: string[] = [];
+
+  for (const item of cleaned) {
+    const variants = [item, ...(EXPANSIONS[item] ?? [])].filter(Boolean);
+    if (variants.some((v) => c.includes(v))) {
+      hits++;
+      hitList.push(item);
+    }
+  }
+
+  return { hits, hitList, total: cleaned.length };
+}
 
 /**
  * Score a BLIP caption with hard rejection gates.
  *
- * This is a gated scorer, not an additive point system.
- * Wrong animals are instantly rejected regardless of other signals.
+ * Gate 0: Human/astronaut/pilot/cockpit → instant reject (-20)
+ * Gate 1: Wrong animal without rhino → reject (-15)
+ * Gate 2: No rhino detected → reject (-10)
+ * Gate 3: Must-includes not met → reject (-20)
+ * Pass: Base 6 + bonuses for cartoon/full-body/gray/horn
  */
-export function scoreCaption(caption: string): { score: number; reasons: string[] } {
-  const c = caption.toLowerCase();
+export function scoreCaption(
+  caption: string,
+  opts?: ScoreOptions
+): { score: number; reasons: string[] } {
+  const c = norm(caption);
   const reasons: string[] = [];
 
   const hasRhino = /\brhino\b|\brhinoceros\b/.test(c);
+  const wrongAnimal = WRONG_ANIMALS.find((a) => c.includes(a));
+
+  // ── GATE 0: Human/astronaut/pilot/cockpit = hard reject ──
+  if (includesAny(c, HUMAN_TERMS) || includesAny(c, COCKPIT_TERMS)) {
+    reasons.push("-20 HUMAN/COCKPIT CUE DETECTED");
+    return { score: -20, reasons };
+  }
 
   // ── GATE 1: Wrong animal without rhino = hard reject ──
-  const wrongAnimal = WRONG_ANIMALS.find((a) => c.includes(a));
   if (wrongAnimal && !hasRhino) {
-    reasons.push(`-10 WRONG ANIMAL: "${wrongAnimal}" (no rhino detected)`);
-    return { score: -10, reasons };
+    reasons.push(`-15 WRONG ANIMAL: "${wrongAnimal}" (no rhino detected)`);
+    return { score: -15, reasons };
   }
 
   // ── GATE 2: Species must be detected ──
   if (!hasRhino) {
-    reasons.push("-5 SPECIES NOT DETECTED (no rhino/rhinoceros in caption)");
-    return { score: -5, reasons };
+    reasons.push("-10 SPECIES NOT DETECTED (no rhino/rhinoceros)");
+    return { score: -10, reasons };
   }
 
-  // ── GATE 3: Human presence = hard reject ──
-  if (/\bhuman\b|\bboy\b|\bgirl\b|\bman\b|\bwoman\b|\bperson\b|\bchild\b|\bkid\b/.test(c)) {
-    reasons.push("-5 HUMAN DETECTED");
-    return { score: -5, reasons };
+  // ── GATE 3: Must-include enforcement ──
+  const must = opts?.mustInclude ?? [];
+  const requireCount = opts?.requireMustIncludeCount ?? 0;
+
+  if (must.length > 0 && requireCount > 0) {
+    const { hits, total, hitList } = countMustIncludes(c, must);
+    reasons.push(`mustInclude: ${hits}/${total} (${hitList.join(", ") || "none"})`);
+    if (hits < requireCount) {
+      reasons.push(`-20 MISSING MUST-INCLUDES (need ${requireCount}, got ${hits})`);
+      return { score: -20, reasons };
+    }
   }
 
-  // ── Species confirmed — start at base score 4 ──
-  let score = 4;
-  reasons.push("+4 base: rhino/rhinoceros detected");
+  // ── Species confirmed — base score 6 ──
+  let score = 6;
+  reasons.push("+6 base: rhino/rhinoceros detected");
 
   // Quality bonuses
   if (/\bcartoon\b|\billustration\b|\banimated\b|\bdrawing\b/.test(c)) {
     score += 1;
-    reasons.push("+1 cartoon/illustration style");
+    reasons.push("+1 cartoon/illustration");
   }
-  if (/\bfull\b|\bstanding\b|\bbody\b/.test(c)) {
-    score += 1;
-    reasons.push("+1 full body / standing");
+  if (/\bfull body\b|\bstanding\b|\bwhole body\b/.test(c)) {
+    score += 2;
+    reasons.push("+2 full body / standing");
   }
   if (/\bgr[ae]y\b/.test(c)) {
     score += 1;
-    reasons.push("+1 gray/grey color match");
+    reasons.push("+1 gray/grey");
   }
   if (/\bhorn\b/.test(c)) {
     score += 1;
-    reasons.push("+1 horn visible");
+    reasons.push("+1 horn");
   }
 
-  // Penalties (non-fatal)
+  // Penalties (non-fatal — rhino is present but quality issues)
   if (/\btwo\b.*\brhino|\bmultiple\b.*\brhino|\bsecond\b.*\brhino/.test(c)) {
-    score -= 3;
-    reasons.push("-3 duplicate rhino");
+    score -= 4;
+    reasons.push("-4 duplicate rhino");
   }
   if (/\btext\b|\bwatermark\b|\bsignature\b|\bwriting\b|\bletters\b/.test(c)) {
     score -= 2;
     reasons.push("-2 text/watermark");
   }
-  // Wrong animal present but rhino also present — penalize but don't reject
   if (wrongAnimal) {
-    score -= 2;
-    reasons.push(`-2 wrong animal "${wrongAnimal}" also present (rhino detected too)`);
+    score -= 3;
+    reasons.push(`-3 wrong animal "${wrongAnimal}" also present`);
+  }
+
+  // Must-include bonus (if checked and passed)
+  if (must.length > 0 && requireCount > 0) {
+    score += 1;
+    reasons.push("+1 must-includes satisfied");
   }
 
   return { score, reasons };
@@ -135,14 +213,16 @@ export async function captionImage(
 }
 
 /**
- * Score a single candidate.
+ * Score a single candidate. Now accepts ScoreOptions so callers
+ * can pass mustInclude items for enforcement.
  */
 export async function scoreCandidate(
   replicate: Replicate,
-  imageUrl: string
+  imageUrl: string,
+  opts?: ScoreOptions
 ): Promise<CandidateResult> {
   const caption = await captionImage(replicate, imageUrl);
-  const { score, reasons } = scoreCaption(caption);
+  const { score, reasons } = scoreCaption(caption, opts);
 
   console.log(
     `[Score] caption="${caption}" → score=${score} ` +
@@ -154,18 +234,7 @@ export async function scoreCandidate(
 
 /**
  * Generate candidates with seed variation, score each, return best.
- *
- * Supports mask escalation: if the caller provides an escalateMaskFn,
- * it's called after the first batch fails to produce a passing candidate.
- * The escalated mask is larger, giving the model more room to paint Riri.
- *
- * @param generateFn - Generates one candidate. Receives (seed, maskDataUrl).
- * @param replicate - For BLIP captioning
- * @param baseSeed - Starting seed
- * @param initialMaskDataUrl - First mask to try
- * @param escalatedMaskDataUrl - Larger mask to try if initial fails (optional)
- * @param numCandidates - Candidates per mask size (default: 3)
- * @param pageIndex - For logging
+ * Supports mask escalation and must-include scoring.
  */
 export async function generateAndSelectBest(
   generateFn: (seed: number, maskDataUrl: string) => Promise<string>,
@@ -174,7 +243,8 @@ export async function generateAndSelectBest(
   initialMaskDataUrl: string,
   escalatedMaskDataUrl?: string,
   numCandidates: number = 3,
-  pageIndex: number = 0
+  pageIndex: number = 0,
+  scoreOpts?: ScoreOptions
 ): Promise<CandidateResult> {
   const allCandidates: CandidateResult[] = [];
 
@@ -188,7 +258,7 @@ export async function generateAndSelectBest(
       continue;
     }
 
-    const result = await scoreCandidate(replicate, url);
+    const result = await scoreCandidate(replicate, url, scoreOpts);
     allCandidates.push(result);
 
     if (result.score >= SCORE_THRESHOLD) {
@@ -208,7 +278,7 @@ export async function generateAndSelectBest(
       const url = await generateFn(seed, escalatedMaskDataUrl);
       if (!url) continue;
 
-      const result = await scoreCandidate(replicate, url);
+      const result = await scoreCandidate(replicate, url, scoreOpts);
       allCandidates.push(result);
 
       if (result.score >= SCORE_THRESHOLD) {

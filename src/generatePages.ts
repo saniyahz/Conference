@@ -17,8 +17,7 @@ import Replicate from "replicate";
 import { makeRiriZoneMaskDataUrl, makeRiriZoneLargeMaskDataUrl } from "./lib/maskGenerator";
 import { generatePlate, generateInpaintCharacter } from "./lib/imageGeneration";
 import { resolveSceneSetting, enforceMustInclude } from "./lib/sceneSettings";
-import { scoreCandidate, SCORE_THRESHOLD, CandidateResult } from "./lib/candidateScoring";
-import { buildPlateNegative } from "./lib/negativePrompts";
+import { scoreCandidate, SCORE_THRESHOLD, CandidateResult, ScoreOptions } from "./lib/candidateScoring";
 
 // ─── TYPES ──────────────────────────────────────────────────────────────
 
@@ -152,11 +151,17 @@ export async function generateOnePage(
   // ── 5. Candidate loop: inpaint + score ──
   const allCandidates: CandidateResult[] = [];
 
+  // Build score options with must-include enforcement
+  const scoreOpts: ScoreOptions = {
+    mustInclude,
+    requireMustIncludeCount: Math.min(2, mustInclude.length),
+  };
+
   // Round 1: initial mask
   console.log(`\n[Page ${pageIndex + 1}] --- Round 1: initial mask ---`);
   const round1Result = await runCandidateRound(
     replicate, charPrompt, plateUrl, initialMask,
-    baseSeed, CANDIDATES_PER_ROUND, pageIndex, mustInclude, scene.setting
+    baseSeed, CANDIDATES_PER_ROUND, pageIndex, mustInclude, scene.setting, scoreOpts
   );
   allCandidates.push(...round1Result.candidates);
   if (round1Result.accepted) {
@@ -168,7 +173,7 @@ export async function generateOnePage(
   const round2Seed = baseSeed + CANDIDATES_PER_ROUND * SEED_STRIDE;
   const round2Result = await runCandidateRound(
     replicate, charPrompt, plateUrl, escalatedMask,
-    round2Seed, CANDIDATES_PER_ROUND, pageIndex, mustInclude, scene.setting
+    round2Seed, CANDIDATES_PER_ROUND, pageIndex, mustInclude, scene.setting, scoreOpts
   );
   allCandidates.push(...round2Result.candidates);
   if (round2Result.accepted) {
@@ -198,7 +203,8 @@ async function runCandidateRound(
   count: number,
   pageIndex: number,
   mustInclude: string[],
-  settingContext: string
+  settingContext: string,
+  scoreOpts: ScoreOptions
 ): Promise<{ candidates: CandidateResult[]; accepted: CandidateResult | null }> {
   const candidates: CandidateResult[] = [];
 
@@ -226,7 +232,7 @@ async function runCandidateRound(
       continue;
     }
 
-    const result = await scoreCandidate(replicate, url);
+    const result = await scoreCandidate(replicate, url, scoreOpts);
     candidates.push(result);
 
     if (result.score >= SCORE_THRESHOLD) {

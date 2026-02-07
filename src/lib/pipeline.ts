@@ -2,7 +2,7 @@ import Replicate from "replicate";
 import { makeRiriZoneMaskDataUrl, makeRiriZoneLargeMaskDataUrl } from "./maskGenerator";
 import { generatePlate, generateInpaintCharacter } from "./imageGeneration";
 import { resolveSceneSetting, enforceMustInclude } from "./sceneSettings";
-import { generateAndSelectBest, CandidateResult } from "./candidateScoring";
+import { generateAndSelectBest, CandidateResult, ScoreOptions } from "./candidateScoring";
 
 const RIRI_BASE_MUST_INCLUDE = ["rhinoceros", "Riri"];
 
@@ -118,6 +118,11 @@ export async function generateStoryPageImage(opts: {
   console.log(`[Page ${pageIndex}] Character prompt (${characterPrompt.split(" ").length} words)`);
 
   // ── 5. Generate + score candidates with mask escalation ──
+  const scoreOpts: ScoreOptions = {
+    mustInclude,
+    requireMustIncludeCount: Math.min(2, mustInclude.length),
+  };
+
   const result = await generateAndSelectBest(
     async (seed: number, maskDataUrl: string) => {
       return generateInpaintCharacter(
@@ -136,7 +141,8 @@ export async function generateStoryPageImage(opts: {
     initialMask,
     escalatedMask,
     numCandidates,
-    pageIndex
+    pageIndex,
+    scoreOpts
   );
 
   console.log(

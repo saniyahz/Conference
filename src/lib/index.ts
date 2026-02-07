@@ -37,7 +37,7 @@ export {
   generateAndSelectBest,
   SCORE_THRESHOLD,
 } from "./candidateScoring";
-export type { CandidateResult } from "./candidateScoring";
+export type { CandidateResult, ScoreOptions } from "./candidateScoring";
 
 // Pipeline — plate → inpaint → validate → escalate
 export {
