@@ -1,160 +1,209 @@
 import Replicate from "replicate";
-import { makeCenterEllipseMaskDataUrl } from "./maskGenerator";
-import { generateImageWithAnchor } from "./imageGeneration";
+import { makeRiriZoneMaskDataUrl } from "./maskGenerator";
+import { generatePlate, generateInpaintCharacter } from "./imageGeneration";
 import { resolveSceneSetting, enforceMustInclude } from "./sceneSettings";
+import { generateAndSelectBest, CandidateResult } from "./candidateScoring";
 
 /**
  * Base "must include" items for every Riri image.
- * These are never removed by noun-gating or negative sanitization.
+ * These are NEVER removed by noun-gating or negative sanitization.
  */
 const RIRI_BASE_MUST_INCLUDE = ["rhinoceros", "Riri"];
 
+// ─── PROMPT BUILDERS ────────────────────────────────────────────────────
+
 /**
- * Build an inpaint-optimized prompt for Riri.
+ * Build a CHARACTER-FIRST prompt for the inpaint pass.
  *
- * KEY INSIGHT: When inpainting, the prompt should be CHARACTER-focused,
- * not scene-focused. The scene is already baked into the plate image.
- * Re-listing background items fights the inpaint mask.
+ * Critical: the first tokens must be the character + composition.
+ * SDXL weights earlier tokens more heavily. If you lead with scene
+ * description, SDXL "spends its budget" on background and drops the hero.
  *
- * Good:  "Riri the cute gray rhinoceros, full body, centered..."
- * Bad:   "Riri in a forest with waterfalls and dolphins..."
+ * Structure:
+ *   1. Character lock (Riri physical description)
+ *   2. Composition (centered, full body, frame %)
+ *   3. Action (what Riri is doing)
+ *   4. Minimal scene reminder (background is already in the plate)
+ *   5. Style lock (consistent across all pages)
+ *   6. Hard exclusions (no text, no humans, one rhino only)
  */
-export function buildRiriInpaintPrompt(
-  settingContext: string,
-  extraCharacterDetails: string = ""
-): string {
-  const parts = [
-    "Riri the cute gray rhinoceros",
-    "full body",
-    "centered in foreground",
-    "standing on ground",
-    "matching the scene perspective and lighting",
-    "same art style as background",
-    "children's storybook illustration",
-    "friendly expression",
-    "soft shading",
-  ];
-
-  if (extraCharacterDetails) {
-    parts.push(extraCharacterDetails);
-  }
-
-  // Minimal scene reference so style stays coherent
-  if (settingContext) {
-    parts.push(`scene: ${settingContext}`);
-  }
-
-  return parts.join(", ");
+export function buildCharacterFirstPrompt(opts: {
+  action: string;
+  setting: string;
+  mustInclude: string[];
+}): string {
+  return [
+    // 1. HARD subject lock — first tokens, highest weight
+    "Riri, cute gray rhinoceros, one small rounded horn, big friendly eyes, thick gray skin, full body visible",
+    // 2. Composition lock
+    "centered foreground, main focus, occupies 40-55% of frame",
+    // 3. Action
+    `doing: ${opts.action}`,
+    // 4. Minimal scene reminder (plate has the background already)
+    `background: ${opts.setting}`,
+    // 5. Must-include objects (keep short)
+    opts.mustInclude.length > 0
+      ? `must include: ${opts.mustInclude.join(", ")}`
+      : "",
+    // 6. Style lock — same every page for consistency
+    "2D children's picture book illustration, bold clean outlines, flat cel shading, vibrant pastel colors, warm gentle magical mood",
+    // 7. Hard exclusions baked into prompt
+    "only one rhinoceros, no duplicate rhinos, no humans, no text, no watermark, no signature",
+  ]
+    .filter(Boolean)
+    .join(". ");
 }
 
 /**
- * Full pipeline for generating a story page image:
+ * Build a plate (background) prompt.
+ * Scene-focused, no character content.
+ */
+export function buildPlatePrompt(setting: string, styleHints: string): string {
+  return [
+    setting,
+    styleHints,
+    "2D children's picture book illustration, bold clean outlines, flat cel shading, vibrant pastel colors, warm gentle magical mood",
+    "empty scene, no characters, no animals, no people",
+    "wide establishing shot, clear composition",
+    "no text, no watermark, no signature",
+  ].join(". ");
+}
+
+// ─── MAIN PIPELINE ─────────────────────────────────────────────────────
+
+/**
+ * Generate a story page image using the character-first inpaint pipeline.
  *
- *  Step 1: Generate (or receive) a scene "plate" — background only, no character.
- *  Step 2: Use masked inpaint to paint Riri into the center of the plate.
+ * Flow:
+ *   Pass A — Generate background plate (no characters)
+ *   Pass B — Inpaint Riri into the foreground mask zone
+ *   Pass C — Auto-validate with BLIP + keyword scoring; retry if needed
  *
- * This two-step approach guarantees:
- *  - Riri always appears (mask forces content in the center)
- *  - Background stays stable (mask protects it)
- *  - No random humans replace Riri
- *  - Scene matches the story text
+ * This replaces the old plate → img2img approach which structurally
+ * allowed the model to skip the character.
+ *
+ * @param opts.replicate - Replicate client
+ * @param opts.pageText - The story text for this page (source of truth for setting)
+ * @param opts.action - What Riri is doing on this page (e.g., "exploring the forest")
+ * @param opts.pageSeed - Base seed for reproducibility
+ * @param opts.pageIndex - Page number (for logging)
+ * @param opts.baseImageUrl - Optional base image for plate img2img (style reference)
+ * @param opts.sceneCardFallback - Optional fallback setting (only used if page text has no environment)
+ * @param opts.numCandidates - How many inpaint candidates to generate and score (default: 5)
  */
 export async function generateStoryPageImage(opts: {
   replicate: Replicate;
   pageText: string;
-  plateImageUrl: string;
+  action: string;
   pageSeed: number;
   pageIndex: number;
+  baseImageUrl?: string;
   sceneCardFallback?: string;
-  extraCharacterDetails?: string;
-  maskSize?: number;
-  maskEllipseW?: number;
-  maskEllipseH?: number;
-}): Promise<string> {
+  numCandidates?: number;
+}): Promise<CandidateResult> {
   const {
     replicate,
     pageText,
-    plateImageUrl,
+    action,
     pageSeed,
     pageIndex,
+    baseImageUrl,
     sceneCardFallback,
-    extraCharacterDetails,
-    maskSize = 1024,
-    maskEllipseW = 760,
-    maskEllipseH = 760,
+    numCandidates = 5,
   } = opts;
 
-  // --- 1. Resolve scene setting from the page text ---
-  const scene = resolveSceneSetting(
-    pageText,
-    RIRI_BASE_MUST_INCLUDE,
-    sceneCardFallback
-  );
-
-  // Ensure mustInclude items are never dropped
+  // ── 1. Resolve scene from page text (never canonicalize) ──
+  const scene = resolveSceneSetting(pageText, RIRI_BASE_MUST_INCLUDE, sceneCardFallback);
   const mustInclude = enforceMustInclude(scene.mustInclude, RIRI_BASE_MUST_INCLUDE);
 
   console.log(`[Page ${pageIndex}] Setting: "${scene.setting}"`);
+  console.log(`[Page ${pageIndex}] Category: ${scene.category}`);
   console.log(`[Page ${pageIndex}] Must include: ${mustInclude.join(", ")}`);
 
-  // --- 2. Generate the inpaint mask ---
-  const mask = await makeCenterEllipseMaskDataUrl(maskSize, maskEllipseW, maskEllipseH);
+  // ── 2. Generate background plate (Pass A) ──
+  const platePrompt = buildPlatePrompt(scene.setting, scene.styleHints);
+  console.log(`[Page ${pageIndex}] Plate prompt: "${platePrompt}"`);
 
-  // --- 3. Build character-focused inpaint prompt ---
-  const prompt = buildRiriInpaintPrompt(scene.settingContext, extraCharacterDetails);
-
-  console.log(`[Page ${pageIndex}] Inpaint prompt: "${prompt}"`);
-
-  // --- 4. Run SDXL inpaint: plate + mask → Riri in scene ---
-  const imageUrl = await generateImageWithAnchor(
+  const plateUrl = await generatePlate(
     replicate,
-    prompt,
-    plateImageUrl,
+    platePrompt,
     pageSeed,
     pageIndex,
-    0.85,           // promptStrength (used only if mask is absent; mask overrides to 0.65)
-    scene.settingContext,
-    mustInclude,
-    mask            // <-- forces character into the center zone
+    baseImageUrl,
+    0.80
   );
 
-  if (!imageUrl) {
-    console.error(`[Page ${pageIndex}] Failed to generate image after all retries`);
+  if (!plateUrl) {
+    console.error(`[Page ${pageIndex}] Plate generation failed`);
+    return { url: "", score: -999, caption: "", reasons: ["plate failed"] };
   }
 
-  return imageUrl;
+  // ── 3. Create Riri zone mask ──
+  const maskDataUrl = await makeRiriZoneMaskDataUrl(1024);
+
+  // ── 4. Build character-first prompt ──
+  const characterPrompt = buildCharacterFirstPrompt({
+    action,
+    setting: scene.setting,
+    mustInclude: mustInclude.filter(
+      (item) => !["rhinoceros", "Riri"].includes(item) // already in the character lock
+    ),
+  });
+  console.log(`[Page ${pageIndex}] Character prompt: "${characterPrompt}"`);
+
+  // ── 5. Generate + score candidates (Pass B + C) ──
+  const result = await generateAndSelectBest(
+    async (seed: number) => {
+      return generateInpaintCharacter(
+        replicate,
+        characterPrompt,
+        plateUrl,
+        maskDataUrl,
+        seed,
+        pageIndex,
+        scene.setting,
+        mustInclude
+      );
+    },
+    replicate,
+    pageSeed,
+    numCandidates,
+    pageIndex
+  );
+
+  console.log(
+    `[Page ${pageIndex}] Final result: score=${result.score}, ` +
+    `caption="${result.caption}", url=${result.url}`
+  );
+
+  return result;
 }
 
 /**
- * Convenience: generate a scene plate (background only, no character).
- * This is a standard img2img call WITHOUT a mask.
+ * Convenience: generate just a plate (no character pass).
+ * Useful for debugging or when you need the background alone.
  */
-export async function generateScenePlate(opts: {
+export async function generateScenePlateOnly(opts: {
   replicate: Replicate;
-  scenePrompt: string;
-  baseImageUrl: string;
-  seed: number;
+  pageText: string;
+  pageSeed: number;
   pageIndex: number;
-  promptStrength?: number;
+  baseImageUrl?: string;
+  sceneCardFallback?: string;
 }): Promise<string> {
-  const {
-    replicate,
-    scenePrompt,
-    baseImageUrl,
-    seed,
-    pageIndex,
-    promptStrength = 0.80,
-  } = opts;
+  const scene = resolveSceneSetting(
+    opts.pageText,
+    RIRI_BASE_MUST_INCLUDE,
+    opts.sceneCardFallback
+  );
+  const platePrompt = buildPlatePrompt(scene.setting, scene.styleHints);
 
-  return generateImageWithAnchor(
-    replicate,
-    scenePrompt,
-    baseImageUrl,
-    seed,
-    pageIndex,
-    promptStrength,
-    "",   // no setting context needed for plate
-    [],   // no mustInclude for background plate
-    // no mask — pure img2img
+  return generatePlate(
+    opts.replicate,
+    platePrompt,
+    opts.pageSeed,
+    opts.pageIndex,
+    opts.baseImageUrl,
+    0.80
   );
 }

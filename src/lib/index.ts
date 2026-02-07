@@ -1,12 +1,14 @@
-// Mask generation
+// Mask generation — Riri zone (center-bottom foreground)
 export {
-  makeCenterEllipseMaskDataUrl,
-  makeGroundedEllipseMaskDataUrl,
+  makeRiriZoneMaskDataUrl,
+  makeRiriZoneLargeMaskDataUrl,
+  makeRiriZoneRectMaskDataUrl,
 } from "./maskGenerator";
 
-// Image generation (SDXL img2img + inpaint)
+// Image generation — separate plate + inpaint functions
 export {
-  generateImageWithAnchor,
+  generatePlate,
+  generateInpaintCharacter,
   SDXL_VERSION,
 } from "./imageGeneration";
 
@@ -14,18 +16,33 @@ export {
 export {
   buildQualityOnlyNegative,
   buildCharacterSafetyNegative,
+  buildNoTextNegative,
+  buildInpaintCharacterNegative,
+  buildPlateNegative,
   sanitizeNegatives,
 } from "./negativePrompts";
 
-// Scene / setting resolution
+// Scene / setting resolution (preserves original text, never canonicalizes)
 export {
   resolveSceneSetting,
   enforceMustInclude,
 } from "./sceneSettings";
+export type { SceneSetting } from "./sceneSettings";
 
-// High-level pipeline
+// Candidate scoring / auto-validation
+export {
+  scoreCaption,
+  captionImage,
+  scoreCandidate,
+  generateAndSelectBest,
+  SCORE_THRESHOLD,
+} from "./candidateScoring";
+export type { CandidateResult } from "./candidateScoring";
+
+// High-level pipeline — plate → inpaint hero → validate → retry
 export {
   generateStoryPageImage,
-  generateScenePlate,
-  buildRiriInpaintPrompt,
+  generateScenePlateOnly,
+  buildCharacterFirstPrompt,
+  buildPlatePrompt,
 } from "./pipeline";

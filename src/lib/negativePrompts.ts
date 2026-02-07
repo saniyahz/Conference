@@ -1,7 +1,5 @@
 /**
- * Build quality-only negative prompt.
- * Focused on avoiding common SDXL artifacts without conflicting
- * with the positive prompt content.
+ * Quality negatives — avoid common SDXL artifacts.
  */
 export function buildQualityOnlyNegative(): string {
   return [
@@ -14,21 +12,17 @@ export function buildQualityOnlyNegative(): string {
     "extra limbs",
     "mutated",
     "ugly",
-    "watermark",
-    "text",
-    "signature",
-    "cropped",
     "worst quality",
     "jpeg artifacts",
     "duplicate",
-    "morbid",
     "out of frame",
+    "cropped",
   ].join(", ");
 }
 
 /**
- * Character-safety negatives: prevent unwanted humans or
- * wrong characters from appearing when generating Riri.
+ * Character-safety negatives — prevent unwanted humans and duplicates.
+ * These go on the CHARACTER INPAINT pass (not the plate pass).
  */
 export function buildCharacterSafetyNegative(): string {
   return [
@@ -42,17 +36,59 @@ export function buildCharacterSafetyNegative(): string {
     "people",
     "realistic human",
     "photo of person",
+    "two rhinoceroses",
+    "multiple rhinos",
+    "extra rhinoceros",
+    "duplicate rhino",
   ].join(", ");
 }
 
 /**
- * Sanitize the negative prompt so it doesn't contradict what the
- * positive prompt or scene context explicitly requires.
- *
- * For example, if the prompt says "forest" we shouldn't also negate "trees".
- * If mustInclude contains "rhinoceros" we shouldn't negate "animal".
- *
- * This prevents the negative prompt from fighting the generation.
+ * Text/watermark negatives — always include these.
+ */
+export function buildNoTextNegative(): string {
+  return [
+    "text",
+    "watermark",
+    "signature",
+    "caption",
+    "words",
+    "letters",
+    "logo",
+    "writing",
+    "subtitle",
+  ].join(", ");
+}
+
+/**
+ * Full negative for inpaint character pass.
+ */
+export function buildInpaintCharacterNegative(): string {
+  return [
+    buildQualityOnlyNegative(),
+    buildCharacterSafetyNegative(),
+    buildNoTextNegative(),
+  ].join(", ");
+}
+
+/**
+ * Full negative for plate/background pass.
+ * No character safety needed — plate has no characters.
+ */
+export function buildPlateNegative(): string {
+  return [
+    buildQualityOnlyNegative(),
+    buildNoTextNegative(),
+    "character",
+    "animal",
+    "rhinoceros",
+    "person",
+  ].join(", ");
+}
+
+/**
+ * Sanitize negatives so they don't contradict the positive prompt.
+ * Never remove a term the prompt explicitly needs.
  */
 export function sanitizeNegatives(
   negativePrompt: string,
@@ -65,16 +101,11 @@ export function sanitizeNegatives(
 
   const filtered = negTerms.filter((term) => {
     const lower = term.toLowerCase();
-    // Don't negate something explicitly required
     if (combined.includes(lower)) return false;
-
-    // Special cross-checks: don't negate broad categories that
-    // conflict with required content
     if (lower === "animal" && combined.includes("rhinoceros")) return false;
     if (lower === "creature" && combined.includes("rhinoceros")) return false;
     if (lower === "nature" && /forest|tree|jungle|garden/.test(combined)) return false;
     if (lower === "water" && /stream|waterfall|river|ocean|lake/.test(combined)) return false;
-
     return true;
   });
 
