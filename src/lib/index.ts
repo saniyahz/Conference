@@ -29,7 +29,7 @@ export {
 } from "./sceneSettings";
 export type { SceneSetting } from "./sceneSettings";
 
-// Candidate scoring / auto-validation
+// Candidate scoring — gated rejection (wrong animal = instant fail)
 export {
   scoreCaption,
   captionImage,
@@ -39,7 +39,7 @@ export {
 } from "./candidateScoring";
 export type { CandidateResult } from "./candidateScoring";
 
-// High-level pipeline — plate → inpaint hero → validate → retry
+// Pipeline — plate → inpaint → validate → escalate
 export {
   generateStoryPageImage,
   generateScenePlateOnly,

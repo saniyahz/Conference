@@ -132,20 +132,17 @@ export async function generatePlate(
 /**
  * Inpaint Riri into a plate image using a foreground mask.
  *
- * This is NOT img2img. This is masked inpainting:
- *   - image: the plate (background)
- *   - mask: white = where to paint Riri, black = keep background
- *   - prompt: character-first (Riri description + composition)
- *   - strength: 0.90–0.95 (strongly overwrite inside mask)
+ * This is MASKED INPAINTING, not img2img. The input MUST contain:
+ *   image: the plate URL
+ *   mask: data URL of the mask PNG (white = paint here, black = keep)
  *
- * Settings tuned for character insertion:
- *   steps: 40 (higher than plate — character detail matters)
- *   guidance: 10 (strong prompt adherence for the character)
- *   prompt_strength: 0.92 (aggressively fill the mask region)
+ * prompt_strength for SDXL inpainting controls how much the ENTIRE
+ * image deviates from the original — not just the mask region.
+ *   - 0.92 = regenerates nearly everything (background destroyed)
+ *   - 0.65 = background stays locked, mask region fills from prompt
+ *   - 0.55 = very conservative, slight edits only
  *
- * The old pipeline used 0.65 — far too weak. At 0.65, SDXL treats
- * the mask region as "suggest, don't enforce", so it often keeps
- * the plate composition and skips the character entirely.
+ * We use 0.65: background stable, mask strongly overwritten.
  */
 export async function generateInpaintCharacter(
   replicate: Replicate,
@@ -157,6 +154,16 @@ export async function generateInpaintCharacter(
   settingContext: string = "",
   mustInclude: string[] = []
 ): Promise<string> {
+  // Hard validation: mask MUST be a real data URL, otherwise we're
+  // silently falling back to img2img and SDXL will ignore the character.
+  if (!maskDataUrl || !maskDataUrl.startsWith("data:image/png;base64,")) {
+    throw new Error(
+      `[Inpaint ${pageIndex}] FATAL: maskDataUrl is missing or malformed. ` +
+      `Without a valid mask, this is plain img2img and the character will be skipped. ` +
+      `Got: ${maskDataUrl ? maskDataUrl.substring(0, 40) + "..." : "undefined"}`
+    );
+  }
+
   const maxRetries = 3;
 
   let negativePrompt = buildInpaintCharacterNegative();
@@ -175,13 +182,19 @@ export async function generateInpaintCharacter(
         scheduler: "K_EULER",
         num_inference_steps: 40,
         guidance_scale: 10,
-        prompt_strength: 0.92,
+        prompt_strength: 0.65,
         seed,
       };
 
+      // Explicit confirmation that this is inpaint, not img2img
       console.log(
         `[Inpaint ${pageIndex}] Attempt ${attempt}/${maxRetries} ` +
-        `(strength: 0.92, steps: 40, guidance: 10, seed: ${seed})`
+        `(MODE: INPAINT, mask: ${maskDataUrl.length} bytes, ` +
+        `strength: 0.65, steps: 40, guidance: 10, seed: ${seed})`
+      );
+      console.log(
+        `[Inpaint ${pageIndex}] Input keys: ${Object.keys(input).join(", ")} ` +
+        `— "mask" present: ${!!input.mask}`
       );
 
       const prediction = await replicate.predictions.create({

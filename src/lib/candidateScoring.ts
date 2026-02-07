@@ -1,14 +1,16 @@
 import Replicate from "replicate";
 
 /**
- * Candidate scoring for auto-validation.
+ * Candidate scoring with hard rejection gates.
  *
- * After inpainting, we score each candidate to decide whether Riri
- * is actually present, full-body, and stylistically correct.
+ * The old scorer let elephants/cats/bears pass because it only
+ * checked for positive rhino signals. Now scoring is gated:
  *
- * Scoring uses BLIP captioning + keyword voting heuristics.
- * BLIP alone is noisy for stylized cartoon images — so the keyword
- * voting system provides a reliable safety net.
+ *  Gate 1: Wrong animal detected → instant reject (-10)
+ *  Gate 2: Species not detected  → reject (-5)
+ *  Gate 3: Human detected        → reject (-5)
+ *  Gate 4: Text/watermark        → penalty (-2)
+ *  Pass:   Species confirmed     → base score 4, with quality bonuses
  */
 
 export interface CandidateResult {
@@ -18,69 +20,87 @@ export interface CandidateResult {
   reasons: string[];
 }
 
-/**
- * BLIP model for captioning on Replicate.
- * salesforce/blip — generates text descriptions of images.
- */
 const BLIP_VERSION =
   "2e1dddc8621f72155f24cf2e0adbde548458d3cab9f00c0139eea840d0ac4746" as const;
 
-/**
- * Score a candidate image using keyword voting.
- *
- * Point system (stricter than the old SCORE_THRESHOLD = 2):
- *   +3  caption contains "rhinoceros" or "rhino"
- *   +2  caption contains "horn"
- *   +1  caption contains "gray" or "grey"
- *   +1  caption contains "standing" or "full body"
- *   +1  caption contains "animal" or "creature"
- *   -5  caption contains "human" | "boy" | "girl" | "man" | "woman" | "person"
- *   -3  caption contains "two" + "rhino" (duplicate character)
- *   -2  caption contains "text" | "watermark" | "signature"
- *
- * Minimum acceptance threshold: 4 (raised from old value of 2)
- */
+/** Animals that are NOT Riri. If BLIP sees one of these without also
+ *  seeing "rhino"/"rhinoceros", it's a hard reject. */
+const WRONG_ANIMALS = [
+  "elephant", "cat", "dog", "bear", "lion", "tiger", "monkey",
+  "rabbit", "horse", "cow", "giraffe", "zebra", "hippo",
+  "hippopotamus", "camel", "sheep", "goat", "fox", "deer",
+  "wolf", "pig", "dolphin", "whale", "bird", "parrot",
+  "penguin", "frog", "turtle", "snake", "fish",
+];
+
 export const SCORE_THRESHOLD = 4;
 
+/**
+ * Score a BLIP caption with hard rejection gates.
+ *
+ * This is a gated scorer, not an additive point system.
+ * Wrong animals are instantly rejected regardless of other signals.
+ */
 export function scoreCaption(caption: string): { score: number; reasons: string[] } {
-  const lower = caption.toLowerCase();
-  let score = 0;
+  const c = caption.toLowerCase();
   const reasons: string[] = [];
 
-  // Positive signals
-  if (/rhinoceros|rhino/.test(lower)) {
-    score += 3;
-    reasons.push("+3 rhino detected");
-  }
-  if (/\bhorn\b/.test(lower)) {
-    score += 2;
-    reasons.push("+2 horn detected");
-  }
-  if (/\bgr[ae]y\b/.test(lower)) {
-    score += 1;
-    reasons.push("+1 gray/grey color");
-  }
-  if (/standing|full body/.test(lower)) {
-    score += 1;
-    reasons.push("+1 standing/full body");
-  }
-  if (/\banimal\b|\bcreature\b/.test(lower)) {
-    score += 1;
-    reasons.push("+1 animal/creature");
+  const hasRhino = /\brhino\b|\brhinoceros\b/.test(c);
+
+  // ── GATE 1: Wrong animal without rhino = hard reject ──
+  const wrongAnimal = WRONG_ANIMALS.find((a) => c.includes(a));
+  if (wrongAnimal && !hasRhino) {
+    reasons.push(`-10 WRONG ANIMAL: "${wrongAnimal}" (no rhino detected)`);
+    return { score: -10, reasons };
   }
 
-  // Negative signals (hard penalties)
-  if (/\bhuman\b|\bboy\b|\bgirl\b|\bman\b|\bwoman\b|\bperson\b|\bchild\b|\bkid\b/.test(lower)) {
-    score -= 5;
-    reasons.push("-5 HUMAN DETECTED");
+  // ── GATE 2: Species must be detected ──
+  if (!hasRhino) {
+    reasons.push("-5 SPECIES NOT DETECTED (no rhino/rhinoceros in caption)");
+    return { score: -5, reasons };
   }
-  if (/\btwo\b.*\brhino|\bmultiple\b.*\brhino/.test(lower)) {
+
+  // ── GATE 3: Human presence = hard reject ──
+  if (/\bhuman\b|\bboy\b|\bgirl\b|\bman\b|\bwoman\b|\bperson\b|\bchild\b|\bkid\b/.test(c)) {
+    reasons.push("-5 HUMAN DETECTED");
+    return { score: -5, reasons };
+  }
+
+  // ── Species confirmed — start at base score 4 ──
+  let score = 4;
+  reasons.push("+4 base: rhino/rhinoceros detected");
+
+  // Quality bonuses
+  if (/\bcartoon\b|\billustration\b|\banimated\b|\bdrawing\b/.test(c)) {
+    score += 1;
+    reasons.push("+1 cartoon/illustration style");
+  }
+  if (/\bfull\b|\bstanding\b|\bbody\b/.test(c)) {
+    score += 1;
+    reasons.push("+1 full body / standing");
+  }
+  if (/\bgr[ae]y\b/.test(c)) {
+    score += 1;
+    reasons.push("+1 gray/grey color match");
+  }
+  if (/\bhorn\b/.test(c)) {
+    score += 1;
+    reasons.push("+1 horn visible");
+  }
+
+  // Penalties (non-fatal)
+  if (/\btwo\b.*\brhino|\bmultiple\b.*\brhino|\bsecond\b.*\brhino/.test(c)) {
     score -= 3;
     reasons.push("-3 duplicate rhino");
   }
-  if (/\btext\b|\bwatermark\b|\bsignature\b|\bwriting\b|\bletters\b/.test(lower)) {
+  if (/\btext\b|\bwatermark\b|\bsignature\b|\bwriting\b|\bletters\b/.test(c)) {
     score -= 2;
     reasons.push("-2 text/watermark");
+  }
+  // Wrong animal present but rhino also present — penalize but don't reject
+  if (wrongAnimal) {
+    score -= 2;
+    reasons.push(`-2 wrong animal "${wrongAnimal}" also present (rhino detected too)`);
   }
 
   return { score, reasons };
@@ -88,7 +108,6 @@ export function scoreCaption(caption: string): { score: number; reasons: string[
 
 /**
  * Get a BLIP caption for an image URL.
- * Uses Replicate's BLIP model for image captioning.
  */
 export async function captionImage(
   replicate: Replicate,
@@ -116,7 +135,7 @@ export async function captionImage(
 }
 
 /**
- * Score a single candidate: caption it + apply keyword voting.
+ * Score a single candidate.
  */
 export async function scoreCandidate(
   replicate: Replicate,
@@ -125,68 +144,96 @@ export async function scoreCandidate(
   const caption = await captionImage(replicate, imageUrl);
   const { score, reasons } = scoreCaption(caption);
 
-  console.log(`[Score] url=${imageUrl} caption="${caption}" score=${score} (${reasons.join(", ")})`);
+  console.log(
+    `[Score] caption="${caption}" → score=${score} ` +
+    `[${reasons.join(" | ")}]`
+  );
 
   return { url: imageUrl, score, caption, reasons };
 }
 
 /**
- * Generate multiple candidates, score them, return the best one
- * that meets the threshold. If none meet threshold, return the
- * highest-scoring one anyway (but log a warning).
+ * Generate candidates with seed variation, score each, return best.
  *
- * @param generateFn - Function that generates one candidate given a seed
- * @param replicate - Replicate client (for BLIP captioning)
- * @param baseSeed - Starting seed; candidates use baseSeed + offset
- * @param numCandidates - How many candidates to generate (default: 5)
+ * Supports mask escalation: if the caller provides an escalateMaskFn,
+ * it's called after the first batch fails to produce a passing candidate.
+ * The escalated mask is larger, giving the model more room to paint Riri.
+ *
+ * @param generateFn - Generates one candidate. Receives (seed, maskDataUrl).
+ * @param replicate - For BLIP captioning
+ * @param baseSeed - Starting seed
+ * @param initialMaskDataUrl - First mask to try
+ * @param escalatedMaskDataUrl - Larger mask to try if initial fails (optional)
+ * @param numCandidates - Candidates per mask size (default: 3)
  * @param pageIndex - For logging
  */
 export async function generateAndSelectBest(
-  generateFn: (seed: number) => Promise<string>,
+  generateFn: (seed: number, maskDataUrl: string) => Promise<string>,
   replicate: Replicate,
   baseSeed: number,
-  numCandidates: number = 5,
+  initialMaskDataUrl: string,
+  escalatedMaskDataUrl?: string,
+  numCandidates: number = 3,
   pageIndex: number = 0
 ): Promise<CandidateResult> {
-  const candidates: CandidateResult[] = [];
+  const allCandidates: CandidateResult[] = [];
 
+  // ── Round 1: initial mask ──
+  console.log(`[Select ${pageIndex}] Round 1: initial mask (${numCandidates} candidates)`);
   for (let i = 0; i < numCandidates; i++) {
-    const seed = baseSeed + i * 7; // spread seeds
-    const url = await generateFn(seed);
-
+    const seed = baseSeed + i * 7;
+    const url = await generateFn(seed, initialMaskDataUrl);
     if (!url) {
-      console.warn(`[Select ${pageIndex}] Candidate ${i + 1} generation failed, skipping`);
+      console.warn(`[Select ${pageIndex}] Candidate ${i + 1} generation failed`);
       continue;
     }
 
     const result = await scoreCandidate(replicate, url);
-    candidates.push(result);
+    allCandidates.push(result);
 
-    // Early exit if this candidate is clearly good
     if (result.score >= SCORE_THRESHOLD) {
       console.log(
-        `[Select ${pageIndex}] Candidate ${i + 1} accepted early ` +
+        `[Select ${pageIndex}] ACCEPTED candidate ${i + 1} ` +
         `(score ${result.score} >= ${SCORE_THRESHOLD})`
       );
       return result;
     }
   }
 
-  if (candidates.length === 0) {
+  // ── Round 2: escalated (larger) mask ──
+  if (escalatedMaskDataUrl) {
+    console.log(`[Select ${pageIndex}] Round 2: ESCALATED mask (${numCandidates} candidates)`);
+    for (let i = 0; i < numCandidates; i++) {
+      const seed = baseSeed + (numCandidates + i) * 7;
+      const url = await generateFn(seed, escalatedMaskDataUrl);
+      if (!url) continue;
+
+      const result = await scoreCandidate(replicate, url);
+      allCandidates.push(result);
+
+      if (result.score >= SCORE_THRESHOLD) {
+        console.log(
+          `[Select ${pageIndex}] ACCEPTED escalated candidate ${i + 1} ` +
+          `(score ${result.score} >= ${SCORE_THRESHOLD})`
+        );
+        return result;
+      }
+    }
+  }
+
+  // ── No candidate passed — return best of all ──
+  if (allCandidates.length === 0) {
     return { url: "", score: -999, caption: "", reasons: ["all candidates failed"] };
   }
 
-  // Sort by score descending, return the best
-  candidates.sort((a, b) => b.score - a.score);
-  const best = candidates[0];
+  allCandidates.sort((a, b) => b.score - a.score);
+  const best = allCandidates[0];
 
-  if (best.score < SCORE_THRESHOLD) {
-    console.warn(
-      `[Select ${pageIndex}] WARNING: Best candidate score ${best.score} ` +
-      `is below threshold ${SCORE_THRESHOLD}. Using it anyway. ` +
-      `Caption: "${best.caption}"`
-    );
-  }
+  console.warn(
+    `[Select ${pageIndex}] WARNING: No candidate met threshold ${SCORE_THRESHOLD}. ` +
+    `Best score: ${best.score}. Caption: "${best.caption}". ` +
+    `Returning best of ${allCandidates.length} candidates.`
+  );
 
   return best;
 }
