@@ -6,25 +6,22 @@ import sharp from "sharp";
  * White = area to inpaint (character goes here).
  * Black = preserved area (background stays untouched).
  *
- * This is a center-bottom foreground ellipse — NOT dead center.
- * The character stands on the ground with headroom above.
- *
- * Coverage: ~40-55% of frame area depending on params.
- * Position: center-x, lower-half y (feet near bottom edge).
+ * Ellipse is center-lower foreground, sized for ~45% frame coverage.
+ * Lifted slightly from the very bottom so Riri has ground to stand on.
  *
  * For 1024×1024:
  *   cx = 512 (centered)
- *   cy = 800 (78% down — lower foreground)
- *   rx = 245 (48% width coverage)
- *   ry = 205 (40% height coverage)
+ *   cy = 740 (72% down — lower foreground, but not cut off at bottom)
+ *   rx = 320 (62% width coverage — generous horizontal room)
+ *   ry = 280 (55% height coverage — full body head to feet)
  */
 export async function makeRiriZoneMaskDataUrl(
   size: number = 1024
 ): Promise<string> {
   const cx = size * 0.50;
-  const cy = size * 0.78;
-  const rx = size * 0.24;
-  const ry = size * 0.20;
+  const cy = size * 0.72;
+  const rx = size * 0.31;
+  const ry = size * 0.27;
 
   const svg = `
   <svg width="${size}" height="${size}" xmlns="http://www.w3.org/2000/svg">

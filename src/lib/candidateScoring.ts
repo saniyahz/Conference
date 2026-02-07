@@ -181,7 +181,7 @@ export async function generateAndSelectBest(
   // ── Round 1: initial mask ──
   console.log(`[Select ${pageIndex}] Round 1: initial mask (${numCandidates} candidates)`);
   for (let i = 0; i < numCandidates; i++) {
-    const seed = baseSeed + i * 7;
+    const seed = baseSeed + i * 29;
     const url = await generateFn(seed, initialMaskDataUrl);
     if (!url) {
       console.warn(`[Select ${pageIndex}] Candidate ${i + 1} generation failed`);
@@ -204,7 +204,7 @@ export async function generateAndSelectBest(
   if (escalatedMaskDataUrl) {
     console.log(`[Select ${pageIndex}] Round 2: ESCALATED mask (${numCandidates} candidates)`);
     for (let i = 0; i < numCandidates; i++) {
-      const seed = baseSeed + (numCandidates + i) * 7;
+      const seed = baseSeed + (numCandidates + i) * 29;
       const url = await generateFn(seed, escalatedMaskDataUrl);
       if (!url) continue;
 

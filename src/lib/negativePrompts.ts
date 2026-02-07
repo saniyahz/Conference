@@ -21,24 +21,25 @@ export function buildQualityOnlyNegative(): string {
 }
 
 /**
- * Character-safety negatives — prevent unwanted humans and duplicates.
- * These go on the CHARACTER INPAINT pass (not the plate pass).
+ * Character-safety negatives — prevent unwanted humans, wrong animals,
+ * and duplicate rhinos. These go on the CHARACTER INPAINT pass.
+ *
+ * The wrong-animal list is critical: without it, SDXL frequently
+ * substitutes elephant/cat/bear/lion inside the mask region instead
+ * of the prompted rhinoceros.
  */
 export function buildCharacterSafetyNegative(): string {
   return [
-    "human",
-    "boy",
-    "girl",
-    "person",
-    "child",
-    "man",
-    "woman",
-    "people",
-    "realistic human",
-    "photo of person",
-    "two rhinoceroses",
-    "multiple rhinos",
-    "extra rhinoceros",
+    // Block humans
+    "human", "boy", "girl", "person", "child", "man", "woman",
+    "people", "realistic human", "photo of person",
+    // Block wrong animals (common SDXL substitutions)
+    "elephant", "cat", "dog", "bear", "lion", "tiger", "rabbit",
+    "monkey", "horse", "cow", "giraffe", "zebra", "hippo",
+    "hippopotamus", "camel", "deer", "wolf", "fox", "pig",
+    "dolphin", "whale", "bird", "penguin", "frog", "turtle",
+    // Block duplicate rhinos
+    "two rhinoceroses", "multiple rhinos", "extra rhinoceros",
     "duplicate rhino",
   ].join(", ");
 }
