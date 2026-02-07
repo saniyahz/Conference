@@ -11,33 +11,40 @@ const RIRI_BASE_MUST_INCLUDE = ["rhinoceros", "Riri"];
 // ─── PROMPT BUILDERS ────────────────────────────────────────────────────
 
 /**
- * Strict 4-line character prompt. ~35 words. No meta-labels.
+ * INPAINT prompt = CHARACTER ONLY.
  *
- * Token order matters — SDXL weights first tokens highest:
- *   Line 1: CHARACTER (identity lock)
- *   Line 2: ACTION in SETTING
- *   Line 3: COMPOSITION + CONSTRAINTS
- *   Line 4: STYLE
+ * No rocket. No waterfall. No dolphins. No action. No setting.
+ * Scene objects belong in the plate — the inpaint pass only paints
+ * the character into the mask zone.
  */
-export function buildCharacterFirstPrompt(action: string, setting: string): string {
+export function buildCharacterFirstPrompt(): string {
   return [
-    "Riri, cute gray rhinoceros, one small rounded horn, big friendly eyes, full body",
-    `${action} in ${setting}`,
-    "centered foreground, 45% of frame, one rhinoceros, no humans, no text",
-    "2D children's picture book, bold outlines, flat cel shading, pastel colors",
+    "Riri, cute gray rhinoceros, full body, standing",
+    "centered foreground",
+    "simple children's illustration, flat colors, bold outline",
+    "match background lighting, only one rhino, no text",
   ].join(", ");
 }
 
 /**
- * Plate prompt — scene only, no characters. Short and clean.
+ * PLATE prompt = OBJECTS + SETTING only.
+ *
+ * Scene objects (rocket ship, waterfall, dolphins) go here.
+ * No characters — the plate is a clean background.
  */
-export function buildPlatePrompt(setting: string, styleHints: string): string {
-  return [
-    setting,
-    styleHints,
-    "2D children's picture book, bold outlines, flat cel shading, pastel colors",
-    "empty scene, no characters, no animals, no people, no text",
-  ].join(", ");
+export function buildPlatePrompt(
+  setting: string,
+  styleHints: string,
+  sceneObjects: string[] = []
+): string {
+  const parts = [setting];
+  if (sceneObjects.length > 0) {
+    parts.push(sceneObjects.join(", "));
+  }
+  parts.push(styleHints);
+  parts.push("simple children's illustration, flat colors, bold outline, minimal detail");
+  parts.push("no characters, no animals, no people, no text");
+  return parts.join(", ");
 }
 
 // ─── MAIN PIPELINE ─────────────────────────────────────────────────────
@@ -90,13 +97,17 @@ export async function generateStoryPageImage(opts: {
     lora,
   } = opts;
 
-  // ── 1. Resolve scene from page text (verbatim, never canonicalized) ──
+  // ── 1. Resolve scene ──
   const scene = resolveSceneSetting(pageText, RIRI_BASE_MUST_INCLUDE, sceneCardFallback);
-  const mustInclude = enforceMustInclude(scene.mustInclude, RIRI_BASE_MUST_INCLUDE);
+  const allMustInclude = enforceMustInclude(scene.mustInclude, RIRI_BASE_MUST_INCLUDE);
+
+  // Split: scene objects → plate, character → scoring
+  const baseLower = new Set(RIRI_BASE_MUST_INCLUDE.map((s) => s.toLowerCase()));
+  const sceneObjects = allMustInclude.filter((item) => !baseLower.has(item.toLowerCase()));
 
   console.log(`[Page ${pageIndex}] Setting: "${scene.setting}"`);
   console.log(`[Page ${pageIndex}] Category: ${scene.category}`);
-  console.log(`[Page ${pageIndex}] Must include: ${mustInclude.join(", ")}`);
+  console.log(`[Page ${pageIndex}] Scene objects (plate): [${sceneObjects.join(", ")}]`);
   if (lora) console.log(`[Page ${pageIndex}] LoRA: ${lora.version.substring(0, 12)}... trigger="${lora.triggerWord}"`);
   if (anchorImageUrl) console.log(`[Page ${pageIndex}] CLIP anchor: ${anchorImageUrl.substring(0, 50)}...`);
   if (enableDetection) console.log(`[Page ${pageIndex}] GroundingDINO detection: ENABLED`);
@@ -107,8 +118,8 @@ export async function generateStoryPageImage(opts: {
     cachedAnchorEmbedding = await cacheAnchorEmbedding(replicate, anchorImageUrl);
   }
 
-  // ── 3. Generate background plate (Pass A) ──
-  const platePrompt = buildPlatePrompt(scene.setting, scene.styleHints);
+  // ── 3. Generate background plate (Pass A) — includes scene objects ──
+  const platePrompt = buildPlatePrompt(scene.setting, scene.styleHints, sceneObjects);
   console.log(`[Page ${pageIndex}] Plate prompt (${platePrompt.split(" ").length} words)`);
 
   const plateUrl = await generatePlate(
@@ -136,14 +147,15 @@ export async function generateStoryPageImage(opts: {
     makeRiriZoneLargeMaskDataUrl(1024),
   ]);
 
-  // ── 5. Build compact character-first prompt ──
-  const characterPrompt = buildCharacterFirstPrompt(action, scene.setting);
+  // ── 5. Build character-only prompt (no scene objects) ──
+  const characterPrompt = buildCharacterFirstPrompt();
   console.log(`[Page ${pageIndex}] Character prompt (${characterPrompt.split(" ").length} words)`);
 
-  // ── 6. Generate + score candidates with multi-signal validation ──
+  // ── 6. Generate + score candidates ──
+  // Scoring only checks character presence, not scene objects.
   const scoreOpts: ScoreOptions = {
-    mustInclude,
-    requireMustIncludeCount: Math.min(2, mustInclude.length),
+    mustInclude: RIRI_BASE_MUST_INCLUDE,
+    requireMustIncludeCount: 1,
     anchorImageUrl,
     cachedAnchorEmbedding,
     enableDetection,
@@ -159,7 +171,7 @@ export async function generateStoryPageImage(opts: {
         seed,
         pageIndex,
         scene.setting,
-        mustInclude,
+        allMustInclude,
         lora
       );
     },

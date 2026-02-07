@@ -81,18 +81,18 @@ const SEED_STRIDE = 29;  // prime, wide spread
 // ─── PROMPT BUILDERS ────────────────────────────────────────────────────
 
 /**
- * Strict 4-line character prompt. ~35 words.
- *   Line 1: CHARACTER (identity lock)
- *   Line 2: ACTION in SETTING
- *   Line 3: COMPOSITION + CONSTRAINTS
- *   Line 4: STYLE
+ * INPAINT prompt = CHARACTER ONLY.
+ *
+ * No rocket. No waterfall. No dolphins. No action. No setting.
+ * Scene objects belong in the plate — the inpaint pass only paints
+ * the character into the mask zone.
  */
-function buildCharacterPrompt(action: string, setting: string, lora?: LoraConfig): string {
+function buildCharacterPrompt(lora?: LoraConfig): string {
   let prompt = [
-    "Riri, cute gray rhinoceros, one small rounded horn, big friendly eyes, full body",
-    `${action} in ${setting}`,
-    "centered foreground, 45% of frame, one rhinoceros, no humans, no text",
-    "2D children's picture book, bold outlines, flat cel shading, pastel colors",
+    "Riri, cute gray rhinoceros, full body, standing",
+    "centered foreground",
+    "simple children's illustration, flat colors, bold outline",
+    "match background lighting, only one rhino, no text",
   ].join(", ");
 
   if (lora) {
@@ -102,13 +102,25 @@ function buildCharacterPrompt(action: string, setting: string, lora?: LoraConfig
   return prompt;
 }
 
-function buildScenePlatePrompt(setting: string, styleHints: string): string {
-  return [
-    setting,
-    styleHints,
-    "2D children's picture book, bold outlines, flat cel shading, pastel colors",
-    "empty scene, no characters, no animals, no people, no text",
-  ].join(", ");
+/**
+ * PLATE prompt = OBJECTS + SETTING only.
+ *
+ * Scene objects (rocket ship, waterfall, dolphins) go here.
+ * No characters — the plate is a clean background.
+ */
+function buildScenePlatePrompt(
+  setting: string,
+  styleHints: string,
+  sceneObjects: string[] = []
+): string {
+  const parts = [setting];
+  if (sceneObjects.length > 0) {
+    parts.push(sceneObjects.join(", "));
+  }
+  parts.push(styleHints);
+  parts.push("simple children's illustration, flat colors, bold outline, minimal detail");
+  parts.push("no characters, no animals, no people, no text");
+  return parts.join(", ");
 }
 
 // ─── SINGLE PAGE GENERATION ─────────────────────────────────────────────
@@ -149,17 +161,26 @@ export async function generateOnePage(
     RIRI_MUST_INCLUDE,
     page.sceneCardFallback
   );
-  const mustInclude = enforceMustInclude(scene.mustInclude, RIRI_MUST_INCLUDE);
+  const allMustInclude = enforceMustInclude(scene.mustInclude, RIRI_MUST_INCLUDE);
 
-  console.log(`[Page ${pageIndex + 1}] Setting (verbatim): "${scene.setting}"`);
-  console.log(`[Page ${pageIndex + 1}] Category tag: ${scene.category}`);
-  console.log(`[Page ${pageIndex + 1}] Must include: [${mustInclude.join(", ")}]`);
+  // Split mustInclude: scene objects → plate prompt, character → scoring
+  // Scene objects (trees, waterfall, rocket) go in the plate only.
+  // Scoring only checks that Riri is present — not scene objects.
+  const ririLower = new Set(RIRI_MUST_INCLUDE.map((s) => s.toLowerCase()));
+  const sceneObjects = allMustInclude.filter(
+    (item) => !ririLower.has(item.toLowerCase())
+  );
+
+  console.log(`[Page ${pageIndex + 1}] Setting: "${scene.setting}"`);
+  console.log(`[Page ${pageIndex + 1}] Category: ${scene.category}`);
+  console.log(`[Page ${pageIndex + 1}] Scene objects (plate): [${sceneObjects.join(", ")}]`);
+  console.log(`[Page ${pageIndex + 1}] Character check (scoring): [${RIRI_MUST_INCLUDE.join(", ")}]`);
   if (lora) console.log(`[Page ${pageIndex + 1}] LoRA: trigger="${lora.triggerWord}"`);
   if (anchorImageUrl) console.log(`[Page ${pageIndex + 1}] CLIP anchor: active`);
   if (enableDetection) console.log(`[Page ${pageIndex + 1}] GroundingDINO: active`);
 
-  // ── 2. Generate plate (background only) ──
-  const platePrompt = buildScenePlatePrompt(scene.setting, scene.styleHints);
+  // ── 2. Generate plate (background + scene objects, no character) ──
+  const platePrompt = buildScenePlatePrompt(scene.setting, scene.styleHints, sceneObjects);
   console.log(`[Page ${pageIndex + 1}] Plate prompt: "${platePrompt}"`);
 
   const plateUrl = await generatePlate(
@@ -195,17 +216,18 @@ export async function generateOnePage(
     makeRiriZoneLargeMaskDataUrl(1024),
   ]);
 
-  // ── 4. Build character prompt ──
-  const charPrompt = buildCharacterPrompt(page.action, scene.setting, lora);
+  // ── 4. Build character prompt (CHARACTER ONLY — no scene objects) ──
+  const charPrompt = buildCharacterPrompt(lora);
   console.log(`[Page ${pageIndex + 1}] Character prompt: "${charPrompt}"`);
 
   // ── 5. Candidate loop: inpaint + multi-signal score ──
   const allCandidates: CandidateResult[] = [];
 
-  // Build score options with must-include enforcement + CLIP + detection
+  // Scoring only checks for character presence, not scene objects.
+  // Scene objects are in the plate — they shouldn't fight the accept gate.
   const scoreOpts: ScoreOptions = {
-    mustInclude,
-    requireMustIncludeCount: Math.min(2, mustInclude.length),
+    mustInclude: RIRI_MUST_INCLUDE,
+    requireMustIncludeCount: 1, // just need "rhinoceros" or "Riri" confirmed
     anchorImageUrl,
     cachedAnchorEmbedding,
     enableDetection,
@@ -215,7 +237,7 @@ export async function generateOnePage(
   console.log(`\n[Page ${pageIndex + 1}] --- Round 1: initial mask ---`);
   const round1Candidates = await runCandidateRound(
     replicate, charPrompt, plateUrl, initialMask,
-    baseSeed, CANDIDATES_PER_ROUND, pageIndex, mustInclude, scene.setting, scoreOpts, lora
+    baseSeed, CANDIDATES_PER_ROUND, pageIndex, allMustInclude, scene.setting, scoreOpts, lora
   );
   allCandidates.push(...round1Candidates);
 
@@ -231,7 +253,7 @@ export async function generateOnePage(
   const round2Seed = baseSeed + CANDIDATES_PER_ROUND * SEED_STRIDE;
   const round2Candidates = await runCandidateRound(
     replicate, charPrompt, plateUrl, escalatedMask,
-    round2Seed, CANDIDATES_PER_ROUND, pageIndex, mustInclude, scene.setting, scoreOpts, lora
+    round2Seed, CANDIDATES_PER_ROUND, pageIndex, allMustInclude, scene.setting, scoreOpts, lora
   );
   allCandidates.push(...round2Candidates);
 
