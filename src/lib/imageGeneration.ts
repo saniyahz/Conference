@@ -197,7 +197,7 @@ export async function generateInpaintCharacter(
         num_outputs: 1,
         scheduler: "K_EULER",
         num_inference_steps: 40,
-        guidance_scale: 10,
+        guidance_scale: 8,
         prompt_strength: 0.65,
         seed,
       };
