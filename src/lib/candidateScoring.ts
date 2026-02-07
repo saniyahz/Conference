@@ -1,14 +1,29 @@
 import Replicate from "replicate";
+import { scoreClipSimilarity, scoreClipWithCachedAnchor, ClipResult } from "./clipScoring";
+import { detectRhinoceros, DetectionResult, DetectorModel } from "./objectDetection";
 
 /**
- * Candidate scoring with hard rejection gates + must-include enforcement.
+ * Candidate scoring with three validation signals:
  *
- * Gate order (early exit on reject):
+ *   1. BLIP captioning  — hard rejection gates (existing, fast)
+ *   2. CLIP similarity  — compares candidate to Riri anchor image (visual)
+ *   3. GroundingDINO    — object detection for "rhinoceros" (spatial)
+ *
+ * Gate order for BLIP (early exit on reject):
  *   Gate 0: Human/astronaut/pilot/cockpit cues → -20
  *   Gate 1: Wrong animal without rhino          → -15
  *   Gate 2: No rhino/rhinoceros detected        → -10
  *   Gate 3: Must-include enforcement (optional)  → -20
  *   Pass:   Base score 6, with quality bonuses
+ *
+ * Rescue mechanism:
+ *   If BLIP rejects a candidate (score < 0), CLIP and detection can
+ *   override the rejection — BLIP is known to be weak on cartoon content.
+ *   - GroundingDINO detects rhinoceros with conf >= 0.5  → rescue to 4
+ *   - CLIP similarity to anchor >= 0.80                  → rescue to 3
+ *
+ * After BLIP passes (or rescue), CLIP and detection bonuses/penalties
+ * are added to the base score.
  */
 
 export interface CandidateResult {
@@ -16,11 +31,25 @@ export interface CandidateResult {
   score: number;
   caption: string;
   reasons: string[];
+  clipSimilarity?: number;
+  detectionConfidence?: number;
 }
 
 export interface ScoreOptions {
   mustInclude?: string[];
   requireMustIncludeCount?: number;
+
+  /** Riri anchor image URL for CLIP similarity comparison */
+  anchorImageUrl?: string;
+
+  /** Pre-cached CLIP anchor embedding (avoids redundant Replicate calls) */
+  cachedAnchorEmbedding?: number[];
+
+  /** Enable GroundingDINO/OWL-ViT rhinoceros detection. Default: false */
+  enableDetection?: boolean;
+
+  /** Preferred detector model. Default: "grounding-dino" */
+  detectorModel?: DetectorModel;
 }
 
 const BLIP_VERSION =
@@ -213,28 +242,122 @@ export async function captionImage(
 }
 
 /**
- * Score a single candidate. Now accepts ScoreOptions so callers
- * can pass mustInclude items for enforcement.
+ * Score a single candidate with multi-signal validation.
+ *
+ * Runs BLIP, CLIP, and detection in parallel where possible.
+ *
+ * Flow:
+ *   1. Run all signals in parallel (BLIP caption, CLIP embedding, detection)
+ *   2. Apply BLIP gated score (may be negative = rejected)
+ *   3. If rejected: try rescue via detection or CLIP
+ *      - GroundingDINO rhinoceros conf >= 0.5 → rescue to base 4
+ *      - CLIP similarity >= 0.80 → rescue to base 3
+ *   4. If passed (or rescued): add CLIP and detection bonuses/penalties
+ *   5. Return combined score + all reasons
  */
 export async function scoreCandidate(
   replicate: Replicate,
   imageUrl: string,
   opts?: ScoreOptions
 ): Promise<CandidateResult> {
-  const caption = await captionImage(replicate, imageUrl);
-  const { score, reasons } = scoreCaption(caption, opts);
+  // Run all signals in parallel for speed
+  const hasClip = !!(opts?.anchorImageUrl || opts?.cachedAnchorEmbedding?.length);
+  const hasDetection = opts?.enableDetection ?? false;
+
+  const [caption, clipResult, detectionResult] = await Promise.all([
+    captionImage(replicate, imageUrl),
+    hasClip
+      ? (opts?.cachedAnchorEmbedding?.length
+          ? scoreClipWithCachedAnchor(replicate, imageUrl, opts.cachedAnchorEmbedding)
+          : scoreClipSimilarity(replicate, imageUrl, opts!.anchorImageUrl!))
+      : Promise.resolve(null as ClipResult | null),
+    hasDetection
+      ? detectRhinoceros(replicate, imageUrl, opts?.detectorModel)
+      : Promise.resolve(null as DetectionResult | null),
+  ]);
+
+  // 1. Start with BLIP gated score
+  let { score, reasons } = scoreCaption(caption, opts);
+  const blipRejected = score < 0;
 
   console.log(
-    `[Score] caption="${caption}" → score=${score} ` +
+    `[Score] BLIP: caption="${caption}" → score=${score} ` +
     `[${reasons.join(" | ")}]`
   );
 
-  return { url: imageUrl, score, caption, reasons };
+  // 2. If BLIP rejected, try rescue via detection or CLIP
+  if (blipRejected) {
+    // Gate 0 (human/cockpit) is never rescuable — those are structural errors
+    const isHumanReject = reasons.some((r) => r.includes("HUMAN/COCKPIT"));
+
+    if (!isHumanReject) {
+      // Rescue via GroundingDINO: if rhinoceros detected with high confidence,
+      // BLIP was probably wrong about the species on a cartoon image
+      if (detectionResult?.detected && detectionResult.confidence >= 0.5) {
+        const rescuedScore = 4;
+        reasons.push(
+          `RESCUED by detection: rhinoceros detected ` +
+          `(conf=${detectionResult.confidence.toFixed(2)} >= 0.50), ` +
+          `overriding BLIP score ${score} → ${rescuedScore}`
+        );
+        score = rescuedScore;
+        console.log(`[Score] RESCUE via detection: ${score}`);
+      }
+
+      // Rescue via CLIP: if very similar to Riri anchor,
+      // the image probably IS Riri even though BLIP didn't see it
+      if (score < 0 && clipResult && clipResult.similarity >= 0.80) {
+        const rescuedScore = 3;
+        reasons.push(
+          `RESCUED by CLIP: high anchor similarity ` +
+          `(${clipResult.similarity.toFixed(3)} >= 0.80), ` +
+          `overriding BLIP score ${score} → ${rescuedScore}`
+        );
+        score = rescuedScore;
+        console.log(`[Score] RESCUE via CLIP: ${score}`);
+      }
+    }
+  }
+
+  // 3. If passed (or rescued), add CLIP and detection bonuses/penalties
+  if (score >= 0) {
+    if (clipResult) {
+      // Don't double-count if CLIP already rescued
+      if (!blipRejected || score > 3) {
+        score += clipResult.scoreContribution;
+        reasons.push(clipResult.reason);
+      }
+    }
+
+    if (detectionResult) {
+      // Don't double-count if detection already rescued
+      if (!blipRejected || score > 4) {
+        score += detectionResult.scoreContribution;
+        reasons.push(detectionResult.reason);
+      }
+    }
+  }
+
+  console.log(
+    `[Score] FINAL: score=${score} ` +
+    `(BLIP=${blipRejected ? "rejected" : "passed"}, ` +
+    `CLIP=${clipResult ? clipResult.similarity.toFixed(3) : "n/a"}, ` +
+    `Detection=${detectionResult ? detectionResult.confidence.toFixed(2) : "n/a"})`
+  );
+
+  return {
+    url: imageUrl,
+    score,
+    caption,
+    reasons,
+    clipSimilarity: clipResult?.similarity,
+    detectionConfidence: detectionResult?.confidence,
+  };
 }
 
 /**
  * Generate candidates with seed variation, score each, return best.
- * Supports mask escalation and must-include scoring.
+ * Supports mask escalation and multi-signal scoring.
  */
 export async function generateAndSelectBest(
   generateFn: (seed: number, maskDataUrl: string) => Promise<string>,

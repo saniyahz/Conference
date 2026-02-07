@@ -5,9 +5,20 @@
  * uses generateImageWithAnchor(). Every character insertion goes through
  * generateInpaintCharacter() with a mask. No img2img path exists here.
  *
+ * Multi-signal validation:
+ *   1. BLIP captioning — hard rejection gates
+ *   2. CLIP similarity — compare to Riri anchor image (optional)
+ *   3. GroundingDINO   — detect "rhinoceros" in image (optional)
+ *
+ * LoRA support:
+ *   Pass a LoraConfig to use a fine-tuned model with consistent Riri identity.
+ *
  * Usage:
  *   import { generateAllPages } from "./generatePages";
- *   const results = await generateAllPages(storyPages, anchorUrl);
+ *   const results = await generateAllPages(storyPages, {
+ *     anchorImageUrl: "https://...",  // Riri reference for CLIP
+ *     enableDetection: true,          // GroundingDINO validation
+ *   });
  *
  * Or run directly:
  *   REPLICATE_API_TOKEN=... npx ts-node src/generatePages.ts
@@ -18,6 +29,8 @@ import { makeRiriZoneMaskDataUrl, makeRiriZoneLargeMaskDataUrl } from "./lib/mas
 import { generatePlate, generateInpaintCharacter } from "./lib/imageGeneration";
 import { resolveSceneSetting, enforceMustInclude } from "./lib/sceneSettings";
 import { scoreCandidate, SCORE_THRESHOLD, CandidateResult, ScoreOptions } from "./lib/candidateScoring";
+import { cacheAnchorEmbedding } from "./lib/clipScoring";
+import { LoraConfig, prependTriggerWord } from "./lib/loraTraining";
 
 // ─── TYPES ──────────────────────────────────────────────────────────────
 
@@ -35,6 +48,22 @@ export interface PageResult {
   caption: string;
   mode: string;           // always "INPAINT" — logged proof
   reasons: string[];
+  clipSimilarity?: number;
+  detectionConfidence?: number;
+}
+
+export interface GenerationOptions {
+  /** Riri reference image URL for CLIP similarity scoring */
+  anchorImageUrl?: string;
+
+  /** Enable GroundingDINO rhinoceros detection as validation signal */
+  enableDetection?: boolean;
+
+  /** LoRA config for consistent Riri character identity */
+  lora?: LoraConfig;
+
+  /** Master seed for reproducibility. Default: 42 */
+  masterSeed?: number;
 }
 
 // ─── CONFIG ─────────────────────────────────────────────────────────────
@@ -45,9 +74,9 @@ const SEED_STRIDE = 29;  // prime, wide spread
 
 // ─── PROMPT BUILDERS ────────────────────────────────────────────────────
 
-function buildCharacterPrompt(action: string, setting: string): string {
+function buildCharacterPrompt(action: string, setting: string, lora?: LoraConfig): string {
   // ~35 words. Character tokens first. No meta-labels.
-  return [
+  let prompt = [
     "Riri, cute gray rhinoceros, one small rounded horn, big friendly eyes, thick gray skin, full body visible",
     "centered foreground, occupies 45% of frame",
     action,
@@ -55,6 +84,13 @@ function buildCharacterPrompt(action: string, setting: string): string {
     "2D children's picture book, bold clean outlines, flat cel shading, vibrant pastel colors",
     "only one rhinoceros, no humans, no text",
   ].join(", ");
+
+  // Prepend LoRA trigger word if active
+  if (lora) {
+    prompt = prependTriggerWord(prompt, lora.triggerWord);
+  }
+
+  return prompt;
 }
 
 function buildScenePlatePrompt(setting: string, styleHints: string): string {
@@ -78,7 +114,7 @@ function buildScenePlatePrompt(setting: string, styleHints: string): string {
  *   2. Generate background plate (txt2img or img2img, no characters)
  *   3. Build foreground mask (Riri zone)
  *   4. INPAINT Riri into the mask zone (image + mask + prompt_strength 0.65)
- *   5. Score with BLIP + hard rejection gates
+ *   5. Score with BLIP + CLIP + GroundingDINO (multi-signal)
  *   6. If rejected: retry with different seed (up to 3x)
  *   7. If still rejected: escalate to larger mask, retry 3x more
  *   8. Return best candidate
@@ -92,8 +128,10 @@ export async function generateOnePage(
   page: StoryPage,
   pageIndex: number,
   baseSeed: number,
-  anchorImageUrl?: string
+  genOpts: GenerationOptions & { cachedAnchorEmbedding?: number[] } = {}
 ): Promise<PageResult> {
+  const { anchorImageUrl, enableDetection, lora, cachedAnchorEmbedding } = genOpts;
+
   console.log(`\n${"=".repeat(60)}`);
   console.log(`========== INPAINT PAGE ${pageIndex + 1} ==========`);
   console.log(`${"=".repeat(60)}`);
@@ -109,6 +147,9 @@ export async function generateOnePage(
   console.log(`[Page ${pageIndex + 1}] Setting (verbatim): "${scene.setting}"`);
   console.log(`[Page ${pageIndex + 1}] Category tag: ${scene.category}`);
   console.log(`[Page ${pageIndex + 1}] Must include: [${mustInclude.join(", ")}]`);
+  if (lora) console.log(`[Page ${pageIndex + 1}] LoRA: trigger="${lora.triggerWord}"`);
+  if (anchorImageUrl) console.log(`[Page ${pageIndex + 1}] CLIP anchor: active`);
+  if (enableDetection) console.log(`[Page ${pageIndex + 1}] GroundingDINO: active`);
 
   // ── 2. Generate plate (background only) ──
   const platePrompt = buildScenePlatePrompt(scene.setting, scene.styleHints);
@@ -119,8 +160,9 @@ export async function generateOnePage(
     platePrompt,
     baseSeed,
     pageIndex,
-    anchorImageUrl,
-    0.80
+    undefined, // no base image for plate
+    0.80,
+    lora
   );
 
   if (!plateUrl) {
@@ -145,23 +187,26 @@ export async function generateOnePage(
   ]);
 
   // ── 4. Build character prompt ──
-  const charPrompt = buildCharacterPrompt(page.action, scene.setting);
+  const charPrompt = buildCharacterPrompt(page.action, scene.setting, lora);
   console.log(`[Page ${pageIndex + 1}] Character prompt: "${charPrompt}"`);
 
-  // ── 5. Candidate loop: inpaint + score ──
+  // ── 5. Candidate loop: inpaint + multi-signal score ──
   const allCandidates: CandidateResult[] = [];
 
-  // Build score options with must-include enforcement
+  // Build score options with must-include enforcement + CLIP + detection
   const scoreOpts: ScoreOptions = {
     mustInclude,
     requireMustIncludeCount: Math.min(2, mustInclude.length),
+    anchorImageUrl,
+    cachedAnchorEmbedding,
+    enableDetection,
   };
 
   // Round 1: initial mask
   console.log(`\n[Page ${pageIndex + 1}] --- Round 1: initial mask ---`);
   const round1Result = await runCandidateRound(
     replicate, charPrompt, plateUrl, initialMask,
-    baseSeed, CANDIDATES_PER_ROUND, pageIndex, mustInclude, scene.setting, scoreOpts
+    baseSeed, CANDIDATES_PER_ROUND, pageIndex, mustInclude, scene.setting, scoreOpts, lora
   );
   allCandidates.push(...round1Result.candidates);
   if (round1Result.accepted) {
@@ -173,7 +218,7 @@ export async function generateOnePage(
   const round2Seed = baseSeed + CANDIDATES_PER_ROUND * SEED_STRIDE;
   const round2Result = await runCandidateRound(
     replicate, charPrompt, plateUrl, escalatedMask,
-    round2Seed, CANDIDATES_PER_ROUND, pageIndex, mustInclude, scene.setting, scoreOpts
+    round2Seed, CANDIDATES_PER_ROUND, pageIndex, mustInclude, scene.setting, scoreOpts, lora
   );
   allCandidates.push(...round2Result.candidates);
   if (round2Result.accepted) {
@@ -204,7 +249,8 @@ async function runCandidateRound(
   pageIndex: number,
   mustInclude: string[],
   settingContext: string,
-  scoreOpts: ScoreOptions
+  scoreOpts: ScoreOptions,
+  lora?: LoraConfig
 ): Promise<{ candidates: CandidateResult[]; accepted: CandidateResult | null }> {
   const candidates: CandidateResult[] = [];
 
@@ -224,7 +270,8 @@ async function runCandidateRound(
       seed,
       pageIndex,
       settingContext,
-      mustInclude
+      mustInclude,
+      lora
     );
 
     if (!url) {
@@ -267,25 +314,58 @@ function buildPageResult(
     caption: candidate.caption,
     mode: "INPAINT",
     reasons: candidate.reasons,
+    clipSimilarity: candidate.clipSimilarity,
+    detectionConfidence: candidate.detectionConfidence,
   };
 }
 
 // ─── FULL BOOK GENERATION ───────────────────────────────────────────────
 
 /**
- * Generate all pages of a story book.
+ * Generate all pages of a story book with multi-signal validation.
  *
  * Call this from your app instead of your existing page loop.
  * Every page goes through: plate → inpaint → score → retry.
  * There is no img2img character path.
+ *
+ * Options:
+ *   anchorImageUrl  — Riri reference for CLIP similarity (recommended)
+ *   enableDetection — Run GroundingDINO for rhinoceros detection
+ *   lora            — Use fine-tuned model for consistent character
+ *   masterSeed      — Base seed for reproducibility (default: 42)
  */
 export async function generateAllPages(
   storyPages: StoryPage[],
-  anchorImageUrl?: string,
-  masterSeed: number = 42
+  opts: GenerationOptions = {}
 ): Promise<PageResult[]> {
+  const {
+    anchorImageUrl,
+    enableDetection,
+    lora,
+    masterSeed = 42,
+  } = opts;
+
   const replicate = new Replicate();
   const results: PageResult[] = [];
+
+  // Cache CLIP anchor embedding once for the entire book
+  let cachedAnchorEmbedding: number[] | undefined;
+  if (anchorImageUrl) {
+    console.log(`[Book] Caching CLIP anchor embedding for: ${anchorImageUrl}`);
+    cachedAnchorEmbedding = await cacheAnchorEmbedding(replicate, anchorImageUrl);
+    if (cachedAnchorEmbedding.length > 0) {
+      console.log(`[Book] CLIP anchor cached (${cachedAnchorEmbedding.length} dims)`);
+    } else {
+      console.warn(`[Book] CLIP anchor caching failed — CLIP scoring disabled`);
+    }
+  }
+
+  if (lora) {
+    console.log(`[Book] LoRA active: version=${lora.version.substring(0, 12)}..., trigger="${lora.triggerWord}"`);
+  }
+  if (enableDetection) {
+    console.log(`[Book] GroundingDINO rhinoceros detection: ENABLED`);
+  }
 
   for (let i = 0; i < storyPages.length; i++) {
     const pageSeed = masterSeed + i * 1000; // large offset between pages
@@ -294,13 +374,15 @@ export async function generateAllPages(
       storyPages[i],
       i,
       pageSeed,
-      anchorImageUrl
+      { anchorImageUrl, enableDetection, lora, cachedAnchorEmbedding }
     );
     results.push(result);
 
     console.log(
       `\n[SUMMARY Page ${i + 1}] mode=${result.mode} score=${result.score} ` +
-      `url=${result.finalUrl ? "OK" : "FAILED"}`
+      `url=${result.finalUrl ? "OK" : "FAILED"}` +
+      (result.clipSimilarity !== undefined ? ` clip=${result.clipSimilarity.toFixed(3)}` : "") +
+      (result.detectionConfidence !== undefined ? ` det=${result.detectionConfidence.toFixed(2)}` : "")
     );
   }
 
@@ -311,7 +393,9 @@ export async function generateAllPages(
   for (const r of results) {
     console.log(
       `  Page ${r.pageIndex + 1}: mode=${r.mode} score=${r.score} ` +
-      `caption="${r.caption.substring(0, 60)}..."`
+      `caption="${r.caption.substring(0, 60)}..."` +
+      (r.clipSimilarity !== undefined ? ` clip=${r.clipSimilarity.toFixed(3)}` : "") +
+      (r.detectionConfidence !== undefined ? ` det=${r.detectionConfidence.toFixed(2)}` : "")
     );
   }
 
@@ -337,7 +421,26 @@ if (require.main === module) {
     },
   ];
 
-  generateAllPages(examplePages)
+  // Enable all validation signals if anchor URL is provided via env
+  const anchorImageUrl = process.env.RIRI_ANCHOR_URL;
+  const enableDetection = process.env.ENABLE_DETECTION === "true";
+  const loraVersion = process.env.RIRI_LORA_VERSION;
+  const loraTrigger = process.env.RIRI_LORA_TRIGGER || "RIRI";
+
+  const opts: GenerationOptions = {
+    anchorImageUrl,
+    enableDetection,
+  };
+
+  if (loraVersion) {
+    opts.lora = {
+      version: loraVersion,
+      triggerWord: loraTrigger,
+      loraScale: 0.8,
+    };
+  }
+
+  generateAllPages(examplePages, opts)
     .then((results) => {
       console.log("\nDone. Results:", JSON.stringify(results, null, 2));
     })

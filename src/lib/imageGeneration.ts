@@ -4,6 +4,7 @@ import {
   buildInpaintCharacterNegative,
   sanitizeNegatives,
 } from "./negativePrompts";
+import { LoraConfig, prependTriggerWord } from "./loraTraining";
 
 /**
  * SDXL model version on Replicate.
@@ -74,10 +75,13 @@ export async function generatePlate(
   seed: number,
   pageIndex: number,
   baseImageUrl?: string,
-  promptStrength: number = 0.80
+  promptStrength: number = 0.80,
+  lora?: LoraConfig
 ): Promise<string> {
   const maxRetries = 3;
   const negativePrompt = buildPlateNegative();
+
+  const modelVersion = lora?.version ?? SDXL_VERSION;
 
   for (let attempt = 1; attempt <= maxRetries; attempt++) {
     try {
@@ -93,6 +97,10 @@ export async function generatePlate(
         seed,
       };
 
+      if (lora?.loraScale !== undefined) {
+        input.lora_scale = lora.loraScale;
+      }
+
       if (baseImageUrl) {
         input.image = baseImageUrl;
         input.prompt_strength = promptStrength;
@@ -100,11 +108,12 @@ export async function generatePlate(
 
       console.log(
         `[Plate ${pageIndex}] Attempt ${attempt}/${maxRetries} ` +
-        `(mode: ${baseImageUrl ? "img2img" : "txt2img"}, seed: ${seed})`
+        `(mode: ${baseImageUrl ? "img2img" : "txt2img"}, seed: ${seed}` +
+        `${lora ? `, LoRA: ${lora.version.substring(0, 12)}...` : ""})`
       );
 
       const prediction = await replicate.predictions.create({
-        version: SDXL_VERSION,
+        version: modelVersion,
         input,
       });
 
@@ -152,7 +161,8 @@ export async function generateInpaintCharacter(
   seed: number,
   pageIndex: number,
   settingContext: string = "",
-  mustInclude: string[] = []
+  mustInclude: string[] = [],
+  lora?: LoraConfig
 ): Promise<string> {
   // Hard validation: mask MUST be a real data URL, otherwise we're
   // silently falling back to img2img and SDXL will ignore the character.
@@ -165,14 +175,20 @@ export async function generateInpaintCharacter(
   }
 
   const maxRetries = 3;
+  const modelVersion = lora?.version ?? SDXL_VERSION;
+
+  // If LoRA is active, prepend trigger word to the prompt
+  const effectivePrompt = lora
+    ? prependTriggerWord(characterPrompt, lora.triggerWord)
+    : characterPrompt;
 
   let negativePrompt = buildInpaintCharacterNegative();
-  negativePrompt = sanitizeNegatives(negativePrompt, characterPrompt, settingContext, mustInclude);
+  negativePrompt = sanitizeNegatives(negativePrompt, effectivePrompt, settingContext, mustInclude);
 
   for (let attempt = 1; attempt <= maxRetries; attempt++) {
     try {
       const input: Record<string, unknown> = {
-        prompt: characterPrompt,
+        prompt: effectivePrompt,
         negative_prompt: negativePrompt,
         image: plateUrl,
         mask: maskDataUrl,
@@ -186,11 +202,16 @@ export async function generateInpaintCharacter(
         seed,
       };
 
+      if (lora?.loraScale !== undefined) {
+        input.lora_scale = lora.loraScale;
+      }
+
       // Explicit confirmation that this is inpaint, not img2img
       console.log(
         `[Inpaint ${pageIndex}] Attempt ${attempt}/${maxRetries} ` +
         `(MODE: INPAINT, mask: ${maskDataUrl.length} bytes, ` +
-        `strength: 0.65, steps: 40, guidance: 10, seed: ${seed})`
+        `strength: 0.65, steps: 40, guidance: 10, seed: ${seed}` +
+        `${lora ? `, LoRA: ${lora.version.substring(0, 12)}..., trigger: ${lora.triggerWord}` : ""})`
       );
       console.log(
         `[Inpaint ${pageIndex}] Input keys: ${Object.keys(input).join(", ")} ` +
@@ -198,7 +219,7 @@ export async function generateInpaintCharacter(
       );
 
       const prediction = await replicate.predictions.create({
-        version: SDXL_VERSION,
+        version: modelVersion,
         input,
       });
 

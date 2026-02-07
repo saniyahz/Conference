@@ -29,7 +29,7 @@ export {
 } from "./sceneSettings";
 export type { SceneSetting } from "./sceneSettings";
 
-// Candidate scoring — gated rejection (wrong animal = instant fail)
+// Candidate scoring — multi-signal: BLIP + CLIP + GroundingDINO
 export {
   scoreCaption,
   captionImage,
@@ -38,6 +38,33 @@ export {
   SCORE_THRESHOLD,
 } from "./candidateScoring";
 export type { CandidateResult, ScoreOptions } from "./candidateScoring";
+
+// CLIP similarity scoring — compare candidate to Riri anchor
+export {
+  getClipEmbedding,
+  cosineSimilarity,
+  scoreClipSimilarity,
+  cacheAnchorEmbedding,
+  scoreClipWithCachedAnchor,
+} from "./clipScoring";
+export type { ClipResult } from "./clipScoring";
+
+// Object detection — GroundingDINO / OWL-ViT for rhinoceros
+export {
+  detectWithGroundingDino,
+  detectWithOwlVit,
+  detectRhinoceros,
+} from "./objectDetection";
+export type { Detection, DetectionResult, DetectorModel } from "./objectDetection";
+
+// LoRA training — consistent Riri character across pages
+export {
+  trainRiriLora,
+  getTrainingStatus,
+  waitForTraining,
+  prependTriggerWord,
+} from "./loraTraining";
+export type { LoraTrainingConfig, LoraTrainingResult, LoraConfig } from "./loraTraining";
 
 // Pipeline — plate → inpaint → validate → escalate
 export {
