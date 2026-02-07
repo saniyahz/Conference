@@ -88,8 +88,6 @@ const EXPANSIONS: Record<string, string[]> = {
   "water splash": ["splash", "spray"],
 };
 
-export const SCORE_THRESHOLD = 6;
-
 /** Minimum bbox area (fraction of frame) to count as foreground character */
 const MIN_BBOX_AREA = 0.15;
 

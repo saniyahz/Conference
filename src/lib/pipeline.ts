@@ -11,36 +11,32 @@ const RIRI_BASE_MUST_INCLUDE = ["rhinoceros", "Riri"];
 // ─── PROMPT BUILDERS ────────────────────────────────────────────────────
 
 /**
- * Compact character-first inpaint prompt.
- *
- * ~35 words max. No labels like "doing:", "must include:", "background:".
- * Models often ignore meta-labels. Just state the facts.
+ * Strict 4-line character prompt. ~35 words. No meta-labels.
  *
  * Token order matters — SDXL weights first tokens highest:
- *   [CHARACTER] [COMPOSITION] [ACTION] [STYLE]
+ *   Line 1: CHARACTER (identity lock)
+ *   Line 2: ACTION in SETTING
+ *   Line 3: COMPOSITION + CONSTRAINTS
+ *   Line 4: STYLE
  */
 export function buildCharacterFirstPrompt(action: string, setting: string): string {
   return [
-    "Riri, cute gray rhinoceros, one small rounded horn, big friendly eyes, thick gray skin, full body visible",
-    "centered foreground, occupies 45% of frame",
-    action,
-    `matching ${setting} lighting and perspective`,
-    "2D children's picture book, bold clean outlines, flat cel shading, vibrant pastel colors",
-    "only one rhinoceros, no humans, no text",
+    "Riri, cute gray rhinoceros, one small rounded horn, big friendly eyes, full body",
+    `${action} in ${setting}`,
+    "centered foreground, 45% of frame, one rhinoceros, no humans, no text",
+    "2D children's picture book, bold outlines, flat cel shading, pastel colors",
   ].join(", ");
 }
 
 /**
- * Plate prompt — scene only, no characters.
+ * Plate prompt — scene only, no characters. Short and clean.
  */
 export function buildPlatePrompt(setting: string, styleHints: string): string {
   return [
     setting,
     styleHints,
-    "2D children's picture book, bold clean outlines, flat cel shading, vibrant pastel colors",
-    "empty scene, no characters, no animals, no people",
-    "wide establishing shot",
-    "no text, no watermark",
+    "2D children's picture book, bold outlines, flat cel shading, pastel colors",
+    "empty scene, no characters, no animals, no people, no text",
   ].join(", ");
 }
 

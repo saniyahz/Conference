@@ -77,18 +77,21 @@ const SEED_STRIDE = 29;  // prime, wide spread
 
 // ─── PROMPT BUILDERS ────────────────────────────────────────────────────
 
+/**
+ * Strict 4-line character prompt. ~35 words.
+ *   Line 1: CHARACTER (identity lock)
+ *   Line 2: ACTION in SETTING
+ *   Line 3: COMPOSITION + CONSTRAINTS
+ *   Line 4: STYLE
+ */
 function buildCharacterPrompt(action: string, setting: string, lora?: LoraConfig): string {
-  // ~35 words. Character tokens first. No meta-labels.
   let prompt = [
-    "Riri, cute gray rhinoceros, one small rounded horn, big friendly eyes, thick gray skin, full body visible",
-    "centered foreground, occupies 45% of frame",
-    action,
-    `matching ${setting} lighting and perspective`,
-    "2D children's picture book, bold clean outlines, flat cel shading, vibrant pastel colors",
-    "only one rhinoceros, no humans, no text",
+    "Riri, cute gray rhinoceros, one small rounded horn, big friendly eyes, full body",
+    `${action} in ${setting}`,
+    "centered foreground, 45% of frame, one rhinoceros, no humans, no text",
+    "2D children's picture book, bold outlines, flat cel shading, pastel colors",
   ].join(", ");
 
-  // Prepend LoRA trigger word if active
   if (lora) {
     prompt = prependTriggerWord(prompt, lora.triggerWord);
   }
@@ -100,10 +103,8 @@ function buildScenePlatePrompt(setting: string, styleHints: string): string {
   return [
     setting,
     styleHints,
-    "2D children's picture book, bold clean outlines, flat cel shading, vibrant pastel colors",
-    "empty scene, no characters, no animals, no people",
-    "wide establishing shot",
-    "no text, no watermark",
+    "2D children's picture book, bold outlines, flat cel shading, pastel colors",
+    "empty scene, no characters, no animals, no people, no text",
   ].join(", ");
 }
 

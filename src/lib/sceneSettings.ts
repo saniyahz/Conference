@@ -1,212 +1,290 @@
 /**
  * Scene-setting resolver for the Riri story pipeline.
  *
- * CRITICAL FIX: The page text IS the setting. We extract it verbatim.
- * We NEVER replace "lush forest with winding streams" with a canonical
- * category like "golden savannah". That was the root cause of scenes
- * not matching the story.
+ * TAXONOMY-CLAMPED: Instead of free-form extraction (which produces mashup
+ * settings like "forest with winding streams and waterfall near ocean"),
+ * each page is classified into one of a small set of scene types.
+ * Each type has a short, clean setting string for use in prompts.
  *
- * Categories (forest/ocean/mountain) are used only for internal routing
- * (e.g., choosing color palettes or style hints). They never replace
- * the actual setting text.
+ * This prevents hallucinations caused by overly complex/conflicting settings.
+ *
+ * The taxonomy is ordered most-specific-first. Compound scenes
+ * (forest_waterfall) are checked before generic (forest_clearing).
+ * First match wins.
  */
 
 export interface SceneSetting {
-  /** The actual setting text — preserved verbatim from page text */
+  /** Short, clean setting string — from taxonomy, not free-form */
   setting: string;
-  /** Category tag for routing (forest/ocean/mountain/etc.) */
+  /** Taxonomy key (e.g., "forest_waterfall", "space") */
   category: string;
-  /** Style hints derived from the category */
+  /** Style hints for plate generation */
   styleHints: string;
-  /** Items that must always be present in prompts and never noun-gated away */
+  /** Items that must always be present in prompts */
   mustInclude: string[];
 }
 
-interface CategoryRule {
-  keywords: RegExp;
-  category: string;
+interface TaxonomyEntry {
+  key: string;
+  test: (text: string) => boolean;
+  setting: string;
   styleHints: string;
   extraMustInclude: string[];
 }
 
 /**
- * Category rules — used ONLY for tagging, never for replacing the setting.
+ * Scene taxonomy — ordered most-specific first.
+ * First match wins. Compound entries before generic.
  */
-const CATEGORY_RULES: CategoryRule[] = [
+const SCENE_TAXONOMY: TaxonomyEntry[] = [
+  // ── Compound entries (two environment keywords required) ──
   {
-    keywords: /forest|trees|woodland|grove|jungle/i,
-    category: "forest",
-    styleHints: "lush greens, dappled sunlight, ferns, tall trees",
-    extraMustInclude: ["trees"],
+    key: "forest_waterfall",
+    test: (t) => /forest|tree|woodland|jungle/i.test(t) && /waterfall|cascade|falls/i.test(t),
+    setting: "lush forest with a waterfall",
+    styleHints: "lush greens, flowing water, mist, dappled sunlight",
+    extraMustInclude: ["trees", "waterfall"],
   },
   {
-    keywords: /waterfall|cascade|falls/i,
-    category: "waterfall",
-    styleHints: "flowing water, mist, rocks, lush vegetation",
-    extraMustInclude: ["waterfall"],
+    key: "forest_stream",
+    test: (t) => /forest|tree|woodland/i.test(t) && /stream|creek|brook|river/i.test(t),
+    setting: "forest path along a gentle stream",
+    styleHints: "lush greens, clear water, smooth stones, dappled sunlight",
+    extraMustInclude: ["trees", "stream"],
   },
   {
-    keywords: /stream|creek|brook|river/i,
-    category: "stream",
-    styleHints: "clear water, smooth stones, gentle current",
-    extraMustInclude: ["stream"],
+    key: "mountain_meadow",
+    test: (t) => /mountain|hill|peak/i.test(t) && /meadow|field|flower|wildflower/i.test(t),
+    setting: "mountain meadow with wildflowers",
+    styleHints: "elevated terrain, colorful flowers, open sky",
+    extraMustInclude: ["mountains", "flowers"],
   },
   {
-    keywords: /ocean|sea|beach|shore|coast/i,
-    category: "ocean",
-    styleHints: "waves, sand, horizon, blue tones",
+    key: "mountain_night",
+    test: (t) => /mountain|hill|peak/i.test(t) && /night|star|starlit|starry/i.test(t),
+    setting: "mountain meadow under a starlit sky",
+    styleHints: "night sky, stars, moonlight, mountain silhouette",
+    extraMustInclude: ["mountains", "night sky"],
+  },
+  {
+    key: "ocean_cave",
+    test: (t) => /ocean|sea|wave|shore/i.test(t) && /cave|cavern|grotto/i.test(t),
+    setting: "sea cave behind crashing waves",
+    styleHints: "rocky walls, blue water, ocean light",
+    extraMustInclude: ["cave", "ocean"],
+  },
+
+  // ── Specific entries (single strong keyword match) ──
+  {
+    key: "rocket_interior",
+    test: (t) => /inside.*(?:rocket|ship|capsule)|(?:rocket|ship|capsule).*inside|cockpit|cabin.*(?:rocket|space)/i.test(t),
+    setting: "inside a colorful rocket ship",
+    styleHints: "round windows, glowing buttons, control panels",
+    extraMustInclude: ["rocket"],
+  },
+  {
+    key: "sky_launch",
+    test: (t) => /launch|takeoff|take.?off|liftoff|lift.?off|blast.?off/i.test(t),
+    setting: "rocket launching into the sky",
+    styleHints: "blue sky, white clouds, rocket trail",
+    extraMustInclude: ["rocket", "sky"],
+  },
+  {
+    key: "moon_surface",
+    test: (t) => /\bmoon\b|lunar|crater/i.test(t) && !/night|starlit|starry/i.test(t),
+    setting: "moon surface with craters and Earth in the sky",
+    styleHints: "gray terrain, craters, starry sky, Earth visible",
+    extraMustInclude: ["moon"],
+  },
+  {
+    key: "space",
+    test: (t) => /\bspace\b|galaxy|nebula|asteroid|comet|\borbit\b|among.*star/i.test(t),
+    setting: "outer space with colorful stars and planets",
+    styleHints: "dark sky, twinkling stars, colorful planets",
+    extraMustInclude: ["stars"],
+  },
+  {
+    key: "ocean_splashdown",
+    test: (t) => /splash.*down|splashdown/i.test(t),
+    setting: "ocean splashdown with big waves",
+    styleHints: "waves, spray, blue water, dramatic moment",
     extraMustInclude: ["ocean"],
   },
   {
-    keywords: /mountain|hill|peak|cliff/i,
-    category: "mountain",
-    styleHints: "elevated terrain, sky, distant peaks",
+    key: "ocean",
+    test: (t) => /ocean|sea|\bbeach\b|shore|coast|\bwave\b/i.test(t),
+    setting: "ocean shore with gentle waves",
+    styleHints: "waves, sand, blue water, horizon",
+    extraMustInclude: ["ocean"],
+  },
+  {
+    key: "waterfall",
+    test: (t) => /waterfall|cascade|falls/i.test(t),
+    setting: "cascading waterfall with mist",
+    styleHints: "flowing water, mist, rocks, lush vegetation",
+    extraMustInclude: ["waterfall"],
+  },
+
+  // ── Generic entries (broad keyword match) ──
+  {
+    key: "forest_clearing",
+    test: (t) => /forest|tree|woodland|grove|jungle|clearing/i.test(t),
+    setting: "sunlit forest clearing",
+    styleHints: "lush greens, dappled sunlight, tall trees",
+    extraMustInclude: ["trees"],
+  },
+  {
+    key: "mountain",
+    test: (t) => /mountain|hill|peak|cliff|summit/i.test(t),
+    setting: "mountain landscape with distant peaks",
+    styleHints: "elevated terrain, wide sky, distant peaks",
     extraMustInclude: ["mountains"],
   },
   {
-    keywords: /savannah|grassland|plain|prairie/i,
-    category: "savannah",
-    styleHints: "golden grass, warm light, wide horizon",
-    extraMustInclude: ["savannah"],
+    key: "cave",
+    test: (t) => /cave|cavern|grotto|underground/i.test(t),
+    setting: "inside a glowing cave",
+    styleHints: "rocky walls, soft glow, stalactites",
+    extraMustInclude: ["cave"],
   },
   {
-    keywords: /village|town|house|home|hut/i,
-    category: "village",
-    styleHints: "buildings, paths, warm atmosphere",
-    extraMustInclude: ["village"],
+    key: "night_sky",
+    test: (t) => /\bnight\b|starlit|starry|dark.*sky/i.test(t),
+    setting: "meadow under a starlit sky",
+    styleHints: "night sky, stars, moonlight, soft glow",
+    extraMustInclude: ["night sky"],
   },
   {
-    keywords: /garden|flower|bloom|meadow/i,
-    category: "garden",
+    key: "garden",
+    test: (t) => /garden|flower|bloom|meadow|wildflower/i.test(t),
+    setting: "colorful flower garden",
     styleHints: "flowers, butterflies, vibrant colors",
     extraMustInclude: ["flowers"],
   },
   {
-    keywords: /night|star|moon|dark sky/i,
-    category: "night",
-    styleHints: "night sky, stars, moonlight, silhouettes",
-    extraMustInclude: ["night sky"],
+    key: "village",
+    test: (t) => /village|town|house|home|hut/i.test(t),
+    setting: "friendly village with colorful houses",
+    styleHints: "buildings, paths, warm atmosphere",
+    extraMustInclude: ["village"],
   },
   {
-    keywords: /rain|storm|thunder|cloud/i,
-    category: "rain",
+    key: "savannah",
+    test: (t) => /savannah|grassland|plain|prairie/i.test(t),
+    setting: "golden savannah with tall grass",
+    styleHints: "golden grass, warm light, wide horizon",
+    extraMustInclude: ["savannah"],
+  },
+  {
+    key: "stream",
+    test: (t) => /stream|creek|brook|river/i.test(t),
+    setting: "gentle stream with smooth stones",
+    styleHints: "clear water, smooth stones, gentle current",
+    extraMustInclude: ["stream"],
+  },
+  {
+    key: "rain",
+    test: (t) => /rain|storm|thunder|\bpour\b/i.test(t),
+    setting: "rainy day with puddles",
     styleHints: "rain, overcast, puddles, glistening surfaces",
     extraMustInclude: ["rain"],
+  },
+  {
+    key: "lake",
+    test: (t) => /lake|pond/i.test(t),
+    setting: "calm lake with reflections",
+    styleHints: "still water, reflections, reeds, soft light",
+    extraMustInclude: ["lake"],
+  },
+  {
+    key: "desert",
+    test: (t) => /desert|sand dune|oasis/i.test(t),
+    setting: "sandy desert with distant dunes",
+    styleHints: "golden sand, warm tones, wide sky",
+    extraMustInclude: ["desert"],
+  },
+  {
+    key: "snow",
+    test: (t) => /snow|ice|frozen|winter|arctic/i.test(t),
+    setting: "snowy landscape with soft white hills",
+    styleHints: "white snow, soft blue shadows, crisp sky",
+    extraMustInclude: ["snow"],
   },
 ];
 
 /**
- * Extract setting-relevant phrases from page text.
- *
- * Looks for common patterns like:
- *   "in a lush forest"
- *   "by the ocean"
- *   "through the winding streams"
- *   "near a cascading waterfall"
- *
- * If no clear pattern is found, uses the full text as context.
+ * Classify page text against the taxonomy.
+ * Returns the first matching entry (most specific first).
  */
-function extractSettingFromText(pageText: string): string {
-  // Try to extract setting phrases using common preposition patterns
-  const settingPatterns = [
-    /(?:in|through|across|near|by|beside|along|under|above|around|over)\s+(?:a |the |an )?([^,.!?]+(?:(?:,?\s*(?:and|with|near)\s+)[^,.!?]+)*)/gi,
-  ];
-
-  const matches: string[] = [];
-  for (const pattern of settingPatterns) {
-    let match;
-    while ((match = pattern.exec(pageText)) !== null) {
-      const phrase = match[0].trim();
-      // Only keep if it sounds like a place/environment
-      if (/forest|tree|water|stream|river|ocean|sea|beach|mountain|hill|garden|flower|village|savannah|grass|meadow|cave|sky|moon|star|rain|cloud|jungle|path|trail|clearing|rock|cliff|lake|pond|field|valley/i.test(phrase)) {
-        matches.push(phrase);
-      }
-    }
+export function classifyScene(text: string): TaxonomyEntry | null {
+  for (const entry of SCENE_TAXONOMY) {
+    if (entry.test(text)) return entry;
   }
-
-  if (matches.length > 0) {
-    return matches.join(", ");
-  }
-
-  // Fallback: return the raw text (it's better than a wrong canonical)
-  return pageText;
+  return null;
 }
 
 /**
- * Detect which category tags apply to the text.
- * Multiple categories can match (e.g., "forest with waterfall" → forest + waterfall).
- */
-function detectCategories(text: string): CategoryRule[] {
-  return CATEGORY_RULES.filter((rule) => rule.keywords.test(text));
-}
-
-/**
- * Resolve scene setting from page text.
+ * Resolve scene setting from page text using taxonomy clamping.
  *
  * KEY RULES:
- *  1. The page text is the source of truth. The setting string comes from
- *     the text, not from a lookup table.
- *  2. Categories are tags only — for routing, not for replacement.
- *  3. Scene card fallback is used ONLY when page text has zero
- *     environment keywords. Even then, it's used as-is (not canonicalized).
- *  4. mustInclude items are NEVER removed by noun-gating.
+ *  1. Page text is matched against a fixed taxonomy of scene types.
+ *  2. The taxonomy's short setting string is used in prompts — NOT
+ *     the raw page text. This prevents mashup settings.
+ *  3. The taxonomy is ordered most-specific-first; first match wins.
+ *  4. Scene card fallback is used if page text matches nothing.
+ *  5. mustInclude items are NEVER removed by downstream filtering.
  *
  * @param pageText - The actual story text for this page
  * @param baseMustInclude - Items that must always be included (e.g. ["rhinoceros", "Riri"])
- * @param sceneCardFallback - Optional fallback; only used if text has no setting at all
+ * @param sceneCardFallback - Optional fallback; only used if text matches nothing
  */
 export function resolveSceneSetting(
   pageText: string,
   baseMustInclude: string[] = [],
   sceneCardFallback?: string
 ): SceneSetting {
-  const textCategories = detectCategories(pageText);
+  // Try to classify page text against taxonomy
+  const match = classifyScene(pageText);
 
-  // If the page text has recognizable environment content, use it directly
-  if (textCategories.length > 0) {
-    const setting = extractSettingFromText(pageText);
-    const allMustInclude = [
-      ...baseMustInclude,
-      ...textCategories.flatMap((c) => c.extraMustInclude),
-    ];
-    const styleHints = textCategories.map((c) => c.styleHints).join(", ");
-    const category = textCategories.map((c) => c.category).join("+");
-
+  if (match) {
+    console.log(`[Scene] Classified as "${match.key}" → "${match.setting}"`);
     return {
-      setting,
-      category,
-      styleHints,
-      mustInclude: dedup(allMustInclude),
+      setting: match.setting,
+      category: match.key,
+      styleHints: match.styleHints,
+      mustInclude: dedup([...baseMustInclude, ...match.extraMustInclude]),
     };
   }
 
-  // Page text has no environment keywords — try the scene card fallback
+  // Try scene card fallback
   if (sceneCardFallback) {
-    const fallbackCategories = detectCategories(sceneCardFallback);
-    const styleHints = fallbackCategories.length > 0
-      ? fallbackCategories.map((c) => c.styleHints).join(", ")
-      : "bright colors, friendly atmosphere";
-    const category = fallbackCategories.length > 0
-      ? fallbackCategories.map((c) => c.category).join("+")
-      : "generic";
+    const fallbackMatch = classifyScene(sceneCardFallback);
+    if (fallbackMatch) {
+      console.log(`[Scene] Fallback classified as "${fallbackMatch.key}" → "${fallbackMatch.setting}"`);
+      return {
+        setting: fallbackMatch.setting,
+        category: fallbackMatch.key,
+        styleHints: fallbackMatch.styleHints,
+        mustInclude: dedup([...baseMustInclude, ...fallbackMatch.extraMustInclude]),
+      };
+    }
 
+    // Fallback text didn't match taxonomy — use as-is but log a warning
+    console.warn(`[Scene] No taxonomy match for fallback: "${sceneCardFallback}"`);
     return {
-      // Use the fallback text AS-IS — never canonicalize
       setting: sceneCardFallback,
-      category,
-      styleHints,
-      mustInclude: dedup([
-        ...baseMustInclude,
-        ...fallbackCategories.flatMap((c) => c.extraMustInclude),
-      ]),
+      category: "generic",
+      styleHints: "bright colors, friendly atmosphere",
+      mustInclude: [...baseMustInclude],
     };
   }
 
-  // Nothing at all — use a safe default
+  // Nothing matched — safe default
+  console.warn(`[Scene] No taxonomy match for: "${pageText.substring(0, 80)}..."`);
   return {
     setting: "colorful storybook landscape",
     category: "generic",
-    styleHints: "bright colors, friendly atmosphere, children's book illustration style",
+    styleHints: "bright colors, friendly atmosphere",
     mustInclude: [...baseMustInclude],
   };
 }

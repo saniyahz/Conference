@@ -22,10 +22,11 @@ export {
   sanitizeNegatives,
 } from "./negativePrompts";
 
-// Scene / setting resolution (preserves original text, never canonicalizes)
+// Scene / setting resolution (taxonomy-clamped, no free-form mashups)
 export {
   resolveSceneSetting,
   enforceMustInclude,
+  classifyScene,
 } from "./sceneSettings";
 export type { SceneSetting } from "./sceneSettings";
 
@@ -36,7 +37,6 @@ export {
   captionImage,
   scoreCandidate,
   generateAndSelectBest,
-  SCORE_THRESHOLD,
 } from "./candidateScoring";
 export type { CandidateResult, ScoreOptions } from "./candidateScoring";
 
