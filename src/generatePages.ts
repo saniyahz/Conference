@@ -67,6 +67,9 @@ export interface GenerationOptions {
 
   /** Master seed for reproducibility. Default: 42 */
   masterSeed?: number;
+
+  /** Max pages generating concurrently. Default: 2 */
+  pageConcurrency?: number;
 }
 
 // ─── CONFIG ─────────────────────────────────────────────────────────────
@@ -340,15 +343,15 @@ function buildPageResult(
 /**
  * Generate all pages of a story book with multi-signal validation.
  *
- * Call this from your app instead of your existing page loop.
- * Every page goes through: plate → inpaint → score → retry.
- * There is no img2img character path.
+ * Pages run with bounded concurrency (default 2) to stay within
+ * Replicate rate limits while cutting total time roughly in half.
  *
  * Options:
  *   anchorImageUrl  — Riri reference for CLIP similarity (recommended)
  *   enableDetection — Run GroundingDINO for rhinoceros detection
  *   lora            — Use fine-tuned model for consistent character
  *   masterSeed      — Base seed for reproducibility (default: 42)
+ *   pageConcurrency — Max pages generating at once (default: 2)
  */
 export async function generateAllPages(
   storyPages: StoryPage[],
@@ -359,10 +362,10 @@ export async function generateAllPages(
     enableDetection,
     lora,
     masterSeed = 42,
+    pageConcurrency = 2,
   } = opts;
 
   const replicate = new Replicate();
-  const results: PageResult[] = [];
 
   // Cache CLIP anchor embedding once for the entire book
   let cachedAnchorEmbedding: number[] | undefined;
@@ -383,24 +386,40 @@ export async function generateAllPages(
     console.log(`[Book] GroundingDINO rhinoceros detection: ENABLED`);
   }
 
-  for (let i = 0; i < storyPages.length; i++) {
-    const pageSeed = masterSeed + i * 1000; // large offset between pages
-    const result = await generateOnePage(
-      replicate,
-      storyPages[i],
-      i,
-      pageSeed,
-      { anchorImageUrl, enableDetection, lora, cachedAnchorEmbedding }
-    );
-    results.push(result);
+  console.log(`[Book] Generating ${storyPages.length} pages (concurrency=${pageConcurrency})`);
 
-    console.log(
-      `\n[SUMMARY Page ${i + 1}] mode=${result.mode} score=${result.score} ` +
-      `url=${result.finalUrl ? "OK" : "FAILED"}` +
-      (result.clipSimilarity !== undefined ? ` clip=${result.clipSimilarity.toFixed(3)}` : "") +
-      (result.detectionConfidence !== undefined ? ` det=${result.detectionConfidence.toFixed(2)}` : "")
-    );
+  // Run pages with bounded concurrency
+  const results: PageResult[] = new Array(storyPages.length);
+  let nextIndex = 0;
+
+  async function worker() {
+    while (nextIndex < storyPages.length) {
+      const i = nextIndex++;
+      const pageSeed = masterSeed + i * 1000;
+      const result = await generateOnePage(
+        replicate,
+        storyPages[i],
+        i,
+        pageSeed,
+        { anchorImageUrl, enableDetection, lora, cachedAnchorEmbedding }
+      );
+      results[i] = result;
+
+      console.log(
+        `\n[SUMMARY Page ${i + 1}] mode=${result.mode} score=${result.score} ` +
+        `url=${result.finalUrl ? "OK" : "FAILED"}` +
+        (result.clipSimilarity !== undefined ? ` clip=${result.clipSimilarity.toFixed(3)}` : "") +
+        (result.detectionConfidence !== undefined ? ` det=${result.detectionConfidence.toFixed(2)}` : "")
+      );
+    }
   }
+
+  // Launch N workers that pull from the shared index
+  const workers = Array.from(
+    { length: Math.min(pageConcurrency, storyPages.length) },
+    () => worker()
+  );
+  await Promise.all(workers);
 
   // Final summary
   console.log(`\n${"=".repeat(60)}`);
