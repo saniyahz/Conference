@@ -66,8 +66,10 @@ export default function Home() {
         body: JSON.stringify({
           imagePrompts: storyData.imagePrompts,
           negativePrompts: storyData.negativePrompts,
-          seed: storyData.seed,  // Same seed for character consistency
-          characterBible: storyData.characterBible,  // Species-aware pipeline
+          seed: storyData.seed,
+          seeds: storyData.seeds,
+          characterBible: storyData.characterBible,
+          sceneCards: storyData.sceneCards,  // Per-page must-include objects for scoring
         }),
       })
 

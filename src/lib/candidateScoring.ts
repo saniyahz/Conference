@@ -81,11 +81,52 @@ const BUSY_SCENE_TERMS = [
   "herd", "dozens", "party", "parade", "procession",
 ];
 
-/** Must-include keyword expansions for fuzzy matching */
+/**
+ * Must-include keyword expansions for fuzzy matching.
+ * BLIP captions are very terse — "a rhino on a beach" — so we need
+ * aggressive synonym expansion to match scene objects reliably.
+ *
+ * Keys are normalized (lowercase, stripped adjectives).
+ * Values are synonyms that BLIP might use instead.
+ */
 const EXPANSIONS: Record<string, string[]> = {
-  "rocket ship": ["rocket", "spaceship"],
+  // Character
   "rhinoceros": ["rhino"],
-  "water splash": ["splash", "spray"],
+  "rhino": ["rhinoceros"],
+
+  // Vehicles
+  "rocket ship": ["rocket", "spaceship", "spacecraft"],
+  "rocket ship cockpit interior": ["rocket", "spaceship", "spacecraft"],
+  "rocket": ["spaceship", "spacecraft"],
+
+  // Ocean / water
+  "ocean": ["sea", "beach", "water", "wave", "shore", "coast"],
+  "dolphins": ["dolphin"],
+  "whale": ["whale"],
+  "water splash": ["splash", "spray", "water"],
+
+  // Sky / space
+  "rainbow in sky": ["rainbow"],
+  "rainbow": ["rainbow"],
+  "stars": ["star", "planet", "space", "galaxy", "sky"],
+  "moon": ["moon", "lunar", "crater"],
+  "moon craters": ["moon", "crater", "lunar"],
+
+  // Nature
+  "trees": ["tree", "forest", "wood", "clearing"],
+  "forest": ["tree", "wood", "clearing"],
+  "flowers": ["flower", "garden", "bloom", "meadow"],
+  "butterflies": ["butterfly"],
+
+  // Objects
+  "flag": ["flag"],
+  "treasure chest": ["treasure", "chest"],
+  "crown": ["crown"],
+  "balloons": ["balloon"],
+
+  // Creatures
+  "moon rabbits": ["rabbit", "bunny"],
+  "group of moon rabbits": ["rabbit", "bunny"],
 };
 
 /** Minimum bbox area (fraction of frame) to count as foreground character */
@@ -101,43 +142,70 @@ function includesAny(c: string, terms: string[]): boolean {
 
 /**
  * Normalize a must-include term for searching in captions.
- * Strips "exactly N", adjectives like "playful/friendly/cartoon/cute/colorful".
+ * Strips "exactly N", common adjectives, and character name patterns.
+ * "playful dolphins" → "dolphins"
+ * "colorful rocket ship" → "rocket ship"
+ * "Riri the rhinoceros full body" → "rhinoceros full body"
  */
 function normMust(term: string): string {
   return norm(term)
     .replace(/^exactly\s+\d+\s+/, "")
-    .replace(/\b(playful|friendly|cartoon|cute|colorful)\b/g, "")
+    .replace(/\b(playful|friendly|cartoon|cute|colorful|small|big|large|golden|magical|little)\b/g, "")
+    .replace(/\b\w+\s+the\s+/, "") // Strip "Name the ..."
+    .replace(/\s+full\s+body\b/, "") // Strip "full body" suffix
     .trim();
 }
 
 /**
  * Count how many must-include items appear in the caption.
- * Basic plural tolerance: "dolphins" matches "dolphin".
+ * Uses synonym expansion + plural tolerance for fuzzy matching.
+ *
+ * "playful dolphins" → norm to "dolphins" → expand to ["dolphin"] → check caption
+ * "colorful rocket ship" → norm to "rocket ship" → expand to ["rocket", "spaceship"] → check
  */
 function countMustHits(
   captionNorm: string,
   mustInclude: string[]
-): { hits: number; hitTerms: string[] } {
+): { hits: number; hitTerms: string[]; missedTerms: string[] } {
   let hits = 0;
   const hitTerms: string[] = [];
+  const missedTerms: string[] = [];
 
   for (const raw of mustInclude) {
     const t = normMust(raw);
     if (!t) continue;
 
-    // Check expansions first
-    const variants = [t, ...(EXPANSIONS[t] ?? [])];
-    // Add plural-stripped variant
-    const t2 = t.endsWith("s") ? t.slice(0, -1) : "";
-    if (t2) variants.push(t2);
+    // Build all variants to check:
+    // 1. The normalized term itself
+    // 2. Expansions of the normalized term
+    // 3. Expansions of the raw term (lowercase)
+    // 4. Plural-stripped variant
+    // 5. Individual words from multi-word terms
+    const rawLower = norm(raw);
+    const variants = [t, ...(EXPANSIONS[t] ?? []), ...(EXPANSIONS[rawLower] ?? [])];
 
-    if (variants.some((v) => v && captionNorm.includes(v))) {
+    // Add plural-stripped variant
+    if (t.endsWith("s")) variants.push(t.slice(0, -1));
+
+    // For multi-word terms, also check individual significant words
+    // "rocket ship" → also check "rocket"
+    const words = t.split(/\s+/).filter((w) => w.length > 3);
+    for (const word of words) {
+      variants.push(word);
+      if (word.endsWith("s")) variants.push(word.slice(0, -1));
+    }
+
+    const uniqueVariants = [...new Set(variants.filter(Boolean))];
+
+    if (uniqueVariants.some((v) => captionNorm.includes(v))) {
       hits++;
       hitTerms.push(t);
+    } else {
+      missedTerms.push(t);
     }
   }
 
-  return { hits, hitTerms };
+  return { hits, hitTerms, missedTerms };
 }
 
 // ─── DETERMINISTIC ACCEPT GATE ──────────────────────────────────────────
@@ -228,15 +296,16 @@ export function acceptCandidate(
   // for BLIP to caption it, which means it's not a tiny background speck.
 
   // ── RULE 5: Must-include enforcement ──
+  // Now checks character AND scene objects (rockets, dolphins, etc.)
   const mustInclude = opts?.mustInclude ?? [];
   const req = Math.max(0, opts?.requireMustIncludeCount ?? 0);
 
   if (req > 0 && mustInclude.length > 0) {
-    const { hits, hitTerms } = countMustHits(c, mustInclude);
+    const { hits, hitTerms, missedTerms } = countMustHits(c, mustInclude);
     if (hits < req) {
       return {
         accepted: false,
-        rejectReason: `RULE 5: MUST-INCLUDE FAILED — ${hits}/${req} hit (${hitTerms.join(", ") || "none"})`,
+        rejectReason: `RULE 5: MUST-INCLUDE FAILED — ${hits}/${req} hit (found: ${hitTerms.join(", ") || "none"}, missed: ${missedTerms.join(", ") || "none"})`,
       };
     }
   }
@@ -299,15 +368,17 @@ export function scoreCaption(
     reasons.push(`-3 wrong animal "${wrongAnimal}" also present`);
   }
 
-  // Must-include bonus
+  // Must-include bonus — reward candidates that show scene objects
   const must = opts?.mustInclude ?? [];
   const requireCount = opts?.requireMustIncludeCount ?? 0;
   if (must.length > 0 && requireCount > 0) {
-    const { hits, hitTerms } = countMustHits(c, must);
-    reasons.push(`mustInclude: ${hits}/${must.length} (${hitTerms.join(", ") || "none"})`);
+    const { hits, hitTerms, missedTerms } = countMustHits(c, must);
+    reasons.push(`mustInclude: ${hits}/${must.length} (found: ${hitTerms.join(", ") || "none"}, missed: ${missedTerms.join(", ") || "none"})`);
     if (hits >= requireCount) {
-      score += 1;
-      reasons.push("+1 must-includes satisfied");
+      // +2 per scene object hit (strongly prefer candidates with correct scene)
+      const sceneHitBonus = Math.max(0, hits - 1) * 2; // -1 for character (already scored)
+      score += 1 + sceneHitBonus;
+      reasons.push(`+${1 + sceneHitBonus} must-includes satisfied (${hits} hits)`);
     }
   }
 

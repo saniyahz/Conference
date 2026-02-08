@@ -6,7 +6,7 @@
  *      → rejected images return "" → caller shows placeholder
  *
  * API contract:
- *   POST { imagePrompts, negativePrompts?, seed?, seeds?, characterBible? }
+ *   POST { imagePrompts, negativePrompts?, seed?, seeds?, characterBible?, sceneCards? }
  *   →    { imageUrls, seed, seeds }
  *
  * The imagePrompts are used for scene classification only.
@@ -14,11 +14,15 @@
  *
  * If characterBible is provided (from generate-story), character identity is
  * extracted from it. Otherwise falls back to generic animal detection from prompt text.
+ *
+ * If sceneCards are provided, per-page must_include items are used for:
+ *   1. Plate prompt — scene objects (rockets, dolphins, etc.) baked into background
+ *   2. Scoring — BLIP caption checked for scene objects, not just character
  */
 
 import { NextRequest, NextResponse } from "next/server";
 import Replicate from "replicate";
-import { CharacterBible } from "@/lib/visual-types";
+import { CharacterBible, PageSceneCard } from "@/lib/visual-types";
 // ── Pipeline imports ──
 import { generatePlate, generateInpaintCharacter } from "@/src/lib/imageGeneration";
 import { makeRiriZoneMaskDataUrl, makeRiriZoneLargeMaskDataUrl, makeRiriZoneExtraLargeMaskDataUrl } from "@/src/lib/maskGenerator";
@@ -113,8 +117,70 @@ function extractCharacterIdentity(bible?: CharacterBible): CharacterIdentity {
   };
 }
 
+// ─── SCENE OBJECT EXTRACTION ────────────────────────────────────────────
+
+/**
+ * Extract scene objects from a PageSceneCard's must_include / key_objects,
+ * filtering out character-identity items (species, name).
+ *
+ * These objects (rocket, dolphins, rainbow, etc.) go into:
+ *   1. Plate prompt — so the background contains them
+ *   2. Scoring — so BLIP caption is checked for them
+ */
+function extractSceneObjects(
+  card: PageSceneCard | undefined,
+  identity: CharacterIdentity
+): string[] {
+  if (!card) return [];
+
+  const identityLower = new Set(
+    identity.mustInclude.map((s) => s.toLowerCase())
+  );
+  // Also filter out items that are just character descriptions
+  const isCharacterItem = (item: string): boolean => {
+    const lower = item.toLowerCase();
+    if (identityLower.has(lower)) return true;
+    // Filter "Riri the rhinoceros full body" type items
+    if (lower.includes(identity.name.toLowerCase())) return true;
+    if (lower.includes(identity.species.toLowerCase()) && lower.includes("full body")) return true;
+    return false;
+  };
+
+  const objects: string[] = [];
+
+  // From must_include (e.g., "colorful rocket ship", "playful dolphins")
+  // Fall back to required_elements (legacy field) if must_include is empty
+  const mustItems = (card.must_include && card.must_include.length > 0)
+    ? card.must_include
+    : ((card as any).required_elements || []);
+  for (const item of mustItems) {
+    if (!isCharacterItem(item)) {
+      objects.push(item);
+    }
+  }
+
+  // From key_objects (e.g., "rocket ship", "rainbow")
+  if (card.key_objects) {
+    for (const obj of card.key_objects) {
+      // Avoid duplicates
+      const lower = obj.toLowerCase();
+      if (!objects.some((o) => o.toLowerCase().includes(lower) || lower.includes(o.toLowerCase()))) {
+        objects.push(obj);
+      }
+    }
+  }
+
+  console.log(`[SceneObjects] Extracted from card: [${objects.join(", ")}]`);
+  return objects;
+}
+
 // ─── PLATE PROMPT BUILDER ───────────────────────────────────────────────
 
+/**
+ * Build plate prompt with scene objects baked in.
+ * Scene objects (rockets, dolphins, rainbows) must appear in the plate
+ * so SDXL draws them into the background BEFORE character inpainting.
+ */
 function buildPlatePrompt(
   setting: string,
   styleHints: string,
@@ -135,7 +201,8 @@ async function generateOnePage(
   pageIndex: number,
   seed: number,
   identity: CharacterIdentity,
-  customNegative?: string
+  customNegative?: string,
+  pageSceneCard?: PageSceneCard
 ): Promise<{ url: string; accepted: boolean; caption: string; score: number }> {
   console.log(`\n${"=".repeat(60)}`);
   console.log(`========== PAGE ${pageIndex + 1}: PLATE → INPAINT → SCORE ==========`);
@@ -145,13 +212,32 @@ async function generateOnePage(
   const scene = resolveSceneSetting(pagePrompt, identity.mustInclude);
   const allMustInclude = enforceMustInclude(scene.mustInclude, identity.mustInclude);
   const identityLower = new Set(identity.mustInclude.map((s) => s.toLowerCase()));
-  const sceneObjects = allMustInclude.filter((item) => !identityLower.has(item.toLowerCase()));
+
+  // ── 1b. Extract scene objects from BOTH taxonomy AND scene card ──
+  // Taxonomy provides generic objects (stars, trees, moon)
+  // Scene card provides story-specific objects (dolphins, rainbow, rocket)
+  const taxonomyObjects = allMustInclude.filter((item) => !identityLower.has(item.toLowerCase()));
+  const cardObjects = extractSceneObjects(pageSceneCard, identity);
+
+  // Merge and dedup — scene card objects take priority
+  const allSceneObjects: string[] = [];
+  const seenLower = new Set<string>();
+  for (const obj of [...cardObjects, ...taxonomyObjects]) {
+    const lower = obj.toLowerCase();
+    if (!seenLower.has(lower)) {
+      seenLower.add(lower);
+      allSceneObjects.push(obj);
+    }
+  }
 
   console.log(`[Page ${pageIndex + 1}] Scene: "${scene.setting}" (${scene.category})`);
-  console.log(`[Page ${pageIndex + 1}] Plate objects: [${sceneObjects.join(", ")}]`);
+  console.log(`[Page ${pageIndex + 1}] Plate objects (taxonomy): [${taxonomyObjects.join(", ")}]`);
+  console.log(`[Page ${pageIndex + 1}] Scene objects (card): [${cardObjects.join(", ")}]`);
+  console.log(`[Page ${pageIndex + 1}] Combined plate objects: [${allSceneObjects.join(", ")}]`);
 
   // ── 2. Generate plate (background only — no character) ──
-  const platePrompt = buildPlatePrompt(scene.setting, scene.styleHints, sceneObjects);
+  // CRITICAL: scene objects go into plate so SDXL draws them into background
+  const platePrompt = buildPlatePrompt(scene.setting, scene.styleHints, allSceneObjects);
   console.log(`[Page ${pageIndex + 1}] Plate prompt: "${platePrompt}"`);
 
   const plateUrl = await generatePlate(replicate, platePrompt, seed, pageIndex, undefined, 0.80);
@@ -168,11 +254,16 @@ async function generateOnePage(
     makeRiriZoneExtraLargeMaskDataUrl(1024),
   ]);
 
-  // ── 4. Score options (character-only check) ──
+  // ── 4. Score options — character + scene objects ──
+  // requireMustIncludeCount: character(1) + scene objects if any(1)
+  // This ensures BLIP caption confirms BOTH the rhino AND at least one scene element
+  const scoreMustInclude = [...identity.mustInclude, ...cardObjects];
+  const requireCount = 1 + (cardObjects.length > 0 ? 1 : 0);
   const scoreOpts: ScoreOptions = {
-    mustInclude: identity.mustInclude,
-    requireMustIncludeCount: 1,
+    mustInclude: scoreMustInclude,
+    requireMustIncludeCount: requireCount,
   };
+  console.log(`[Page ${pageIndex + 1}] Score mustInclude: [${scoreMustInclude.join(", ")}] require=${requireCount}`);
 
   // ── 5. Round 1: 3 candidates in parallel ──
   console.log(`[Page ${pageIndex + 1}] Round 1: ${CANDIDATES_PER_ROUND} candidates in parallel...`);
@@ -277,7 +368,7 @@ async function runCandidateRound(
 
 export async function POST(request: NextRequest) {
   try {
-    const { imagePrompts, negativePrompts, seed, seeds, characterBible } = await request.json();
+    const { imagePrompts, negativePrompts, seed, seeds, characterBible, sceneCards } = await request.json();
 
     if (!imagePrompts || !Array.isArray(imagePrompts)) {
       return NextResponse.json({ error: "Invalid image prompts provided" }, { status: 400 });
@@ -308,8 +399,9 @@ export async function POST(request: NextRequest) {
         const customNeg = negativePrompts?.[i];
         usedSeeds[i] = pageSeed;
 
+        const pageCard = sceneCards?.[i] as PageSceneCard | undefined;
         console.log(`\n========== GENERATING PAGE ${i + 1}/${imagePrompts.length} ==========`);
-        results[i] = await generateOnePage(imagePrompts[i], i, pageSeed, identity, customNeg);
+        results[i] = await generateOnePage(imagePrompts[i], i, pageSeed, identity, customNeg, pageCard);
       }
     }
 

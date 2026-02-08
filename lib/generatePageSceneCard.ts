@@ -24,20 +24,29 @@ export function generatePageSceneCard(
   // Build forbidden elements based on what's NOT in this scene
   const forbiddenElements = buildForbiddenElements(lowerText);
 
+  // Build must_include: character + key objects + supporting characters
+  const characterItem = `${bible.name} the ${bible.species || bible.character_type || 'character'} full body`;
+  const must_include = [characterItem, ...keyObjects, ...supportingCharacters];
+
   return {
     page_number: pageNumber,
     scene_id: `page_${pageNumber}`,
     setting,
     time_weather: extractTimeWeather(lowerText),
-    main_action: extractAction(lowerText, bible.name),
+    action: extractAction(lowerText, bible.name),
+    must_include,
+    must_not_include: forbiddenElements,
     supporting_characters: supportingCharacters,
     key_objects: keyObjects,
-    required_elements: [...keyObjects, ...supportingCharacters],
-    forbidden_elements: forbiddenElements,
+    mood: extractMood(lowerText),
     camera: {
       shot_type: keyObjects.length > 2 ? 'wide' : 'medium',
       composition_notes: 'Main character clearly visible'
-    }
+    },
+    // Legacy fields for backward compatibility
+    main_action: extractAction(lowerText, bible.name),
+    required_elements: [...keyObjects, ...supportingCharacters],
+    forbidden_elements: forbiddenElements,
   };
 }
 
@@ -305,6 +314,19 @@ function buildForbiddenElements(text: string): string[] {
   }
 
   return forbidden;
+}
+
+/**
+ * Extract mood from text
+ */
+function extractMood(text: string): string {
+  if (text.includes('excit') || text.includes('thrill')) return 'excited, adventurous';
+  if (text.includes('wonder') || text.includes('amaz')) return 'wonder, awe';
+  if (text.includes('happy') || text.includes('joy') || text.includes('laugh')) return 'happy, playful';
+  if (text.includes('curious') || text.includes('discover')) return 'curious, exploratory';
+  if (text.includes('brave') || text.includes('courage')) return 'brave, determined';
+  if (text.includes('friend') || text.includes('welcome')) return 'friendly, warm';
+  return 'joyful, adventurous';
 }
 
 /**
