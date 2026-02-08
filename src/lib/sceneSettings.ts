@@ -78,9 +78,9 @@ const SCENE_TAXONOMY: TaxonomyEntry[] = [
   {
     key: "rocket_interior",
     test: (t) => /inside.*(?:rocket|ship|capsule)|(?:rocket|ship|capsule).*inside|cockpit|cabin.*(?:rocket|space)/i.test(t),
-    setting: "inside a colorful rocket ship",
-    styleHints: "round windows, glowing buttons, control panels",
-    extraMustInclude: ["rocket"],
+    setting: "inside a cozy colorful flying vehicle with round windows",
+    styleHints: "round windows showing sky, glowing buttons, colorful seats, bright interior",
+    extraMustInclude: ["vehicle"],
   },
   {
     key: "sky_launch",
@@ -99,8 +99,8 @@ const SCENE_TAXONOMY: TaxonomyEntry[] = [
   {
     key: "space",
     test: (t) => /\bspace\b|galaxy|nebula|asteroid|comet|\borbit\b|among.*star/i.test(t),
-    setting: "outer space with colorful stars and planets",
-    styleHints: "dark sky, twinkling stars, colorful planets",
+    setting: "colorful alien planet surface with stars and planets in the sky",
+    styleHints: "bright colorful ground, starry sky above, colorful planets, vivid colors",
     extraMustInclude: ["stars"],
   },
   {

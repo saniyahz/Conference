@@ -177,7 +177,7 @@ async function generateOnePage(
   console.log(`[Page ${pageIndex + 1}] Round 1: ${CANDIDATES_PER_ROUND} candidates in parallel...`);
   const round1 = await runCandidateRound(
     plateUrl, initialMask, seed, CANDIDATES_PER_ROUND, pageIndex,
-    scoreOpts, allMustInclude, scene.setting, identity
+    scoreOpts, allMustInclude, scene.setting, identity, scene.category
   );
   const accepted1 = round1.filter((r) => r.accepted).sort((a, b) => b.score - a.score);
   if (accepted1.length > 0) {
@@ -190,7 +190,7 @@ async function generateOnePage(
   const round2Seed = seed + CANDIDATES_PER_ROUND * SEED_STRIDE;
   const round2 = await runCandidateRound(
     plateUrl, escalatedMask, round2Seed, CANDIDATES_PER_ROUND, pageIndex,
-    scoreOpts, allMustInclude, scene.setting, identity
+    scoreOpts, allMustInclude, scene.setting, identity, scene.category
   );
   const accepted2 = round2.filter((r) => r.accepted).sort((a, b) => b.score - a.score);
   if (accepted2.length > 0) {
@@ -207,6 +207,11 @@ async function generateOnePage(
   return { url: "", accepted: false, caption: "", score: -999 };
 }
 
+/** Scene categories that need higher prompt_strength to overcome dark backgrounds */
+const DARK_SCENE_CATEGORIES = new Set(["space", "night_sky", "mountain_night"]);
+const DARK_SCENE_STRENGTH = 0.85;
+const DEFAULT_STRENGTH = 0.75;
+
 async function runCandidateRound(
   plateUrl: string,
   maskDataUrl: string,
@@ -216,16 +221,18 @@ async function runCandidateRound(
   scoreOpts: ScoreOptions,
   mustInclude: string[],
   settingContext: string,
-  identity: CharacterIdentity
+  identity: CharacterIdentity,
+  sceneCategory: string = ""
 ): Promise<CandidateResult[]> {
+  const strength = DARK_SCENE_CATEGORIES.has(sceneCategory) ? DARK_SCENE_STRENGTH : DEFAULT_STRENGTH;
   const tasks = Array.from({ length: count }, async (_, i) => {
     const seed = baseSeed + i * SEED_STRIDE;
 
-    console.log(`[Page ${pageIndex + 1}] Candidate ${i + 1}/${count} seed=${seed} [INPAINT strength=0.75]`);
+    console.log(`[Page ${pageIndex + 1}] Candidate ${i + 1}/${count} seed=${seed} [INPAINT strength=${strength}]`);
 
     const url = await generateInpaintCharacter(
       replicate, identity.inpaintPrompt, plateUrl, maskDataUrl,
-      seed, pageIndex, settingContext, mustInclude
+      seed, pageIndex, settingContext, mustInclude, undefined, strength
     );
 
     if (!url) {

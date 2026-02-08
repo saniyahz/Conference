@@ -162,7 +162,8 @@ export async function generateInpaintCharacter(
   pageIndex: number,
   settingContext: string = "",
   mustInclude: string[] = [],
-  lora?: LoraConfig
+  lora?: LoraConfig,
+  promptStrength: number = 0.75
 ): Promise<string> {
   // Hard validation: mask MUST be a real data URL, otherwise we're
   // silently falling back to img2img and SDXL will ignore the character.
@@ -198,7 +199,7 @@ export async function generateInpaintCharacter(
         scheduler: "K_EULER",
         num_inference_steps: 40,
         guidance_scale: 8,
-        prompt_strength: 0.75,
+        prompt_strength: promptStrength,
         seed,
       };
 
@@ -210,7 +211,7 @@ export async function generateInpaintCharacter(
       console.log(
         `[Inpaint ${pageIndex}] Attempt ${attempt}/${maxRetries} ` +
         `(MODE: INPAINT, mask: ${maskDataUrl.length} bytes, ` +
-        `strength: 0.75, steps: 40, guidance: 8, seed: ${seed}` +
+        `strength: ${promptStrength}, steps: 40, guidance: 8, seed: ${seed}` +
         `${lora ? `, LoRA: ${lora.version.substring(0, 12)}..., trigger: ${lora.triggerWord}` : ""})`
       );
       console.log(
