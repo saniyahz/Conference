@@ -212,17 +212,20 @@ export function acceptCandidate(
         rejectReason: `RULE 4: TINY CHARACTER — bbox ${(detectionResult.bestBboxArea * 100).toFixed(1)}% < ${(MIN_BBOX_AREA * 100)}%`,
       };
     }
-  } else {
-    // If no DINO, require strong CLIP OR strong composition terms
+  } else if (!blipHasRhino) {
+    // No DINO and no BLIP rhino — can't verify anything about size.
+    // (If BLIP confirmed rhino, trust it — we already passed Rule 3.)
     const hasCompositionCue = /\bstanding\b|\bfull body\b|\bwhole body\b|\bcentered\b|\bforeground\b/.test(c);
     const clipIsStrong = !!(clipResult && clipResult.similarity >= 0.78);
     if (!hasCompositionCue && !clipIsStrong) {
       return {
         accepted: false,
-        rejectReason: "RULE 4: SIZE UNVERIFIED (no DINO, weak composition + CLIP)",
+        rejectReason: "RULE 4: SIZE UNVERIFIED (no DINO, no BLIP rhino, weak composition + CLIP)",
       };
     }
   }
+  // If BLIP says "rhinoceros" and DINO is off, trust BLIP on size — the rhino is visible enough
+  // for BLIP to caption it, which means it's not a tiny background speck.
 
   // ── RULE 5: Must-include enforcement ──
   const mustInclude = opts?.mustInclude ?? [];
