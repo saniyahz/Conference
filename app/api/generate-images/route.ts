@@ -47,19 +47,22 @@ interface CharacterIdentity {
 /**
  * Extract character identity from CharacterBible (if provided) or fall back to defaults.
  * This makes the pipeline work for ANY animal character, not just Riri.
+ *
+ * Species extraction priority:
+ *   1. bible.species          ("rhinoceros")
+ *   2. bible.character_type   ("Rhinoceros" — often set instead of species)
+ *   3. bible.visual_fingerprint text scan (look for animal words)
+ *   4. bible.name scan        ("Riri the Rhinoceros")
+ *   5. Fallback: "animal"
  */
 function extractCharacterIdentity(bible?: CharacterBible): CharacterIdentity {
-  if (bible && bible.species) {
-    const name = bible.name || "Character";
-    const species = bible.species;
-    const fingerprint = bible.visual_fingerprint?.join(", ") || `cute cartoon ${species}`;
-
+  if (!bible) {
     return {
-      name,
-      species,
-      mustInclude: [species, name],
+      name: "Character",
+      species: "animal",
+      mustInclude: ["animal"],
       inpaintPrompt: [
-        `${name}, ${fingerprint}, full body, standing`,
+        "cute cartoon animal character, full body, standing",
         "centered foreground",
         "simple children's illustration, flat colors, bold outline",
         "match background lighting, no text",
@@ -67,17 +70,46 @@ function extractCharacterIdentity(bible?: CharacterBible): CharacterIdentity {
     };
   }
 
-  // Fallback: generic — caller didn't provide characterBible
+  const name = bible.name || "Character";
+
+  // Extract species from multiple fields (character_type is often "Rhinoceros" while species is undefined)
+  let species = bible.species || "";
+  if (!species && bible.character_type) {
+    // character_type can be the union literal ("animal") or the actual type name ("Rhinoceros")
+    const ct = String(bible.character_type);
+    if (!["human", "animal", "object", "creature", "other"].includes(ct.toLowerCase())) {
+      species = ct.toLowerCase(); // "Rhinoceros" → "rhinoceros"
+    }
+  }
+  if (!species) {
+    // Scan visual fingerprint for species hints
+    const fpText = (bible.visual_fingerprint || []).join(" ").toLowerCase();
+    const animalMatch = fpText.match(/\b(rhinoceros|rhino|elephant|giraffe|lion|tiger|bear|rabbit|penguin|fox|deer|owl|dolphin|whale|turtle|frog|monkey|panda|zebra|hippo|koala)\b/);
+    if (animalMatch) species = animalMatch[1];
+  }
+  if (!species) {
+    // Scan name: "Riri the Rhinoceros"
+    const nameMatch = name.toLowerCase().match(/\b(rhinoceros|rhino|elephant|giraffe|lion|tiger|bear|rabbit|penguin|fox|deer|owl|dolphin|whale|turtle|frog|monkey|panda|zebra|hippo|koala)\b/);
+    if (nameMatch) species = nameMatch[1];
+  }
+  if (!species) species = "animal";
+
+  console.log(`[Identity] Extracted species: "${species}" from bible (name="${name}", character_type="${bible.character_type}", species_field="${bible.species}")`);
+
+  // Build a strong inpaint prompt — species repeated for emphasis
+  const speciesCapitalized = species.charAt(0).toUpperCase() + species.slice(1);
+  const inpaintPrompt = [
+    `${name} the cute cartoon ${species}, a ${species}, full body, standing`,
+    `${speciesCapitalized} character, centered foreground, large and prominent`,
+    "simple children's illustration, flat colors, bold outline",
+    `match background lighting, only one ${species}, no other animals, no text`,
+  ].join(", ");
+
   return {
-    name: "Character",
-    species: "animal",
-    mustInclude: ["animal"],
-    inpaintPrompt: [
-      "cute cartoon animal character, full body, standing",
-      "centered foreground",
-      "simple children's illustration, flat colors, bold outline",
-      "match background lighting, no text",
-    ].join(", "),
+    name,
+    species,
+    mustInclude: [species, name],
+    inpaintPrompt,
   };
 }
 
@@ -189,7 +221,7 @@ async function runCandidateRound(
   const tasks = Array.from({ length: count }, async (_, i) => {
     const seed = baseSeed + i * SEED_STRIDE;
 
-    console.log(`[Page ${pageIndex + 1}] Candidate ${i + 1}/${count} seed=${seed} [INPAINT strength=0.65]`);
+    console.log(`[Page ${pageIndex + 1}] Candidate ${i + 1}/${count} seed=${seed} [INPAINT strength=0.75]`);
 
     const url = await generateInpaintCharacter(
       replicate, identity.inpaintPrompt, plateUrl, maskDataUrl,

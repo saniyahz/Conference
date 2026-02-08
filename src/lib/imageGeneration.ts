@@ -151,7 +151,7 @@ export async function generatePlate(
  *   - 0.65 = background stays locked, mask region fills from prompt
  *   - 0.55 = very conservative, slight edits only
  *
- * We use 0.65: background stable, mask strongly overwritten.
+ * We use 0.75: background mostly stable, mask region strongly overwritten with character.
  */
 export async function generateInpaintCharacter(
   replicate: Replicate,
@@ -198,7 +198,7 @@ export async function generateInpaintCharacter(
         scheduler: "K_EULER",
         num_inference_steps: 40,
         guidance_scale: 8,
-        prompt_strength: 0.65,
+        prompt_strength: 0.75,
         seed,
       };
 
@@ -210,7 +210,7 @@ export async function generateInpaintCharacter(
       console.log(
         `[Inpaint ${pageIndex}] Attempt ${attempt}/${maxRetries} ` +
         `(MODE: INPAINT, mask: ${maskDataUrl.length} bytes, ` +
-        `strength: 0.65, steps: 40, guidance: 10, seed: ${seed}` +
+        `strength: 0.75, steps: 40, guidance: 8, seed: ${seed}` +
         `${lora ? `, LoRA: ${lora.version.substring(0, 12)}..., trigger: ${lora.triggerWord}` : ""})`
       );
       console.log(
