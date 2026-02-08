@@ -175,7 +175,7 @@ CRITICAL: Every page must end with a COMPLETE sentence. Never cut off mid-senten
     const userPrompt = `Create a magical 10-page children's story about: "${prompt}"`
 
     const output = await replicate.run(
-      "meta/meta-llama-3.1-405b-instruct",
+      "meta/meta-llama-3.1-70b-instruct",
       {
         input: {
           prompt: `${systemPrompt}\n\n${userPrompt}`,
