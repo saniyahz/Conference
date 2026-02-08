@@ -1,12 +1,12 @@
 import { NextRequest, NextResponse } from 'next/server'
-import Replicate from 'replicate'
+import OpenAI from 'openai'
 import { CharacterBible, PageSceneCard, StoryImagePack } from '@/lib/visual-types'
 import { createCharacterBible, createSimpleBible, CharacterDNA } from '@/lib/createCharacterBible'
 import { generateAllSceneCards } from '@/lib/generatePageSceneCard'
 import { renderPrompt, renderNegativePrompt, generatePageSeedByNumber } from '@/lib/renderPrompt'
 
-const replicate = new Replicate({
-  auth: process.env.REPLICATE_API_TOKEN,
+const openai = new OpenAI({
+  apiKey: process.env.OPENAI_API_KEY,
 })
 
 // PRIORITY-ORDERED LIST OF ANIMALS - Check distinctive animals FIRST
@@ -174,19 +174,18 @@ CRITICAL: Every page must end with a COMPLETE sentence. Never cut off mid-senten
 
     const userPrompt = `Create a magical 10-page children's story about: "${prompt}"`
 
-    const output = await replicate.run(
-      "meta/meta-llama-3.1-70b-instruct",
-      {
-        input: {
-          prompt: `${systemPrompt}\n\n${userPrompt}`,
-          temperature: 0.9,
-          max_tokens: 8000,
-          top_p: 0.9,
-        }
-      }
-    ) as string[]
+    const completion = await openai.chat.completions.create({
+      model: "gpt-4o-mini",
+      messages: [
+        { role: "system", content: systemPrompt },
+        { role: "user", content: userPrompt },
+      ],
+      temperature: 0.9,
+      max_tokens: 8000,
+      top_p: 0.9,
+    })
 
-    const storyText = output.join('')
+    const storyText = completion.choices[0]?.message?.content || ''
 
     // ==========================================
     // STEP 2: Parse story and create Character Bible
