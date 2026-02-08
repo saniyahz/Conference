@@ -1,0 +1,178 @@
+'use client'
+
+import { useState } from 'react'
+import Link from 'next/link'
+import SpeechRecorder from '@/components/SpeechRecorder'
+import StoryBook from '@/components/StoryBook'
+import LoadingSpinner from '@/components/LoadingSpinner'
+import { BookOpen, Sparkles } from 'lucide-react'
+
+export type StoryPage = {
+  text: string
+  imageUrl?: string
+}
+
+export type Story = {
+  title: string
+  author: string
+  pages: StoryPage[]
+  originalPrompt?: string
+}
+
+export default function Home() {
+  const [step, setStep] = useState<'record' | 'generating' | 'generating-images' | 'book'>('record')
+  const [story, setStory] = useState<Story | null>(null)
+  const [transcription, setTranscription] = useState<string>('')
+  const [loadingMessage, setLoadingMessage] = useState('Creating your magical story...')
+
+  const handleTranscriptionComplete = async (text: string, authorName: string) => {
+    setTranscription(text)
+
+    // Check for inappropriate content early
+    const inappropriateWords = ['sex', 'sexy', 'nude', 'naked', 'porn', 'xxx', 'adult', 'erotic', 'nsfw']
+    const lowerText = text.toLowerCase()
+    const hasInappropriateContent = inappropriateWords.some(word => lowerText.includes(word))
+
+    if (hasInappropriateContent) {
+      alert('This story idea contains content that isn\'t appropriate for a children\'s story app. Please try a different, kid-friendly idea! Think of fun adventures with animals, magical creatures, or everyday heroes.')
+      return
+    }
+
+    setStep('generating')
+    setLoadingMessage('Creating your magical story...')
+
+    try {
+      // Step 1: Generate story text
+      const storyResponse = await fetch('/api/generate-story', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ prompt: text }),
+      })
+
+      if (!storyResponse.ok) {
+        const errorData = await storyResponse.json()
+        throw new Error(errorData.error || 'Failed to generate story')
+      }
+
+      const storyData = await storyResponse.json()
+
+      // Step 2: Generate images for the story
+      setStep('generating-images')
+      setLoadingMessage('Creating beautiful illustrations with quality checks... (this takes 5-8 minutes)')
+
+      const imagesResponse = await fetch('/api/generate-images', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          imagePrompts: storyData.imagePrompts,
+          negativePrompts: storyData.negativePrompts,
+          seed: storyData.seed,  // Same seed for character consistency
+          characterBible: storyData.characterBible,  // Species-aware pipeline
+        }),
+      })
+
+      if (!imagesResponse.ok) {
+        // If images fail, continue with story but no images
+        setStory({
+          ...storyData.story,
+          author: authorName
+        })
+        setStep('book')
+        return
+      }
+
+      const imagesData = await imagesResponse.json()
+
+      // Step 3: Combine story with images
+      const storyWithImages = {
+        ...storyData.story,
+        author: authorName,
+        pages: storyData.story.pages.map((page: any, index: number) => ({
+          ...page,
+          imageUrl: imagesData.imageUrls[index] || undefined
+        }))
+      }
+
+      setStory(storyWithImages)
+      setStep('book')
+    } catch (error: any) {
+      console.error('Error generating story:', error)
+      const errorMessage = error.message || 'Failed to generate story. Please try again.'
+      alert(errorMessage)
+      setStep('record')
+    }
+  }
+
+  const handleReset = () => {
+    setStep('record')
+    setStory(null)
+    setTranscription('')
+  }
+
+  return (
+    <main className="min-h-screen p-4 md:p-8 bg-gradient-to-br from-teal-50 via-yellow-50 to-orange-50">
+      <div className="max-w-6xl mx-auto">
+        {/* Navigation - Bright kid-friendly colors */}
+        <div className="flex justify-between items-center mb-8 bg-white/90 backdrop-blur-sm border-2 border-teal-200 rounded-2xl shadow-lg p-4">
+          <div className="flex items-center gap-2">
+            <span className="text-3xl">🦫</span>
+            <span className="text-xl font-bold text-teal-700">Benny's Story Time</span>
+          </div>
+          <div className="flex gap-3">
+            <Link
+              href="/about"
+              className="px-4 py-2 text-teal-600 hover:text-teal-800 font-semibold"
+            >
+              About Us
+            </Link>
+            <Link
+              href="/pricing"
+              className="px-4 py-2 text-teal-600 hover:text-teal-800 font-semibold"
+            >
+              Pricing
+            </Link>
+            <Link
+              href="/dashboard"
+              className="px-4 py-2 bg-teal-500 text-white rounded-lg hover:bg-teal-600 font-semibold flex items-center gap-2"
+            >
+              <BookOpen className="w-5 h-5" />
+              My Library
+            </Link>
+          </div>
+        </div>
+
+        {/* Header - Cheerful and colorful */}
+        <div className="text-center mb-8">
+          <div className="flex items-center justify-center gap-3 mb-4">
+            <Sparkles className="w-10 h-10 text-yellow-500" />
+            <h1 className="text-4xl md:text-5xl font-bold bg-gradient-to-r from-teal-600 via-green-500 to-yellow-500 bg-clip-text text-transparent font-kids">
+              Create Magical Stories
+            </h1>
+            <Sparkles className="w-10 h-10 text-orange-500" />
+          </div>
+          <p className="text-lg text-teal-700">
+            Tell Benny your story ideas and watch them come to life!
+          </p>
+        </div>
+
+        {/* Main Content - Warm and inviting */}
+        <div className="bg-white/95 backdrop-blur-sm border-2 border-teal-100 rounded-3xl shadow-2xl p-6 md:p-10">
+          {step === 'record' && (
+            <SpeechRecorder onComplete={handleTranscriptionComplete} />
+          )}
+
+          {(step === 'generating' || step === 'generating-images') && (
+            <LoadingSpinner
+              message={loadingMessage}
+              stage={step === 'generating' ? 'story' : 'images'}
+            />
+          )}
+
+          {step === 'book' && story && (
+            <StoryBook story={story} onReset={handleReset} />
+          )}
+        </div>
+      </div>
+    </main>
+  )
+}

@@ -1,48 +1,88 @@
 /**
- * Image generation API route — REWRITTEN to use plate → inpaint → accept gate.
+ * Image generation API route — plate → inpaint → accept gate pipeline.
  *
  * OLD: plain txt2img → whatever SDXL invents gets shipped (person, mouse, cat)
- * NEW: plate (background) → inpaint (Riri only) → BLIP score → accept gate
+ * NEW: plate (background) → inpaint (character only) → BLIP score → accept gate
  *      → rejected images return "" → caller shows placeholder
  *
- * Same API contract:
- *   POST { imagePrompts, negativePrompts?, seed?, seeds? }
+ * API contract:
+ *   POST { imagePrompts, negativePrompts?, seed?, seeds?, characterBible? }
  *   →    { imageUrls, seed, seeds }
  *
  * The imagePrompts are used for scene classification only.
  * The actual prompts are built by the pipeline (plate = setting, inpaint = character).
+ *
+ * If characterBible is provided (from generate-story), character identity is
+ * extracted from it. Otherwise falls back to generic animal detection from prompt text.
  */
 
 import { NextRequest, NextResponse } from "next/server";
 import Replicate from "replicate";
-// ── Library imports (adjust path to match your project structure) ──
-import { generatePlate, generateInpaintCharacter } from "../../../src/lib/imageGeneration";
-import { makeRiriZoneMaskDataUrl, makeRiriZoneLargeMaskDataUrl } from "../../../src/lib/maskGenerator";
-import { resolveSceneSetting, enforceMustInclude } from "../../../src/lib/sceneSettings";
-import { scoreCandidate, CandidateResult, ScoreOptions } from "../../../src/lib/candidateScoring";
-import { buildPlateNegative, buildInpaintCharacterNegative, sanitizeNegatives } from "../../../src/lib/negativePrompts";
+import { CharacterBible } from "@/lib/visual-types";
+// ── Pipeline imports ──
+import { generatePlate, generateInpaintCharacter } from "@/src/lib/imageGeneration";
+import { makeRiriZoneMaskDataUrl, makeRiriZoneLargeMaskDataUrl } from "@/src/lib/maskGenerator";
+import { resolveSceneSetting, enforceMustInclude } from "@/src/lib/sceneSettings";
+import { scoreCandidate, CandidateResult, ScoreOptions } from "@/src/lib/candidateScoring";
 
 const replicate = new Replicate({
   auth: process.env.REPLICATE_API_TOKEN,
 });
 
-const sleep = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));
-
 // ─── CONFIG ──────────────────────────────────────────────────────────────
 
-const RIRI_MUST_INCLUDE = ["rhinoceros", "Riri"];
 const CANDIDATES_PER_ROUND = 3;
 const SEED_STRIDE = 29;
+const PAGE_CONCURRENCY = 2;
 
-/** Character-only inpaint prompt. NO scene objects, NO action. */
-const CHARACTER_PROMPT = [
-  "Riri, cute gray rhinoceros, full body, standing",
-  "centered foreground",
-  "simple children's illustration, flat colors, bold outline",
-  "match background lighting, only one rhino, no text",
-].join(", ");
+// ─── CHARACTER IDENTITY ─────────────────────────────────────────────────
 
-/** Build a plate prompt from scene classification. */
+interface CharacterIdentity {
+  name: string;
+  species: string;
+  mustInclude: string[];
+  inpaintPrompt: string;
+}
+
+/**
+ * Extract character identity from CharacterBible (if provided) or fall back to defaults.
+ * This makes the pipeline work for ANY animal character, not just Riri.
+ */
+function extractCharacterIdentity(bible?: CharacterBible): CharacterIdentity {
+  if (bible && bible.species) {
+    const name = bible.name || "Character";
+    const species = bible.species;
+    const fingerprint = bible.visual_fingerprint?.join(", ") || `cute cartoon ${species}`;
+
+    return {
+      name,
+      species,
+      mustInclude: [species, name],
+      inpaintPrompt: [
+        `${name}, ${fingerprint}, full body, standing`,
+        "centered foreground",
+        "simple children's illustration, flat colors, bold outline",
+        "match background lighting, no text",
+      ].join(", "),
+    };
+  }
+
+  // Fallback: generic — caller didn't provide characterBible
+  return {
+    name: "Character",
+    species: "animal",
+    mustInclude: ["animal"],
+    inpaintPrompt: [
+      "cute cartoon animal character, full body, standing",
+      "centered foreground",
+      "simple children's illustration, flat colors, bold outline",
+      "match background lighting, no text",
+    ].join(", "),
+  };
+}
+
+// ─── PLATE PROMPT BUILDER ───────────────────────────────────────────────
+
 function buildPlatePrompt(
   setting: string,
   styleHints: string,
@@ -62,16 +102,18 @@ async function generateOnePage(
   pagePrompt: string,
   pageIndex: number,
   seed: number,
+  identity: CharacterIdentity,
   customNegative?: string
 ): Promise<{ url: string; accepted: boolean; caption: string; score: number }> {
   console.log(`\n${"=".repeat(60)}`);
   console.log(`========== PAGE ${pageIndex + 1}: PLATE → INPAINT → SCORE ==========`);
+  console.log(`[Page ${pageIndex + 1}] Character: ${identity.name} (${identity.species})`);
 
   // ── 1. Classify scene from the incoming prompt text ──
-  const scene = resolveSceneSetting(pagePrompt, RIRI_MUST_INCLUDE);
-  const allMustInclude = enforceMustInclude(scene.mustInclude, RIRI_MUST_INCLUDE);
-  const ririLower = new Set(RIRI_MUST_INCLUDE.map((s) => s.toLowerCase()));
-  const sceneObjects = allMustInclude.filter((item) => !ririLower.has(item.toLowerCase()));
+  const scene = resolveSceneSetting(pagePrompt, identity.mustInclude);
+  const allMustInclude = enforceMustInclude(scene.mustInclude, identity.mustInclude);
+  const identityLower = new Set(identity.mustInclude.map((s) => s.toLowerCase()));
+  const sceneObjects = allMustInclude.filter((item) => !identityLower.has(item.toLowerCase()));
 
   console.log(`[Page ${pageIndex + 1}] Scene: "${scene.setting}" (${scene.category})`);
   console.log(`[Page ${pageIndex + 1}] Plate objects: [${sceneObjects.join(", ")}]`);
@@ -95,14 +137,15 @@ async function generateOnePage(
 
   // ── 4. Score options (character-only check) ──
   const scoreOpts: ScoreOptions = {
-    mustInclude: RIRI_MUST_INCLUDE,
+    mustInclude: identity.mustInclude,
     requireMustIncludeCount: 1,
   };
 
   // ── 5. Round 1: 3 candidates in parallel ──
   console.log(`[Page ${pageIndex + 1}] Round 1: ${CANDIDATES_PER_ROUND} candidates in parallel...`);
   const round1 = await runCandidateRound(
-    plateUrl, initialMask, seed, CANDIDATES_PER_ROUND, pageIndex, scoreOpts, allMustInclude, scene.setting
+    plateUrl, initialMask, seed, CANDIDATES_PER_ROUND, pageIndex,
+    scoreOpts, allMustInclude, scene.setting, identity
   );
   const accepted1 = round1.filter((r) => r.accepted).sort((a, b) => b.score - a.score);
   if (accepted1.length > 0) {
@@ -114,7 +157,8 @@ async function generateOnePage(
   console.log(`[Page ${pageIndex + 1}] Round 2: ESCALATED mask...`);
   const round2Seed = seed + CANDIDATES_PER_ROUND * SEED_STRIDE;
   const round2 = await runCandidateRound(
-    plateUrl, escalatedMask, round2Seed, CANDIDATES_PER_ROUND, pageIndex, scoreOpts, allMustInclude, scene.setting
+    plateUrl, escalatedMask, round2Seed, CANDIDATES_PER_ROUND, pageIndex,
+    scoreOpts, allMustInclude, scene.setting, identity
   );
   const accepted2 = round2.filter((r) => r.accepted).sort((a, b) => b.score - a.score);
   if (accepted2.length > 0) {
@@ -139,7 +183,8 @@ async function runCandidateRound(
   pageIndex: number,
   scoreOpts: ScoreOptions,
   mustInclude: string[],
-  settingContext: string
+  settingContext: string,
+  identity: CharacterIdentity
 ): Promise<CandidateResult[]> {
   const tasks = Array.from({ length: count }, async (_, i) => {
     const seed = baseSeed + i * SEED_STRIDE;
@@ -147,7 +192,7 @@ async function runCandidateRound(
     console.log(`[Page ${pageIndex + 1}] Candidate ${i + 1}/${count} seed=${seed} [INPAINT strength=0.65]`);
 
     const url = await generateInpaintCharacter(
-      replicate, CHARACTER_PROMPT, plateUrl, maskDataUrl,
+      replicate, identity.inpaintPrompt, plateUrl, maskDataUrl,
       seed, pageIndex, settingContext, mustInclude
     );
 
@@ -175,7 +220,7 @@ async function runCandidateRound(
 
 export async function POST(request: NextRequest) {
   try {
-    const { imagePrompts, negativePrompts, seed, seeds } = await request.json();
+    const { imagePrompts, negativePrompts, seed, seeds, characterBible } = await request.json();
 
     if (!imagePrompts || !Array.isArray(imagePrompts)) {
       return NextResponse.json({ error: "Invalid image prompts provided" }, { status: 400 });
@@ -184,14 +229,18 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: "Replicate API token not configured" }, { status: 500 });
     }
 
+    // Extract character identity from bible (species-aware)
+    const identity = extractCharacterIdentity(characterBible as CharacterBible | undefined);
+    console.log(`[Book] Character: ${identity.name} (${identity.species})`);
+    console.log(`[Book] Inpaint prompt: "${identity.inpaintPrompt.substring(0, 80)}..."`);
+
     const storySeed = seed || Math.floor(Math.random() * 1000000);
     console.log(`[Book] Base seed: ${storySeed}, ${imagePrompts.length} pages`);
 
     const imageUrls: string[] = [];
     const usedSeeds: number[] = [];
 
-    // Generate 2 pages at a time (bounded concurrency)
-    const PAGE_CONCURRENCY = 2;
+    // Generate pages with bounded concurrency (2 at a time)
     const results: Array<{ url: string; accepted: boolean }> = new Array(imagePrompts.length);
     let nextIdx = 0;
 
@@ -203,7 +252,7 @@ export async function POST(request: NextRequest) {
         usedSeeds[i] = pageSeed;
 
         console.log(`\n========== GENERATING PAGE ${i + 1}/${imagePrompts.length} ==========`);
-        results[i] = await generateOnePage(imagePrompts[i], i, pageSeed, customNeg);
+        results[i] = await generateOnePage(imagePrompts[i], i, pageSeed, identity, customNeg);
       }
     }
 

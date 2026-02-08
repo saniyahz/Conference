@@ -1,18 +1,43 @@
 {
-  "name": "riri-story-image-gen",
+  "name": "kids-story-app",
   "version": "1.0.0",
-  "description": "SDXL image generation pipeline with masked inpainting for Riri kids story app",
+  "description": "Interactive kids story app with speech input and AI-generated illustrations",
   "private": true,
   "scripts": {
-    "build": "tsc",
+    "dev": "next dev -p 3000",
+    "build": "next build",
+    "start": "next start",
+    "lint": "next lint",
     "typecheck": "tsc --noEmit"
   },
   "dependencies": {
-    "replicate": "^1.0.0",
-    "sharp": "^0.33.0"
+    "@auth/prisma-adapter": "^2.11.1",
+    "@prisma/client": "^5.8.1",
+    "bcryptjs": "^2.4.3",
+    "date-fns": "^3.2.0",
+    "html2canvas": "^1.4.1",
+    "jspdf": "^2.5.1",
+    "lucide-react": "^0.312.0",
+    "next": "^14.1.0",
+    "next-auth": "^4.24.5",
+    "openai": "^6.17.0",
+    "react": "^18.2.0",
+    "react-dom": "^18.2.0",
+    "replicate": "^1.4.0",
+    "sharp": "^0.33.0",
+    "stripe": "^14.14.0"
   },
   "devDependencies": {
-    "typescript": "^5.3.0",
-    "@types/node": "^20.0.0"
+    "@types/bcryptjs": "^2.4.6",
+    "@types/node": "^20.11.5",
+    "@types/react": "^18.2.48",
+    "@types/react-dom": "^18.2.18",
+    "autoprefixer": "^10.4.17",
+    "eslint": "^8.56.0",
+    "eslint-config-next": "^14.1.0",
+    "postcss": "^8.4.33",
+    "prisma": "^5.8.1",
+    "tailwindcss": "^3.4.1",
+    "typescript": "^5.3.3"
   }
 }
