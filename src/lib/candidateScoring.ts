@@ -514,14 +514,22 @@ export async function generateAndSelectBest(
     };
   }
 
+  // Return EMPTY URL so caller cannot accidentally use a rejected image.
   all.sort((a, b) => b.score - a.score);
   const best = all[0];
 
   console.warn(
     `[Select ${pageIndex}] WARNING: No candidate accepted. ` +
-    `Returning best rejected (score=${best.score}, reason="${best.rejectReason}"). ` +
-    `${all.length} total candidates tried.`
+    `Best reject: score=${best.score}, reason="${best.rejectReason}". ` +
+    `${all.length} total candidates tried. Returning EMPTY URL.`
   );
 
-  return best;
+  return {
+    url: "",  // EMPTY — never ship a rejected image
+    score: -999,
+    accepted: false,
+    rejectReason: best.rejectReason,
+    caption: best.caption,
+    reasons: [...best.reasons, "ALL CANDIDATES REJECTED — url cleared"],
+  };
 }

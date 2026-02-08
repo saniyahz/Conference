@@ -264,20 +264,27 @@ export async function generateOnePage(
     return buildPageResult(pageIndex, plateUrl, accepted2[0]);
   }
 
-  // No candidate passed — return best of all
-  allCandidates.sort((a, b) => b.score - a.score);
-  const best = allCandidates[0] || {
-    url: "", score: -999, accepted: false,
-    rejectReason: "no candidates", caption: "", reasons: ["no candidates"],
-  };
+  // No candidate passed — return EMPTY URL so caller cannot use rejected image.
+  // The caller must check result.accepted or result.finalUrl before displaying.
+  const bestReject = allCandidates.length > 0 ? allCandidates.sort((a, b) => b.score - a.score)[0] : null;
 
   console.warn(
-    `[Page ${pageIndex + 1}] WARNING: No candidate accepted. ` +
-    `Best score: ${best.score}. Reject: ${best.rejectReason}. ` +
-    `Returning best of ${allCandidates.length}.`
+    `[Page ${pageIndex + 1}] WARNING: No candidate accepted after ${allCandidates.length} tries. ` +
+    `Best reject: score=${bestReject?.score ?? "N/A"}, reason="${bestReject?.rejectReason ?? "none"}". ` +
+    `Returning EMPTY — caller must handle this as a failed page.`
   );
 
-  return buildPageResult(pageIndex, plateUrl, best);
+  return {
+    pageIndex,
+    plateUrl,
+    finalUrl: "",  // EMPTY — never ship a rejected image
+    score: -999,
+    accepted: false,
+    rejectReason: bestReject?.rejectReason ?? "no candidates generated",
+    caption: bestReject?.caption ?? "",
+    mode: "INPAINT",
+    reasons: bestReject?.reasons ?? ["all candidates rejected"],
+  };
 }
 
 // ─── CANDIDATE ROUND ────────────────────────────────────────────────────
