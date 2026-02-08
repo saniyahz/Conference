@@ -21,7 +21,7 @@ import Replicate from "replicate";
 import { CharacterBible } from "@/lib/visual-types";
 // ── Pipeline imports ──
 import { generatePlate, generateInpaintCharacter } from "@/src/lib/imageGeneration";
-import { makeRiriZoneMaskDataUrl, makeRiriZoneLargeMaskDataUrl } from "@/src/lib/maskGenerator";
+import { makeRiriZoneMaskDataUrl, makeRiriZoneLargeMaskDataUrl, makeRiriZoneExtraLargeMaskDataUrl } from "@/src/lib/maskGenerator";
 import { resolveSceneSetting, enforceMustInclude } from "@/src/lib/sceneSettings";
 import { scoreCandidate, CandidateResult, ScoreOptions } from "@/src/lib/candidateScoring";
 
@@ -162,9 +162,10 @@ async function generateOnePage(
   console.log(`[Page ${pageIndex + 1}] Plate OK: ${plateUrl.substring(0, 60)}...`);
 
   // ── 3. Build masks ──
-  const [initialMask, escalatedMask] = await Promise.all([
+  const [initialMask, escalatedMask, extraLargeMask] = await Promise.all([
     makeRiriZoneMaskDataUrl(1024),
     makeRiriZoneLargeMaskDataUrl(1024),
+    makeRiriZoneExtraLargeMaskDataUrl(1024),
   ]);
 
   // ── 4. Score options (character-only check) ──
@@ -198,8 +199,21 @@ async function generateOnePage(
     return accepted2[0];
   }
 
-  // ── 7. No candidate accepted → return EMPTY ──
-  const allCandidates = [...round1, ...round2];
+  // ── 7. Round 3: extra-large mask with high strength (last resort) ──
+  console.log(`[Page ${pageIndex + 1}] Round 3: EXTRA-LARGE mask + high strength...`);
+  const round3Seed = seed + CANDIDATES_PER_ROUND * SEED_STRIDE * 2;
+  const round3 = await runCandidateRound(
+    plateUrl, extraLargeMask, round3Seed, CANDIDATES_PER_ROUND, pageIndex,
+    scoreOpts, allMustInclude, scene.setting, identity, scene.category, true
+  );
+  const accepted3 = round3.filter((r) => r.accepted).sort((a, b) => b.score - a.score);
+  if (accepted3.length > 0) {
+    console.log(`[Page ${pageIndex + 1}] ACCEPTED from round 3: score=${accepted3[0].score}`);
+    return accepted3[0];
+  }
+
+  // ── 8. No candidate accepted → return EMPTY ──
+  const allCandidates = [...round1, ...round2, ...round3];
   console.warn(
     `[Page ${pageIndex + 1}] WARNING: No candidate accepted after ${allCandidates.length} tries. ` +
     `Returning EMPTY — caller must show placeholder.`
@@ -209,8 +223,9 @@ async function generateOnePage(
 
 /** Scene categories that need higher prompt_strength to overcome dark backgrounds */
 const DARK_SCENE_CATEGORIES = new Set(["space", "night_sky", "mountain_night"]);
-const DARK_SCENE_STRENGTH = 0.85;
+const DARK_SCENE_STRENGTH = 0.88;
 const DEFAULT_STRENGTH = 0.75;
+const ROUND3_STRENGTH = 0.92;
 
 async function runCandidateRound(
   plateUrl: string,
@@ -222,9 +237,12 @@ async function runCandidateRound(
   mustInclude: string[],
   settingContext: string,
   identity: CharacterIdentity,
-  sceneCategory: string = ""
+  sceneCategory: string = "",
+  forceHighStrength: boolean = false
 ): Promise<CandidateResult[]> {
-  const strength = DARK_SCENE_CATEGORIES.has(sceneCategory) ? DARK_SCENE_STRENGTH : DEFAULT_STRENGTH;
+  const strength = forceHighStrength
+    ? ROUND3_STRENGTH
+    : DARK_SCENE_CATEGORIES.has(sceneCategory) ? DARK_SCENE_STRENGTH : DEFAULT_STRENGTH;
   const tasks = Array.from({ length: count }, async (_, i) => {
     const seed = baseSeed + i * SEED_STRIDE;
 

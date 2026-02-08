@@ -76,11 +76,11 @@ const SCENE_TAXONOMY: TaxonomyEntry[] = [
 
   // ── Specific entries (single strong keyword match) ──
   {
-    key: "rocket_interior",
+    key: "rocket_exterior",
     test: (t) => /inside.*(?:rocket|ship|capsule)|(?:rocket|ship|capsule).*inside|cockpit|cabin.*(?:rocket|space)/i.test(t),
-    setting: "inside a cozy colorful flying vehicle with round windows",
-    styleHints: "round windows showing sky, glowing buttons, colorful seats, bright interior",
-    extraMustInclude: ["vehicle"],
+    setting: "colorful rocket ship on a bright green meadow under blue sky",
+    styleHints: "bright blue sky, white fluffy clouds, green grass, colorful rocket ship",
+    extraMustInclude: ["rocket"],
   },
   {
     key: "sky_launch",

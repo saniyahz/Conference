@@ -30,9 +30,11 @@ export function buildQualityOnlyNegative(): string {
  */
 export function buildCharacterSafetyNegative(): string {
   return [
-    // Block humans
+    // Block humans (including space-themed human appearances)
     "human", "boy", "girl", "person", "child", "man", "woman",
     "people", "realistic human", "photo of person",
+    "astronaut", "spacesuit", "space suit", "helmet", "pilot",
+    "cosmonaut", "crew member", "space explorer",
     // Block wrong animals (common SDXL substitutions)
     "elephant", "cat", "dog", "bear", "lion", "tiger", "rabbit",
     "monkey", "horse", "cow", "giraffe", "zebra", "hippo",

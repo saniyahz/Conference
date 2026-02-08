@@ -59,6 +59,34 @@ export async function makeRiriZoneLargeMaskDataUrl(
 }
 
 /**
+ * Extra-large Riri zone — for Round 3 fallback when standard masks fail.
+ * Covers ~70% of the frame, giving the character maximum room.
+ * Used for dark/space scenes where the character tends to get lost.
+ *
+ * cx = 50% centered
+ * cy = 58% (slightly below center)
+ * rx = 42% width (84% total width coverage)
+ * ry = 40% height (80% total height coverage)
+ */
+export async function makeRiriZoneExtraLargeMaskDataUrl(
+  size: number = 1024
+): Promise<string> {
+  const cx = size * 0.50;
+  const cy = size * 0.58;
+  const rx = size * 0.42;
+  const ry = size * 0.40;
+
+  const svg = `
+  <svg width="${size}" height="${size}" xmlns="http://www.w3.org/2000/svg">
+    <rect width="100%" height="100%" fill="black"/>
+    <ellipse cx="${cx}" cy="${cy}" rx="${rx}" ry="${ry}" fill="white"/>
+  </svg>`;
+
+  const png = await sharp(Buffer.from(svg)).png().toBuffer();
+  return `data:image/png;base64,${png.toString("base64")}`;
+}
+
+/**
  * Rectangular Riri zone — for wide-shot compositions.
  * Rounded rectangle in the center-bottom foreground.
  *

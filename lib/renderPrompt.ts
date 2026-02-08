@@ -114,13 +114,13 @@ function extractSetting(text: string): string {
     return 'moon surface with craters and stars';
   }
   if (text.includes('inside') && (text.includes('rocket') || text.includes('spaceship'))) {
-    return 'inside rocket ship cockpit with windows showing space';
+    return 'colorful rocket ship on bright green meadow under blue sky';
   }
   if (text.includes('space') || text.includes('stars') || text.includes('galaxy')) {
-    return 'outer space with stars and planets';
+    return 'colorful alien planet surface with stars and planets in the sky';
   }
   if (text.includes('rocket') || text.includes('spaceship')) {
-    return 'rocket ship in colorful space';
+    return 'colorful rocket ship on bright green meadow under blue sky';
   }
 
   // INDOOR
@@ -166,13 +166,9 @@ function extractMustInclude(text: string, charName: string, species: string): st
   // ALWAYS include main character
   items.push(`${charName} the ${species} full body`);
 
-  // VEHICLES
+  // VEHICLES - always show rocket from outside (interior scenes generate humans)
   if (text.includes('rocket') || text.includes('spaceship')) {
-    if (text.includes('inside') || text.includes('cockpit') || text.includes('seat')) {
-      items.push('rocket ship cockpit interior');
-    } else {
-      items.push('colorful rocket ship');
-    }
+    items.push('colorful rocket ship');
   }
 
   // CHARACTERS/CREATURES
