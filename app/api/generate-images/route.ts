@@ -136,10 +136,10 @@ const HIGH_SALIENCE_OBJECTS = new Set([
   "rocket ship", "rocket", "spaceship", "boat", "sailboat", "airplane",
   // Large nature features
   "rainbow", "waterfall", "river",
-  // Large celestial (BLIP mentions "moon" and "star" often)
-  "moon", "stars",
   // Large objects
   "treasure chest",
+  // NOTE: "moon" and "stars" intentionally EXCLUDED — they are settings, not objects.
+  // BLIP rarely mentions them, and they pollute every page of a space story.
 ]);
 
 /**
@@ -405,7 +405,17 @@ async function generateOnePage(
   //   plate→inpaint can only paint ONE character in the mask region.
   //   Multi-character pages MUST use txt2img so all actors appear.
   const secondaryAnimals = cardObjects.filter((obj) => PLATE_ANIMAL_FILTER.has(obj.toLowerCase()));
-  const supportingChars = pageSceneCard?.supporting_characters ?? [];
+
+  // Filter supporting characters — only SPECIFIC visual actors trigger Mode B.
+  // "friends", "family", "his", "the" are NOT visual actors.
+  const VISUAL_ACTORS = new Set([
+    "dog", "cat", "birds", "rabbit", "bear", "fox", "owl", "butterflies",
+    "fish", "dolphins", "whale", "shark", "turtle", "octopus",
+    "dragon", "unicorn", "fairies", "aliens", "robot", "lions",
+  ]);
+  const supportingChars = (pageSceneCard?.supporting_characters ?? [])
+    .filter((ch) => VISUAL_ACTORS.has(ch.toLowerCase()));
+
   const hasSecondaryActors = secondaryAnimals.length > 0 || supportingChars.length > 0;
   const isCockpitScene = /inside.*(?:rocket|ship|capsule)|cockpit|cabin.*(?:rocket|space)/i.test(sceneSetting);
   const useModeBTxt2img = hasSecondaryActors || isCockpitScene;
@@ -511,19 +521,19 @@ async function generatePageModeBTxt2img(
   cardObjects: string[],
   sceneCategory: string
 ): Promise<{ url: string; accepted: boolean; caption: string; score: number }> {
-  // Build a rich txt2img prompt with character + setting + all actors
-  const fingerprint = identity.inpaintPrompt.split(",").slice(0, 3).join(",").trim();
+  // Build a rich txt2img prompt with character + setting + all actors.
+  // Use identity species for the character description — no duplication.
+  const speciesCap = identity.species.charAt(0).toUpperCase() + identity.species.slice(1);
   const objectsList = cardObjects.length > 0 ? cardObjects.join(", ") : "";
   const parts = [
-    `${identity.name} the cute cartoon ${identity.species}`,
-    fingerprint,
-    `full body, centered foreground, large and prominent`,
+    `${identity.name} the cute cartoon ${identity.species}, a ${identity.species}`,
+    `${speciesCap} character, full body, centered foreground, large and prominent`,
     objectsList ? `with ${objectsList}` : "",
     `Scene: ${sceneSetting}`,
     styleHints,
     "children's picture book illustration, clean lines, vibrant colors, soft shading",
     "vivid saturated colors, well-lit, bright",
-    "no text, no watermark",
+    `only one ${identity.species}, no text, no watermark`,
   ].filter(Boolean);
   const txt2imgPrompt = parts.join(", ");
 

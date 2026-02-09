@@ -445,23 +445,18 @@ export function acceptCandidate(
     // Bonus is applied in scoreCaption(), not here
   }
 
-  // Gate C: Key object threshold — require at least some key objects visible.
-  // Thresholds: 1-2 objects → require ≥1, 3-5 → require ≥1, >5 → require ≥2
-  // This prevents accepting "rhino flying a kite" when the page needs "rocket ship + moon".
+  // Gate C: Key object bonus — SOFT, NOT HARD REJECT.
+  // BLIP captions are extremely terse (1 sentence). They almost never mention
+  // specific objects like "dolphins", "rocket ship", or "moon".
+  // Hard-rejecting on key objects kills 90%+ of valid images.
+  // Bonus is applied in scoreCaption() — here we just log.
   const keyObjects = opts?.keyObjects ?? [];
   if (keyObjects.length > 0) {
     const { hits: objHits, hitTerms: objHitTerms } = countMustHits(c, keyObjects);
-    const requiredHits = keyObjects.length > 5 ? 2 : 1;
-    if (objHits >= requiredHits) {
-      console.log(`[Rule 5C] Key objects found: ${objHitTerms.join(", ")} (${objHits}/${keyObjects.length}) ✓`);
-    } else if (objHits > 0) {
-      console.log(`[Rule 5C] Key objects partial: ${objHitTerms.join(", ")} (${objHits}/${keyObjects.length}, need ${requiredHits}) — passing with bonus`);
+    if (objHits > 0) {
+      console.log(`[Rule 5C] Key objects found: ${objHitTerms.join(", ")} (${objHits}/${keyObjects.length}) — bonus applied`);
     } else {
-      console.log(`[Rule 5C] No key objects found (need ${requiredHits} of [${keyObjects.join(", ")}]) — REJECTING`);
-      return {
-        accepted: false,
-        rejectReason: `RULE 5C: KEY OBJECTS MISSING — 0/${keyObjects.length} found (need ${requiredHits})`,
-      };
+      console.log(`[Rule 5C] No key objects in caption (wanted [${keyObjects.join(", ")}]) — no bonus (NOT rejecting)`);
     }
   }
 

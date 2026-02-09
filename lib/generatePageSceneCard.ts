@@ -154,11 +154,11 @@ function extractKeyObjects(text: string): string[] {
     { pattern: /\btelescope\b/, name: 'telescope' },
     { pattern: /\bhelmet\b/, name: 'helmet' },
 
-    // Celestial
-    { pattern: /\bmoon\b/, name: 'moon' },
-    { pattern: /\bstars?\b/, name: 'stars' },
-    { pattern: /\bplanets?\b/, name: 'planets' },
-    { pattern: /\bsun\b/, name: 'sun' },
+    // NOTE: Celestial objects (moon, stars, planets, sun) are NOT extracted here.
+    // They are SETTINGS, not objects. They're handled by extractSetting() and
+    // go into the plate prompt via the setting text. Extracting them as key_objects
+    // pollutes every page of a space story with "moon" and "stars", which BLIP
+    // captions rarely mention, causing Gate 5C to reject valid images.
   ];
 
   for (const { pattern, name } of objectPatterns) {
@@ -171,40 +171,17 @@ function extractKeyObjects(text: string): string[] {
 }
 
 /**
- * Extract supporting characters from text
- * Also detects "X and Y" patterns for multiple main characters
- * Detects friend names like "Susu and Piku"
+ * Extract supporting characters from text.
+ * Only extracts SPECIFIC visual actors (animals/creatures) — not generic
+ * terms like "friends" or "family" which are not drawable.
  */
 function extractSupportingCharacters(text: string, mainCharName: string): string[] {
   const characters: string[] = [];
   const mainLower = mainCharName.toLowerCase();
 
-  // Check for "Name and Name" pattern (multiple main characters)
-  const andPattern = new RegExp(`${mainCharName}\\s+and\\s+([A-Z][a-z]+)`, 'i');
-  const andMatch = text.match(andPattern);
-  if (andMatch) {
-    characters.push(andMatch[1]); // Add the second character
-  }
-
-  // Check for friend names pattern: "Name and Name cheered/laughed/etc"
-  // This catches "Susu and Piku cheered" style names
-  const friendNamesPattern = /\b([A-Z][a-z]{2,})\s+and\s+([A-Z][a-z]{2,})\s+(?:cheered|laughed|smiled|waved|played|watched|followed|joined|helped)/gi;
-  let friendMatch;
-  while ((friendMatch = friendNamesPattern.exec(text)) !== null) {
-    const name1 = friendMatch[1];
-    const name2 = friendMatch[2];
-    if (name1.toLowerCase() !== mainLower && !characters.includes(name1)) {
-      characters.push(name1);
-    }
-    if (name2.toLowerCase() !== mainLower && !characters.includes(name2)) {
-      characters.push(name2);
-    }
-  }
-
+  // Only look for specific animal/creature keyword patterns.
+  // "friends" and "family" are NOT visual actors — they don't trigger Mode B.
   const characterPatterns = [
-    { keywords: ['friend', 'friends'], name: 'friends' },
-    { keywords: ['family', 'parent', 'mother', 'father', 'mom', 'dad'], name: 'family' },
-
     // Animals
     { keywords: ['dog', 'puppy'], name: 'dog' },
     { keywords: ['cat', 'kitten'], name: 'cat' },
@@ -229,11 +206,14 @@ function extractSupportingCharacters(text: string, mainCharName: string): string
     { keywords: ['fairy', 'fairies'], name: 'fairies' },
     { keywords: ['alien', 'aliens'], name: 'aliens' },
     { keywords: ['robot'], name: 'robot' },
+
+    // Specific character types (only when explicitly mentioned)
+    { keywords: ['lion', 'lions'], name: 'lions' },
   ];
 
   for (const pattern of characterPatterns) {
-    // Don't add if it's the main character
-    if (mainCharName.toLowerCase().includes(pattern.keywords[0])) continue;
+    // Don't add if it's the main character's species
+    if (mainLower.includes(pattern.keywords[0])) continue;
 
     if (pattern.keywords.some(kw => text.includes(kw))) {
       characters.push(pattern.name);
