@@ -414,20 +414,21 @@ export function acceptCandidate(
         rejectReason: `RULE 4: TINY CHARACTER — bbox ${(detectionResult.bestBboxArea * 100).toFixed(1)}% < ${(MIN_BBOX_AREA * 100)}%`,
       };
     }
-  } else if (!blipHasRhino) {
-    // No DINO and no BLIP rhino — can't verify anything about size.
-    // (If BLIP confirmed rhino, trust it — we already passed Rule 3.)
+  } else if (!blipHasRhino && !blipHasHippo && !blipHasElephant) {
+    // No DINO and no BLIP rhino/hippo/elephant — can't verify anything about size.
+    // (If BLIP confirmed rhino/hippo/elephant, trust it — we already passed Rule 3.
+    //  BLIP misidentifies cartoon rhinos as hippo or elephant frequently.)
     const hasCompositionCue = /\bstanding\b|\bfull body\b|\bwhole body\b|\bcentered\b|\bforeground\b/.test(c);
     const clipIsStrong = !!(clipResult && clipResult.similarity >= 0.78);
     if (!hasCompositionCue && !clipIsStrong) {
       return {
         accepted: false,
-        rejectReason: "RULE 4: SIZE UNVERIFIED (no DINO, no BLIP rhino, weak composition + CLIP)",
+        rejectReason: "RULE 4: SIZE UNVERIFIED (no DINO, no BLIP rhino/hippo/elephant, weak composition + CLIP)",
       };
     }
   }
-  // If BLIP says "rhinoceros" and DINO is off, trust BLIP on size — the rhino is visible enough
-  // for BLIP to caption it, which means it's not a tiny background speck.
+  // If BLIP says "rhinoceros"/"hippo"/"elephant" and DINO is off, trust BLIP on size —
+  // the character is visible enough for BLIP to caption it, not a tiny background speck.
 
   // ── RULE 5: TIERED GATE (character + setting + key objects) ──
   //
