@@ -269,6 +269,55 @@ function extractSceneObjects(
   return objects;
 }
 
+// ─── STYLE HINTS DERIVATION ─────────────────────────────────────────────
+
+/**
+ * Derive style hints from the SCENE SETTING TEXT (not the classifier).
+ * This prevents contamination where a "Forest scene" gets moon-style hints
+ * because the classifier matched "moon_surface" from story text mentioning "moon".
+ *
+ * The style hints control the visual atmosphere of the plate — colors, lighting,
+ * terrain textures. They MUST match the setting, not the classifier category.
+ */
+function deriveStyleHintsFromSetting(settingText: string): string {
+  const lower = settingText.toLowerCase();
+
+  const hintGroups: [string[], string][] = [
+    // Specific compound settings first
+    [["waterfall", "cascade"], "flowing water, mist, rocks, lush vegetation, dappled sunlight"],
+    [["rocket", "spaceship", "blast", "launch", "liftoff"], "blue sky, white clouds, rocket trail, bright colors"],
+    [["underwater"], "deep blue water, coral, bubbles, ocean light, fish"],
+    // Water
+    [["ocean", "sea", "beach", "shore", "wave", "coast"], "waves, blue water, sandy beach, bright sky, horizon"],
+    [["lake", "pond"], "still water, reflections, reeds, soft light"],
+    [["river", "stream", "creek"], "clear water, smooth stones, gentle current, green banks"],
+    // Nature
+    [["forest", "tree", "wood", "jungle", "clearing"], "lush greens, dappled sunlight, tall trees, vibrant nature"],
+    [["garden", "flower", "meadow", "bloom"], "flowers, vibrant colors, green grass, butterflies, warm light"],
+    [["mountain", "hill", "cliff", "peak"], "elevated terrain, wide sky, distant peaks, rocky outcrops"],
+    [["desert", "sand", "dune"], "golden sand, warm tones, wide sky, gentle shadows"],
+    [["cave", "cavern", "underground", "grotto"], "rocky walls, soft glow, stalactites, mysterious atmosphere"],
+    [["savannah", "grassland", "plain", "prairie"], "golden grass, warm light, wide horizon, scattered trees"],
+    // Space/celestial
+    [["moon", "crater", "lunar"], "gray terrain, craters, starry sky, Earth visible"],
+    [["space", "star", "planet", "galaxy", "cosmos", "orbit"], "bright colorful ground, starry sky, vivid colors, colorful planets"],
+    // Sky/weather
+    [["sky", "cloud", "flying", "soar"], "blue sky, white fluffy clouds, bright sunlight"],
+    [["night", "starlit", "starry", "dark"], "night sky, stars, moonlight, soft glow"],
+    [["rain", "storm", "thunder"], "rain, overcast, puddles, glistening surfaces"],
+    [["snow", "ice", "winter", "arctic", "frozen"], "white snow, soft blue shadows, crisp sky"],
+    // Indoor/village
+    [["indoor", "room", "interior", "cozy", "inside"], "cozy interior, warm lighting, furniture, soft colors"],
+    [["village", "town", "house", "home", "building"], "colorful buildings, paths, warm atmosphere, friendly scene"],
+  ];
+
+  for (const [keywords, hints] of hintGroups) {
+    if (keywords.some(kw => lower.includes(kw))) return hints;
+  }
+
+  return "bright colors, friendly atmosphere";
+}
+
 // ─── PLATE PROMPT BUILDER ───────────────────────────────────────────────
 
 /**
@@ -312,22 +361,28 @@ async function generateOnePage(
   const cardSetting = pageSceneCard?.setting;
   const cardObjects = extractSceneObjects(pageSceneCard, identity);
 
-  // Classifier only for the category tag (dark scene detection, style hints)
+  // Classifier only for the category tag (dark scene detection)
   const classifierMatch = classifyScene(pagePrompt);
   const sceneCategory = classifierMatch?.key ?? "generic";
-  const styleHints = classifierMatch?.styleHints ?? "bright colors, friendly atmosphere";
 
   // RULE: scene.setting = card.setting (always), classifier only for taxonomy tag
+  // CRITICAL: Style hints MUST match the scene setting, NOT the classifier.
+  // Without this, "Forest scene" gets moon-style hints when classifier says "moon_surface".
   let sceneSetting: string;
+  let styleHints: string;
   if (cardSetting && cardSetting !== "Storybook scene" && cardSetting !== "colorful storybook scene") {
-    // Card has a real setting — USE IT, don't let classifier override
+    // Card has a real setting — USE IT, derive style hints from it
     sceneSetting = cardSetting;
+    styleHints = deriveStyleHintsFromSetting(sceneSetting);
     console.log(`[Page ${pageIndex + 1}] Using CARD setting: "${sceneSetting}" (classifier tag: ${sceneCategory})`);
+    console.log(`[Page ${pageIndex + 1}] Style hints (from card): "${styleHints}"`);
   } else {
-    // No card setting — fall back to classifier
+    // No card setting — fall back to classifier for both setting and style hints
     const scene = resolveSceneSetting(pagePrompt, identity.mustInclude);
     sceneSetting = scene.setting;
+    styleHints = classifierMatch?.styleHints ?? "bright colors, friendly atmosphere";
     console.log(`[Page ${pageIndex + 1}] No card setting, using classifier: "${sceneSetting}" (${scene.category})`);
+    console.log(`[Page ${pageIndex + 1}] Style hints (from classifier): "${styleHints}"`);
   }
 
   console.log(`[Page ${pageIndex + 1}] Scene objects (card): [${cardObjects.join(", ")}]`);
@@ -359,6 +414,7 @@ async function generateOnePage(
   // not the classifier category. When card says "Indoor room" but classifier
   // says "moon_surface", we need indoor keywords, not moon keywords.
   const settingKeywords = deriveSettingKeywordsFromText(sceneSetting);
+  console.log(`[Page ${pageIndex + 1}] Setting keywords derived from "${sceneSetting}" → [${settingKeywords.slice(0, 6).join(", ")}${settingKeywords.length > 6 ? "..." : ""}]`);
 
   // Split scene objects into high-salience (for Gate 5C) and all (for plate prompt).
   // BLIP only captions large prominent objects — it will NEVER mention "magic wand" or "sun".
