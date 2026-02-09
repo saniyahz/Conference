@@ -66,10 +66,13 @@ const BLIP_VERSION =
 
 const WRONG_ANIMALS = [
   "elephant", "cat", "dog", "bear", "lion", "tiger", "monkey",
-  "rabbit", "horse", "cow", "giraffe", "zebra", "hippo",
-  "hippopotamus", "camel", "sheep", "goat", "fox", "deer",
+  "rabbit", "horse", "cow", "giraffe", "zebra",
+  "camel", "sheep", "goat", "fox", "deer",
   "wolf", "pig", "dolphin", "whale", "bird", "parrot",
   "penguin", "frog", "turtle", "snake", "fish",
+  // NOTE: "hippo"/"hippopotamus" intentionally EXCLUDED — BLIP frequently
+  // misidentifies rhinoceros as hippo because they look similar.
+  // Rejecting hippo captions kills many correct rhino images.
 ];
 
 const HUMAN_PLUS_TERMS = [
@@ -336,12 +339,16 @@ export function acceptCandidate(
 
   // ── Derive confirmation signals ──
   const blipHasRhino = /\brhino\b|\brhinoceros\b/.test(c);
+  // BLIP frequently misidentifies rhinos as hippos — they look very similar.
+  // Treat "hippo" as a weak rhino confirmation rather than a wrong animal.
+  const blipHasHippo = /\bhippo\b|\bhippopotamus\b/.test(c);
   const dinoHasRhino = !!(detectionResult?.detected && detectionResult.confidence >= 0.5);
   const clipConfirmsRiri = !!(clipResult && clipResult.similarity >= 0.82);
 
   // IMPORTANT: CLIP alone is not enough if caption strongly says a wrong animal.
   // CLIP measures visual style similarity, not species identity.
-  const rhinoConfirmedByVision = blipHasRhino || dinoHasRhino;
+  // Hippo counts as vision-confirmed because BLIP can't tell rhinos from hippos.
+  const rhinoConfirmedByVision = blipHasRhino || blipHasHippo || dinoHasRhino;
   const rhinoConfirmed = rhinoConfirmedByVision || clipConfirmsRiri;
 
   // ── RULE 1: No human/cockpit (expanded) ──
@@ -412,16 +419,21 @@ export function acceptCandidate(
   //   e.g. dolphins / rocket ship / rainbow
   //   Only enforced if key objects were specified.
 
-  // Gate B: Setting gate
+  // Gate B: Setting gate — SOFT BONUS, NOT HARD REJECT
+  // BLIP captions are extremely terse (1 sentence). They often describe
+  // "a rhino standing in a field" without mentioning "forest" or "trees".
+  // The plate prompt already controls the setting type — if we prompted
+  // "forest scene" and SDXL drew a forest, BLIP just might not say "forest".
+  // Hard-rejecting for missing setting keywords kills too many good images.
   const settingKw = opts?.settingKeywords ?? [];
   if (settingKw.length > 0) {
     const settingHit = settingKw.some((kw) => c.includes(kw));
-    if (!settingHit) {
-      return {
-        accepted: false,
-        rejectReason: `RULE 5B: SETTING MISMATCH — caption has none of [${settingKw.slice(0, 6).join(", ")}]`,
-      };
+    if (settingHit) {
+      console.log(`[Rule 5B] Setting match found — bonus applied`);
+    } else {
+      console.log(`[Rule 5B] No setting keywords in caption — no bonus (NOT rejecting)`);
     }
+    // Bonus is applied in scoreCaption(), not here
   }
 
   // Gate C: Key object gate — SOFT BONUS, NOT HARD REJECT

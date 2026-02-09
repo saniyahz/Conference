@@ -143,7 +143,30 @@ const HIGH_SALIENCE_OBJECTS = new Set([
 ]);
 
 /**
- * VISUAL NOUN WHITELIST — only these survive extraction.
+ * ANIMAL TERMS — these should NOT go in the plate prompt.
+ * The plate says "no animals" but scene objects from the story may include
+ * animal names (rabbit, dolphins, fairies). If these go into the plate,
+ * SDXL draws them in the background, and then inpaint can't override them
+ * with the correct rhinoceros character → distorted/wrong animals.
+ *
+ * These are still passed to scoring (Gate 5C bonus) but filtered from plates.
+ */
+const PLATE_ANIMAL_FILTER = new Set([
+  "rabbit", "rabbits", "bunny", "bunnies",
+  "moon rabbit", "moon rabbits", "moon bunny", "moon bunnies",
+  "dolphin", "dolphins", "whale", "whales",
+  "butterfly", "butterflies", "bird", "birds",
+  "fish", "fishes", "owl", "owls", "fox", "foxes",
+  "lion", "lions", "bear", "bears", "dragon", "dragons",
+  "unicorn", "unicorns", "turtle", "turtles",
+  "fairies", "fairy", "aliens", "alien",
+  "dog", "cat", "puppy", "kitten",
+  "octopus", "shark", "sharks",
+  "friends",  // "friends" is never visual
+]);
+
+/**
+ * VISUAL_NOUN_WHITELIST — only these nouns survive as "key objects".
  * Anything not in this list (or a substring match) is dropped.
  * This prevents junk tokens like "the", "his", "friends" from
  * being treated as required visual objects.
@@ -397,8 +420,15 @@ async function generateOnePage(
   console.log(`[Page ${pageIndex + 1}] Scene objects (card): [${cardObjects.join(", ")}]`);
 
   // ── 2. Generate plate (background only — no character) ──
-  // Scene objects go into plate so SDXL draws them into background
-  const platePrompt = buildPlatePrompt(sceneSetting, styleHints, cardObjects);
+  // Filter animals OUT of plate prompt — they confuse SDXL into drawing wrong species.
+  // e.g., "rabbit" in plate → SDXL draws rabbit → inpaint tries to make rhino → distorted mess.
+  // Non-animal objects (rocket, boat, moon, river) stay in plate for background scenery.
+  const plateObjects = cardObjects.filter((obj) => !PLATE_ANIMAL_FILTER.has(obj.toLowerCase()));
+  if (plateObjects.length < cardObjects.length) {
+    const removed = cardObjects.filter((obj) => PLATE_ANIMAL_FILTER.has(obj.toLowerCase()));
+    console.log(`[Page ${pageIndex + 1}] Filtered ${removed.length} animals from plate: [${removed.join(", ")}]`);
+  }
+  const platePrompt = buildPlatePrompt(sceneSetting, styleHints, plateObjects);
   console.log(`[Page ${pageIndex + 1}] Plate prompt: "${platePrompt}"`);
 
   const plateUrl = await generatePlate(replicate, platePrompt, seed, pageIndex, undefined, 0.80);
