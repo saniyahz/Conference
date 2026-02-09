@@ -401,10 +401,12 @@ async function generateOnePage(
     sceneSetting = cardSetting;
 
     // COCKPIT → EXTERIOR CONVERSION: SDXL draws humans in cockpit/interior scenes.
-    // Convert "Inside a rocket ship cockpit" → exterior with rocket visible.
+    // Convert "Inside a rocket ship cockpit" → simple bright meadow scene.
     // This is a known SDXL limitation — interior vehicle scenes always fail Rule 1.
+    // IMPORTANT: Use a SIMPLE background (just meadow + sky) so the plate
+    // doesn't dominate the image and rhino can be inpainted clearly.
     if (/inside.*(?:rocket|ship|capsule)|cockpit|cabin.*(?:rocket|space)/i.test(sceneSetting)) {
-      sceneSetting = "colorful rocket ship on a bright green meadow under blue sky";
+      sceneSetting = "bright green meadow under blue sky with white clouds";
       console.log(`[Page ${pageIndex + 1}] COCKPIT→EXTERIOR: "${cardSetting}" → "${sceneSetting}"`);
     }
 
@@ -525,9 +527,9 @@ async function generateOnePage(
 
 /** Scene categories that need higher prompt_strength to overcome dark backgrounds */
 const DARK_SCENE_CATEGORIES = new Set(["space", "night_sky", "mountain_night", "moon_surface"]);
-const DARK_SCENE_STRENGTH = 0.88;
-const DEFAULT_STRENGTH = 0.75;
-const ROUND3_STRENGTH = 0.92;
+const DARK_SCENE_STRENGTH = 0.90;
+const DEFAULT_STRENGTH = 0.82;
+const ROUND3_STRENGTH = 0.95;
 
 async function runCandidateRound(
   plateUrl: string,

@@ -101,9 +101,9 @@ const BUSY_SCENE_TERMS = [
  * Values are synonyms that BLIP might use instead.
  */
 const EXPANSIONS: Record<string, string[]> = {
-  // Character
-  "rhinoceros": ["rhino"],
-  "rhino": ["rhinoceros"],
+  // Character — BLIP frequently misidentifies rhinos as hippos
+  "rhinoceros": ["rhino", "hippo", "hippopotamus"],
+  "rhino": ["rhinoceros", "hippo", "hippopotamus"],
 
   // Vehicles — BLIP often says "space station" for rocket interiors
   "rocket ship": ["rocket", "spaceship", "spacecraft", "space station", "shuttle", "plane", "airplane"],
@@ -495,14 +495,16 @@ export function scoreCaption(
   const reasons: string[] = [];
 
   const hasRhino = /\brhino\b|\brhinoceros\b/.test(c);
+  const hasHippo = /\bhippo\b|\bhippopotamus\b/.test(c);
 
-  if (!hasRhino) {
-    reasons.push("0 base: rhino not in caption (may be confirmed by other signals)");
+  if (!hasRhino && !hasHippo) {
+    reasons.push("0 base: rhino/hippo not in caption (may be confirmed by other signals)");
     return { score: 0, reasons };
   }
 
-  let score = 6;
-  reasons.push("+6 base: rhino/rhinoceros in caption");
+  // Hippo gets slightly lower base score since it's a weaker confirmation
+  let score = hasRhino ? 6 : 4;
+  reasons.push(hasRhino ? "+6 base: rhino/rhinoceros in caption" : "+4 base: hippo in caption (weak rhino)");
 
   if (/\bcartoon\b|\billustration\b|\banimated\b|\bdrawing\b/.test(c)) {
     score += 1;
