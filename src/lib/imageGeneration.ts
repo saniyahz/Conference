@@ -76,10 +76,11 @@ export async function generatePlate(
   pageIndex: number,
   baseImageUrl?: string,
   promptStrength: number = 0.80,
-  lora?: LoraConfig
+  lora?: LoraConfig,
+  negativeOverride?: string
 ): Promise<string> {
   const maxRetries = 3;
-  const negativePrompt = buildPlateNegative();
+  const negativePrompt = negativeOverride || buildPlateNegative();
 
   const modelVersion = lora?.version ?? SDXL_VERSION;
 

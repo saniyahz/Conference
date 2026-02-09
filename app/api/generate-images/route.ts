@@ -24,10 +24,11 @@ import { NextRequest, NextResponse } from "next/server";
 import Replicate from "replicate";
 import { CharacterBible, PageSceneCard } from "@/lib/visual-types";
 // ── Pipeline imports ──
-import { generatePlate, generateInpaintCharacter, generateTxt2imgScene } from "@/src/lib/imageGeneration";
+import { generatePlate, generateInpaintCharacter } from "@/src/lib/imageGeneration";
 import { makeRiriZoneMaskDataUrl, makeRiriZoneLargeMaskDataUrl, makeRiriZoneExtraLargeMaskDataUrl } from "@/src/lib/maskGenerator";
 import { resolveSceneSetting, enforceMustInclude, classifyScene } from "@/src/lib/sceneSettings";
 import { scoreCandidate, CandidateResult, ScoreOptions, getSettingKeywords, deriveSettingKeywordsFromText } from "@/src/lib/candidateScoring";
+import { buildMultiCharPlateNegative } from "@/src/lib/negativePrompts";
 
 const replicate = new Replicate({
   auth: process.env.REPLICATE_API_TOKEN,
@@ -100,13 +101,21 @@ function extractCharacterIdentity(bible?: CharacterBible): CharacterIdentity {
 
   console.log(`[Identity] Extracted species: "${species}" from bible (name="${name}", character_type="${bible.character_type}", species_field="${bible.species}")`);
 
-  // Build a strong inpaint prompt — species repeated for emphasis
-  const speciesCapitalized = species.charAt(0).toUpperCase() + species.slice(1);
+  // Build IDENTITY-FOCUSED inpaint prompt — character appearance ONLY.
+  // NO scene words (moon, forest, beach) — scene belongs in the plate only.
+  // This is the key to identity lock: same prompt tokens every page → same character.
+  const fpDetails = (bible.visual_fingerprint || [])
+    .map(s => s.trim())
+    .filter(s => s.length > 0)
+    .slice(0, 4)
+    .join(", ");
+
   const inpaintPrompt = [
-    `${name} the cute cartoon ${species}, a ${species}, full body, standing`,
-    `${speciesCapitalized} character, centered foreground, large and prominent`,
-    "simple children's illustration, flat colors, bold outline",
-    `match background lighting, only one ${species}, no other animals, no text`,
+    `${name} the cute cartoon ${species}`,
+    fpDetails || `a ${species}`,
+    "full body, centered foreground, large and prominent",
+    "children's picture book illustration, clean lines, vibrant colors, soft shading",
+    `match background lighting, only one ${species}, no text`,
   ].join(", ");
 
   return {
@@ -143,13 +152,12 @@ const HIGH_SALIENCE_OBJECTS = new Set([
 ]);
 
 /**
- * ANIMAL TERMS — these should NOT go in the plate prompt.
- * The plate says "no animals" but scene objects from the story may include
- * animal names (rabbit, dolphins, fairies). If these go into the plate,
- * SDXL draws them in the background, and then inpaint can't override them
- * with the correct rhinoceros character → distorted/wrong animals.
+ * ANIMAL TERMS — used to split scene objects into animal vs non-animal.
  *
- * These are still passed to scoring (Gate 5C bonus) but filtered from plates.
+ * Solo pages: animals are FILTERED from the plate (plate = environment only).
+ * Multi-char pages: animals are INCLUDED in the plate (they're secondary actors).
+ *
+ * The main character is NEVER in the plate — always added via inpaint.
  */
 const PLATE_ANIMAL_FILTER = new Set([
   "rabbit", "rabbits", "bunny", "bunnies",
@@ -345,19 +353,30 @@ function deriveStyleHintsFromSetting(settingText: string): string {
 
 /**
  * Build plate prompt with scene objects baked in.
- * Scene objects (rockets, dolphins, rainbows) must appear in the plate
- * so SDXL draws them into the background BEFORE character inpainting.
+ * Scene objects (rockets, dolphins, rainbows) appear in the plate
+ * BEFORE character inpainting. The main character is NEVER in the plate.
+ *
+ * For multi-character pages: secondary actors (dolphins, rabbits) ARE in the plate.
+ * For solo pages: no animals at all in the plate.
  */
 function buildPlatePrompt(
   setting: string,
   styleHints: string,
-  sceneObjects: string[]
+  sceneObjects: string[],
+  mainSpecies: string,
+  hasSecondaryActors: boolean
 ): string {
   const parts = [setting];
   if (sceneObjects.length > 0) parts.push(sceneObjects.join(", "));
   parts.push(styleHints);
   parts.push("simple children's illustration, flat colors, bold outline, minimal detail, vivid saturated colors, well-lit, bright");
-  parts.push("no characters, no animals, no people, no text, no black and white, no grayscale, no monochrome");
+  if (hasSecondaryActors) {
+    // Multi-char: allow secondary actors (dolphins, etc.), block only main character + humans
+    parts.push(`no ${mainSpecies}, no people, no text, no black and white, no grayscale, no monochrome`);
+  } else {
+    // Solo: no animals at all in the plate
+    parts.push("no characters, no animals, no people, no text, no black and white, no grayscale, no monochrome");
+  }
   return parts.join(", ");
 }
 
@@ -399,49 +418,65 @@ async function generateOnePage(
 
   console.log(`[Page ${pageIndex + 1}] Scene objects (card): [${cardObjects.join(", ")}]`);
 
-  // ── 2. Determine generation MODE ──
-  // Mode A (plate→inpaint): Simple scenes — Riri alone in environment
-  // Mode B (txt2img): Multi-character pages — dolphins, rabbits, lions, fairies, cockpit
-  //   plate→inpaint can only paint ONE character in the mask region.
-  //   Multi-character pages MUST use txt2img so all actors appear.
-  const secondaryAnimals = cardObjects.filter((obj) => PLATE_ANIMAL_FILTER.has(obj.toLowerCase()));
+  // ── 2. Prepare plate objects ──
+  // EVERY page uses plate→inpaint. This is the key to identity lock:
+  //   plate = scene + secondary actors (no main character)
+  //   inpaint = main character only (same prompt every page)
+  //
+  // For multi-character pages: secondary actors (dolphins, rabbits, etc.)
+  // go INTO the plate so they appear in the background/midground.
+  // Riri is always inpainted on top via the consistent mask+prompt.
+  const animalObjects = cardObjects.filter((obj) => PLATE_ANIMAL_FILTER.has(obj.toLowerCase()));
+  const nonAnimalObjects = cardObjects.filter((obj) => !PLATE_ANIMAL_FILTER.has(obj.toLowerCase()));
 
-  // Filter supporting characters — only SPECIFIC visual actors trigger Mode B.
+  // Filter supporting characters to specific visual actors only.
   // "friends", "family", "his", "the" are NOT visual actors.
   const VISUAL_ACTORS = new Set([
     "dog", "cat", "birds", "rabbit", "bear", "fox", "owl", "butterflies",
     "fish", "dolphins", "whale", "shark", "turtle", "octopus",
     "dragon", "unicorn", "fairies", "aliens", "robot", "lions",
   ]);
-  const supportingChars = (pageSceneCard?.supporting_characters ?? [])
+  const filteredSupportingChars = (pageSceneCard?.supporting_characters ?? [])
     .filter((ch) => VISUAL_ACTORS.has(ch.toLowerCase()));
 
-  const hasSecondaryActors = secondaryAnimals.length > 0 || supportingChars.length > 0;
-  const isCockpitScene = /inside.*(?:rocket|ship|capsule)|cockpit|cabin.*(?:rocket|space)/i.test(sceneSetting);
-  const useModeBTxt2img = hasSecondaryActors || isCockpitScene;
+  const hasSecondaryActors = animalObjects.length > 0 || filteredSupportingChars.length > 0;
 
-  if (useModeBTxt2img) {
-    console.log(`[Page ${pageIndex + 1}] MODE B: TXT2IMG (multi-character or cockpit)`);
-    if (hasSecondaryActors) console.log(`[Page ${pageIndex + 1}]   Secondary actors: [${[...secondaryAnimals, ...supportingChars].join(", ")}]`);
-    if (isCockpitScene) console.log(`[Page ${pageIndex + 1}]   Cockpit/interior scene`);
-    return generatePageModeBTxt2img(pageIndex, seed, identity, sceneSetting, styleHints, cardObjects, sceneCategory);
+  let plateObjects: string[];
+  if (hasSecondaryActors) {
+    // Multi-character: include ALL objects (including secondary animals) in plate.
+    // Riri is inpainted on top — secondary actors stay in background.
+    plateObjects = [...cardObjects];
+    // Add supporting chars not already in cardObjects
+    for (const ch of filteredSupportingChars) {
+      if (!plateObjects.some(o => o.toLowerCase() === ch.toLowerCase())) {
+        plateObjects.push(ch);
+      }
+    }
+    console.log(`[Page ${pageIndex + 1}] MULTI-CHAR plate: secondary actors [${[...animalObjects, ...filteredSupportingChars].join(", ")}]`);
+  } else {
+    // Solo page: no animals in plate (environment only)
+    plateObjects = nonAnimalObjects;
   }
 
-  console.log(`========== PAGE ${pageIndex + 1}: MODE A — PLATE → INPAINT → SCORE ==========`);
+  // ── 3. ALL pages: PLATE → INPAINT → SCORE (identity lock) ──
+  console.log(`========== PAGE ${pageIndex + 1}: PLATE → INPAINT → SCORE ==========`);
 
-  // ── 3. Mode A: plate→inpaint (Riri alone in environment) ──
-  const plateObjects = cardObjects; // No filtering needed — no secondary animals in Mode A
-  const platePrompt = buildPlatePrompt(sceneSetting, styleHints, plateObjects);
+  const platePrompt = buildPlatePrompt(sceneSetting, styleHints, plateObjects, identity.species, hasSecondaryActors);
   console.log(`[Page ${pageIndex + 1}] Plate prompt: "${platePrompt}"`);
 
-  const plateUrl = await generatePlate(replicate, platePrompt, seed, pageIndex, undefined, 0.80);
+  // Multi-char plates use a special negative that allows secondary actors
+  const plateNegative = hasSecondaryActors
+    ? buildMultiCharPlateNegative(identity.species)
+    : undefined;
+
+  const plateUrl = await generatePlate(replicate, platePrompt, seed, pageIndex, undefined, 0.80, undefined, plateNegative);
   if (!plateUrl) {
     console.error(`[Page ${pageIndex + 1}] PLATE FAILED`);
     return { url: "", accepted: false, caption: "", score: -999 };
   }
   console.log(`[Page ${pageIndex + 1}] Plate OK: ${plateUrl.substring(0, 60)}...`);
 
-  // Build masks
+  // Build masks (same position/size every page → identity lock)
   const [initialMask, escalatedMask, extraLargeMask] = await Promise.all([
     makeRiriZoneMaskDataUrl(1024),
     makeRiriZoneLargeMaskDataUrl(1024),
@@ -502,89 +537,6 @@ async function generateOnePage(
 
   // No candidate accepted → return EMPTY
   console.warn(`[Page ${pageIndex + 1}] WARNING: No candidate accepted after 9 tries. Returning EMPTY.`);
-  return { url: "", accepted: false, caption: "", score: -999 };
-}
-
-// ─── MODE B: TXT2IMG (multi-character pages) ────────────────────────────
-
-/**
- * Generate a full scene via txt2img for pages with multiple characters.
- * No plate→inpaint — all actors (Riri + dolphins/rabbits/lions/fairies) are
- * drawn together in a single txt2img pass.
- */
-async function generatePageModeBTxt2img(
-  pageIndex: number,
-  seed: number,
-  identity: CharacterIdentity,
-  sceneSetting: string,
-  styleHints: string,
-  cardObjects: string[],
-  sceneCategory: string
-): Promise<{ url: string; accepted: boolean; caption: string; score: number }> {
-  // Build a rich txt2img prompt with character + setting + all actors.
-  // Use identity species for the character description — no duplication.
-  const speciesCap = identity.species.charAt(0).toUpperCase() + identity.species.slice(1);
-  const objectsList = cardObjects.length > 0 ? cardObjects.join(", ") : "";
-  const parts = [
-    `${identity.name} the cute cartoon ${identity.species}, a ${identity.species}`,
-    `${speciesCap} character, full body, centered foreground, large and prominent`,
-    objectsList ? `with ${objectsList}` : "",
-    `Scene: ${sceneSetting}`,
-    styleHints,
-    "children's picture book illustration, clean lines, vibrant colors, soft shading",
-    "vivid saturated colors, well-lit, bright",
-    `only one ${identity.species}, no text, no watermark`,
-  ].filter(Boolean);
-  const txt2imgPrompt = parts.join(", ");
-
-  // Build negative — don't block animals that ARE in the scene
-  const wrongAnimalNeg = [
-    "human", "person", "boy", "girl", "child", "man", "woman",
-    "astronaut", "spacesuit", "pilot",
-    "black and white", "grayscale", "monochrome", "desaturated", "faded",
-    "low quality", "blurry", "distorted", "deformed", "ugly",
-    "text", "watermark", "signature",
-  ].join(", ");
-
-  console.log(`[Page ${pageIndex + 1}] Txt2img prompt: "${txt2imgPrompt.substring(0, 120)}..."`);
-
-  // Score options — same gates as Mode A
-  const settingKeywords = deriveSettingKeywordsFromText(sceneSetting);
-  const highSalienceObjects = cardObjects.filter((obj) => HIGH_SALIENCE_OBJECTS.has(obj.toLowerCase()));
-  const scoreOpts: ScoreOptions = {
-    mustInclude: [...identity.mustInclude],
-    requireMustIncludeCount: 1,
-    settingKeywords,
-    keyObjects: highSalienceObjects,
-  };
-
-  // Generate 3 candidates per round, up to 3 rounds
-  for (let round = 1; round <= 3; round++) {
-    console.log(`[Page ${pageIndex + 1}] Txt2img round ${round}: ${CANDIDATES_PER_ROUND} candidates...`);
-    const roundSeed = seed + (round - 1) * CANDIDATES_PER_ROUND * SEED_STRIDE;
-
-    const tasks = Array.from({ length: CANDIDATES_PER_ROUND }, async (_, i) => {
-      const candidateSeed = roundSeed + i * SEED_STRIDE;
-      const url = await generateTxt2imgScene(replicate, txt2imgPrompt, wrongAnimalNeg, candidateSeed, pageIndex);
-      if (!url) return null;
-      const result = await scoreCandidate(replicate, url, scoreOpts);
-      console.log(
-        `[Page ${pageIndex + 1}] Txt2img candidate ${i + 1}: ` +
-        `${result.accepted ? "ACCEPTED" : "REJECTED"} score=${result.score}` +
-        (result.rejectReason ? ` reason="${result.rejectReason}"` : "")
-      );
-      return result;
-    });
-
-    const results = (await Promise.all(tasks)).filter((r): r is CandidateResult => r !== null);
-    const accepted = results.filter((r) => r.accepted).sort((a, b) => b.score - a.score);
-    if (accepted.length > 0) {
-      console.log(`[Page ${pageIndex + 1}] ACCEPTED txt2img round ${round}: score=${accepted[0].score}`);
-      return accepted[0];
-    }
-  }
-
-  console.warn(`[Page ${pageIndex + 1}] WARNING: No txt2img candidate accepted after 9 tries. Returning EMPTY.`);
   return { url: "", accepted: false, caption: "", score: -999 };
 }
 

@@ -53,6 +53,9 @@ export function buildCharacterSafetyNegative(): string {
     // Block duplicate rhinos
     "two rhinoceroses", "multiple rhinos", "extra rhinoceros",
     "duplicate rhino",
+    // Identity-stabilizing: prevent accessories that drift across pages
+    "hat", "helmet", "saddle", "backpack", "armor", "crown",
+    "glasses", "sunglasses", "cape", "wings",
   ].join(", ");
 }
 
@@ -85,8 +88,8 @@ export function buildInpaintCharacterNegative(): string {
 }
 
 /**
- * Full negative for plate/background pass.
- * No character safety needed — plate has no characters.
+ * Full negative for plate/background pass (solo pages — no secondary actors).
+ * Blocks ALL animals and characters from the plate.
  */
 export function buildPlateNegative(): string {
   return [
@@ -96,6 +99,21 @@ export function buildPlateNegative(): string {
     "animal",
     "rhinoceros",
     "person",
+  ].join(", ");
+}
+
+/**
+ * Plate negative for MULTI-CHARACTER pages (dolphins, rabbits, etc. in plate).
+ * Allows secondary actors in the plate while blocking the main character.
+ * "animal" is NOT blocked — secondary actors ARE animals.
+ */
+export function buildMultiCharPlateNegative(mainSpecies: string): string {
+  return [
+    buildQualityOnlyNegative(),
+    buildNoTextNegative(),
+    mainSpecies,           // Block main character species from plate
+    "person",
+    "human",
   ].join(", ");
 }
 
