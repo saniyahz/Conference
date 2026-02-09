@@ -499,11 +499,17 @@ async function generateOnePage(
 
   const inpaintMustInclude = [...identity.mustInclude, ...cardObjects];
 
+  // Multi-char pages start with bigger masks — secondary actors in the plate
+  // compete with Riri for visual space. Bigger mask = more room for Riri.
+  const round1Mask = hasSecondaryActors ? escalatedMask : initialMask;
+  const round2Mask = hasSecondaryActors ? extraLargeMask : escalatedMask;
+
   // Round 1
-  console.log(`[Page ${pageIndex + 1}] Round 1: ${CANDIDATES_PER_ROUND} candidates...`);
+  console.log(`[Page ${pageIndex + 1}] Round 1: ${CANDIDATES_PER_ROUND} candidates${hasSecondaryActors ? " (multi-char: escalated mask + high strength)" : ""}...`);
   const round1 = await runCandidateRound(
-    plateUrl, initialMask, seed, CANDIDATES_PER_ROUND, pageIndex,
-    scoreOpts, inpaintMustInclude, sceneSetting, identity, sceneCategory
+    plateUrl, round1Mask, seed, CANDIDATES_PER_ROUND, pageIndex,
+    scoreOpts, inpaintMustInclude, sceneSetting, identity, sceneCategory,
+    false, hasSecondaryActors
   );
   const accepted1 = round1.filter((r) => r.accepted).sort((a, b) => b.score - a.score);
   if (accepted1.length > 0) {
@@ -511,11 +517,12 @@ async function generateOnePage(
     return accepted1[0];
   }
 
-  // Round 2: escalated mask
-  console.log(`[Page ${pageIndex + 1}] Round 2: ESCALATED mask...`);
+  // Round 2: escalated mask (or extra-large for multi-char)
+  console.log(`[Page ${pageIndex + 1}] Round 2: ${hasSecondaryActors ? "EXTRA-LARGE" : "ESCALATED"} mask...`);
   const round2 = await runCandidateRound(
-    plateUrl, escalatedMask, seed + CANDIDATES_PER_ROUND * SEED_STRIDE, CANDIDATES_PER_ROUND, pageIndex,
-    scoreOpts, inpaintMustInclude, sceneSetting, identity, sceneCategory
+    plateUrl, round2Mask, seed + CANDIDATES_PER_ROUND * SEED_STRIDE, CANDIDATES_PER_ROUND, pageIndex,
+    scoreOpts, inpaintMustInclude, sceneSetting, identity, sceneCategory,
+    false, hasSecondaryActors
   );
   const accepted2 = round2.filter((r) => r.accepted).sort((a, b) => b.score - a.score);
   if (accepted2.length > 0) {
@@ -527,7 +534,7 @@ async function generateOnePage(
   console.log(`[Page ${pageIndex + 1}] Round 3: EXTRA-LARGE mask + high strength...`);
   const round3 = await runCandidateRound(
     plateUrl, extraLargeMask, seed + CANDIDATES_PER_ROUND * SEED_STRIDE * 2, CANDIDATES_PER_ROUND, pageIndex,
-    scoreOpts, inpaintMustInclude, sceneSetting, identity, sceneCategory, true
+    scoreOpts, inpaintMustInclude, sceneSetting, identity, sceneCategory, true, hasSecondaryActors
   );
   const accepted3 = round3.filter((r) => r.accepted).sort((a, b) => b.score - a.score);
   if (accepted3.length > 0) {
@@ -557,11 +564,15 @@ async function runCandidateRound(
   settingContext: string,
   identity: CharacterIdentity,
   sceneCategory: string = "",
-  forceHighStrength: boolean = false
+  forceHighStrength: boolean = false,
+  isMultiChar: boolean = false
 ): Promise<CandidateResult[]> {
+  // Multi-char pages need higher strength — secondary actors (lions/dolphins)
+  // in the plate compete with Riri for visual attention. At 0.82 SDXL draws
+  // a generic animal that BLIP can't identify as rhino. 0.90 forces a clearer character.
   const strength = forceHighStrength
     ? ROUND3_STRENGTH
-    : DARK_SCENE_CATEGORIES.has(sceneCategory) ? DARK_SCENE_STRENGTH : DEFAULT_STRENGTH;
+    : (isMultiChar || DARK_SCENE_CATEGORIES.has(sceneCategory)) ? DARK_SCENE_STRENGTH : DEFAULT_STRENGTH;
   const tasks = Array.from({ length: count }, async (_, i) => {
     const seed = baseSeed + i * SEED_STRIDE;
 

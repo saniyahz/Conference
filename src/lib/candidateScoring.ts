@@ -108,9 +108,9 @@ const BUSY_SCENE_TERMS = [
  * Values are synonyms that BLIP might use instead.
  */
 const EXPANSIONS: Record<string, string[]> = {
-  // Character — BLIP frequently misidentifies rhinos as hippos
-  "rhinoceros": ["rhino", "hippo", "hippopotamus"],
-  "rhino": ["rhinoceros", "hippo", "hippopotamus"],
+  // Character — BLIP frequently misidentifies rhinos as hippos or elephants
+  "rhinoceros": ["rhino", "rhinos", "hippo", "hippos", "hippopotamus", "elephant", "elephants"],
+  "rhino": ["rhinoceros", "rhinos", "hippo", "hippos", "hippopotamus", "elephant", "elephants"],
 
   // Vehicles — BLIP often says "space station" for rocket interiors
   "rocket ship": ["rocket", "spaceship", "spacecraft", "space station", "shuttle", "plane", "airplane"],
@@ -345,15 +345,15 @@ export function acceptCandidate(
   const c = norm(caption);
 
   // ── Derive confirmation signals ──
-  const blipHasRhino = /\brhino\b|\brhinoceros\b/.test(c);
+  const blipHasRhino = /\brhinos?\b|\brhinoceros(es)?\b/.test(c);
   // BLIP frequently misidentifies rhinos as hippos — they look very similar.
   // Treat "hippo" as a weak rhino confirmation rather than a wrong animal.
-  const blipHasHippo = /\bhippo\b|\bhippopotamus\b/.test(c);
+  const blipHasHippo = /\bhippos?\b|\bhippopotamus(es)?\b/.test(c);
   // BLIP also frequently misidentifies cartoon rhinos as "elephant" —
   // similar large gray body shape in children's illustration style.
   // In our plate→inpaint pipeline, we specifically inpaint a rhinoceros,
   // so if BLIP says "elephant" it's looking at our character.
-  const blipHasElephant = /\belephant\b/.test(c);
+  const blipHasElephant = /\belephants?\b/.test(c);
   const dinoHasRhino = !!(detectionResult?.detected && detectionResult.confidence >= 0.5);
   const clipConfirmsRiri = !!(clipResult && clipResult.similarity >= 0.82);
 
@@ -504,9 +504,9 @@ export function scoreCaption(
   const c = norm(caption);
   const reasons: string[] = [];
 
-  const hasRhino = /\brhino\b|\brhinoceros\b/.test(c);
-  const hasHippo = /\bhippo\b|\bhippopotamus\b/.test(c);
-  const hasElephant = /\belephant\b/.test(c);
+  const hasRhino = /\brhinos?\b|\brhinoceros(es)?\b/.test(c);
+  const hasHippo = /\bhippos?\b|\bhippopotamus(es)?\b/.test(c);
+  const hasElephant = /\belephants?\b/.test(c);
 
   if (!hasRhino && !hasHippo && !hasElephant) {
     reasons.push("0 base: rhino/hippo/elephant not in caption (may be confirmed by other signals)");
@@ -685,7 +685,7 @@ export async function scoreCandidate(
   console.log(
     `[Score] ${accepted ? "ACCEPTED" : "REJECTED"}: ` +
     `caption="${caption}" score=${score} ` +
-    `BLIP-rhino=${/\brhino|\brhinoceros/.test(norm(caption))} ` +
+    `BLIP-rhino=${/\brhinos?\b|\brhinoceros/.test(norm(caption))} ` +
     `CLIP=${clipResult ? clipResult.similarity.toFixed(3) : "off"} ` +
     `DINO=${detectionResult ? `conf=${detectionResult.confidence.toFixed(2)},bbox=${(detectionResult.bestBboxArea * 100).toFixed(1)}%` : "off"}` +
     (rejectReason ? ` reason="${rejectReason}"` : "")
