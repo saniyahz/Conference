@@ -24,7 +24,7 @@ import { NextRequest, NextResponse } from "next/server";
 import Replicate from "replicate";
 import { CharacterBible, PageSceneCard } from "@/lib/visual-types";
 // ── Pipeline imports ──
-import { generatePlate, generateInpaintCharacter } from "@/src/lib/imageGeneration";
+import { generatePlate, generateInpaintCharacter, generateTxt2imgScene } from "@/src/lib/imageGeneration";
 import { makeRiriZoneMaskDataUrl, makeRiriZoneLargeMaskDataUrl, makeRiriZoneExtraLargeMaskDataUrl } from "@/src/lib/maskGenerator";
 import { resolveSceneSetting, enforceMustInclude, classifyScene } from "@/src/lib/sceneSettings";
 import { scoreCandidate, CandidateResult, ScoreOptions, getSettingKeywords, deriveSettingKeywordsFromText } from "@/src/lib/candidateScoring";
@@ -372,15 +372,9 @@ async function generateOnePage(
   pageSceneCard?: PageSceneCard
 ): Promise<{ url: string; accepted: boolean; caption: string; score: number }> {
   console.log(`\n${"=".repeat(60)}`);
-  console.log(`========== PAGE ${pageIndex + 1}: PLATE → INPAINT → SCORE ==========`);
   console.log(`[Page ${pageIndex + 1}] Character: ${identity.name} (${identity.species})`);
 
   // ── 1. Determine scene setting ──
-  // CRITICAL FIX: Card setting is the SOURCE OF TRUTH for the scene.
-  // The classifier only provides a category TAG for helpers (dark scene detection, etc.)
-  // It must NEVER overwrite what the card says the scene is.
-
-  // Use card.setting if available — this comes from the story text analysis
   const cardSetting = pageSceneCard?.setting;
   const cardObjects = extractSceneObjects(pageSceneCard, identity);
 
@@ -388,35 +382,15 @@ async function generateOnePage(
   const classifierMatch = classifyScene(pagePrompt);
   const sceneCategory = classifierMatch?.key ?? "generic";
 
-  // RULE: scene.setting = card.setting (always), classifier only for taxonomy tag
-  // CRITICAL: Style hints MUST match the scene setting, NOT the classifier.
-  // Without this, "Forest scene" gets moon-style hints when classifier says "moon_surface".
   let sceneSetting: string;
   let styleHints: string;
-  // "Storybook scene" is a generic placeholder — convert to a bright colorful landscape
-  // instead of falling through to the classifier (which often picks "moon_surface" incorrectly).
   const isGenericSetting = !cardSetting || cardSetting === "Storybook scene" || cardSetting === "colorful storybook scene";
   if (!isGenericSetting) {
-    // Card has a real setting — USE IT, derive style hints from it
     sceneSetting = cardSetting;
-
-    // COCKPIT → EXTERIOR CONVERSION: SDXL draws humans in cockpit/interior scenes.
-    // Convert "Inside a rocket ship cockpit" → simple bright meadow scene.
-    // This is a known SDXL limitation — interior vehicle scenes always fail Rule 1.
-    // IMPORTANT: Use a SIMPLE background (just meadow + sky) so the plate
-    // doesn't dominate the image and rhino can be inpainted clearly.
-    if (/inside.*(?:rocket|ship|capsule)|cockpit|cabin.*(?:rocket|space)/i.test(sceneSetting)) {
-      sceneSetting = "bright green meadow under blue sky with white clouds";
-      console.log(`[Page ${pageIndex + 1}] COCKPIT→EXTERIOR: "${cardSetting}" → "${sceneSetting}"`);
-    }
-
     styleHints = deriveStyleHintsFromSetting(sceneSetting);
     console.log(`[Page ${pageIndex + 1}] Using CARD setting: "${sceneSetting}" (classifier tag: ${sceneCategory})`);
     console.log(`[Page ${pageIndex + 1}] Style hints (from card): "${styleHints}"`);
   } else {
-    // Generic/missing card setting — use a bright colorful storybook landscape.
-    // DO NOT fall back to classifier — it often misclassifies (e.g. "moon_surface")
-    // just because the story text mentions "moon" somewhere.
     sceneSetting = "colorful storybook landscape with bright green grass and blue sky";
     styleHints = "bright colors, cheerful atmosphere, vibrant greens, blue sky, warm sunlight";
     console.log(`[Page ${pageIndex + 1}] Generic card setting ("${cardSetting ?? "none"}") → bright storybook landscape`);
@@ -425,15 +399,28 @@ async function generateOnePage(
 
   console.log(`[Page ${pageIndex + 1}] Scene objects (card): [${cardObjects.join(", ")}]`);
 
-  // ── 2. Generate plate (background only — no character) ──
-  // Filter animals OUT of plate prompt — they confuse SDXL into drawing wrong species.
-  // e.g., "rabbit" in plate → SDXL draws rabbit → inpaint tries to make rhino → distorted mess.
-  // Non-animal objects (rocket, boat, moon, river) stay in plate for background scenery.
-  const plateObjects = cardObjects.filter((obj) => !PLATE_ANIMAL_FILTER.has(obj.toLowerCase()));
-  if (plateObjects.length < cardObjects.length) {
-    const removed = cardObjects.filter((obj) => PLATE_ANIMAL_FILTER.has(obj.toLowerCase()));
-    console.log(`[Page ${pageIndex + 1}] Filtered ${removed.length} animals from plate: [${removed.join(", ")}]`);
+  // ── 2. Determine generation MODE ──
+  // Mode A (plate→inpaint): Simple scenes — Riri alone in environment
+  // Mode B (txt2img): Multi-character pages — dolphins, rabbits, lions, fairies, cockpit
+  //   plate→inpaint can only paint ONE character in the mask region.
+  //   Multi-character pages MUST use txt2img so all actors appear.
+  const secondaryAnimals = cardObjects.filter((obj) => PLATE_ANIMAL_FILTER.has(obj.toLowerCase()));
+  const supportingChars = pageSceneCard?.supporting_characters ?? [];
+  const hasSecondaryActors = secondaryAnimals.length > 0 || supportingChars.length > 0;
+  const isCockpitScene = /inside.*(?:rocket|ship|capsule)|cockpit|cabin.*(?:rocket|space)/i.test(sceneSetting);
+  const useModeBTxt2img = hasSecondaryActors || isCockpitScene;
+
+  if (useModeBTxt2img) {
+    console.log(`[Page ${pageIndex + 1}] MODE B: TXT2IMG (multi-character or cockpit)`);
+    if (hasSecondaryActors) console.log(`[Page ${pageIndex + 1}]   Secondary actors: [${[...secondaryAnimals, ...supportingChars].join(", ")}]`);
+    if (isCockpitScene) console.log(`[Page ${pageIndex + 1}]   Cockpit/interior scene`);
+    return generatePageModeBTxt2img(pageIndex, seed, identity, sceneSetting, styleHints, cardObjects, sceneCategory);
   }
+
+  console.log(`========== PAGE ${pageIndex + 1}: MODE A — PLATE → INPAINT → SCORE ==========`);
+
+  // ── 3. Mode A: plate→inpaint (Riri alone in environment) ──
+  const plateObjects = cardObjects; // No filtering needed — no secondary animals in Mode A
   const platePrompt = buildPlatePrompt(sceneSetting, styleHints, plateObjects);
   console.log(`[Page ${pageIndex + 1}] Plate prompt: "${platePrompt}"`);
 
@@ -444,42 +431,31 @@ async function generateOnePage(
   }
   console.log(`[Page ${pageIndex + 1}] Plate OK: ${plateUrl.substring(0, 60)}...`);
 
-  // ── 3. Build masks ──
+  // Build masks
   const [initialMask, escalatedMask, extraLargeMask] = await Promise.all([
     makeRiriZoneMaskDataUrl(1024),
     makeRiriZoneLargeMaskDataUrl(1024),
     makeRiriZoneExtraLargeMaskDataUrl(1024),
   ]);
 
-  // ── 4. Score options — TIERED GATES ──
-  // Gate A: Character (handled by Rule 3 in scoring — rhino confirmed)
-  // Gate B: Setting keywords — derived from scene category
-  // Gate C: Key objects — cleaned scene objects from card
-  // CRITICAL: Derive setting keywords from the ACTUAL scene setting text,
-  // not the classifier category. When card says "Indoor room" but classifier
-  // says "moon_surface", we need indoor keywords, not moon keywords.
+  // Score options
   const settingKeywords = deriveSettingKeywordsFromText(sceneSetting);
-  console.log(`[Page ${pageIndex + 1}] Setting keywords derived from "${sceneSetting}" → [${settingKeywords.slice(0, 6).join(", ")}${settingKeywords.length > 6 ? "..." : ""}]`);
+  console.log(`[Page ${pageIndex + 1}] Setting keywords: [${settingKeywords.slice(0, 6).join(", ")}${settingKeywords.length > 6 ? "..." : ""}]`);
 
-  // Split scene objects into high-salience (for Gate 5C) and all (for plate prompt).
-  // BLIP only captions large prominent objects — it will NEVER mention "magic wand" or "sun".
-  // Gate 5C must only enforce objects BLIP can actually detect.
   const highSalienceObjects = cardObjects.filter((obj) => HIGH_SALIENCE_OBJECTS.has(obj.toLowerCase()));
-  console.log(`[Page ${pageIndex + 1}] High-salience objects for Gate 5C: [${highSalienceObjects.join(", ")}] (from ${cardObjects.length} total)`);
+  console.log(`[Page ${pageIndex + 1}] High-salience objects: [${highSalienceObjects.join(", ")}]`);
 
   const scoreOpts: ScoreOptions = {
     mustInclude: [...identity.mustInclude],
-    requireMustIncludeCount: 1, // Character gate (legacy, backed by Rule 3)
+    requireMustIncludeCount: 1,
     settingKeywords,
-    keyObjects: highSalienceObjects, // Only enforce objects BLIP can detect
+    keyObjects: highSalienceObjects,
   };
-  console.log(`[Page ${pageIndex + 1}] Score gates: character=[${identity.mustInclude.join(", ")}] setting=[${settingKeywords.slice(0, 5).join(", ")}...] keyObjects=[${highSalienceObjects.join(", ")}]`);
 
-  // Build mustInclude list for inpaint context (passed to sanitizeNegatives)
   const inpaintMustInclude = [...identity.mustInclude, ...cardObjects];
 
-  // ── 5. Round 1: 3 candidates in parallel ──
-  console.log(`[Page ${pageIndex + 1}] Round 1: ${CANDIDATES_PER_ROUND} candidates in parallel...`);
+  // Round 1
+  console.log(`[Page ${pageIndex + 1}] Round 1: ${CANDIDATES_PER_ROUND} candidates...`);
   const round1 = await runCandidateRound(
     plateUrl, initialMask, seed, CANDIDATES_PER_ROUND, pageIndex,
     scoreOpts, inpaintMustInclude, sceneSetting, identity, sceneCategory
@@ -490,11 +466,10 @@ async function generateOnePage(
     return accepted1[0];
   }
 
-  // ── 6. Round 2: escalated mask ──
+  // Round 2: escalated mask
   console.log(`[Page ${pageIndex + 1}] Round 2: ESCALATED mask...`);
-  const round2Seed = seed + CANDIDATES_PER_ROUND * SEED_STRIDE;
   const round2 = await runCandidateRound(
-    plateUrl, escalatedMask, round2Seed, CANDIDATES_PER_ROUND, pageIndex,
+    plateUrl, escalatedMask, seed + CANDIDATES_PER_ROUND * SEED_STRIDE, CANDIDATES_PER_ROUND, pageIndex,
     scoreOpts, inpaintMustInclude, sceneSetting, identity, sceneCategory
   );
   const accepted2 = round2.filter((r) => r.accepted).sort((a, b) => b.score - a.score);
@@ -503,11 +478,10 @@ async function generateOnePage(
     return accepted2[0];
   }
 
-  // ── 7. Round 3: extra-large mask with high strength (last resort) ──
+  // Round 3: extra-large mask + high strength
   console.log(`[Page ${pageIndex + 1}] Round 3: EXTRA-LARGE mask + high strength...`);
-  const round3Seed = seed + CANDIDATES_PER_ROUND * SEED_STRIDE * 2;
   const round3 = await runCandidateRound(
-    plateUrl, extraLargeMask, round3Seed, CANDIDATES_PER_ROUND, pageIndex,
+    plateUrl, extraLargeMask, seed + CANDIDATES_PER_ROUND * SEED_STRIDE * 2, CANDIDATES_PER_ROUND, pageIndex,
     scoreOpts, inpaintMustInclude, sceneSetting, identity, sceneCategory, true
   );
   const accepted3 = round3.filter((r) => r.accepted).sort((a, b) => b.score - a.score);
@@ -516,12 +490,91 @@ async function generateOnePage(
     return accepted3[0];
   }
 
-  // ── 8. No candidate accepted → return EMPTY ──
-  const allCandidates = [...round1, ...round2, ...round3];
-  console.warn(
-    `[Page ${pageIndex + 1}] WARNING: No candidate accepted after ${allCandidates.length} tries. ` +
-    `Returning EMPTY — caller must show placeholder.`
-  );
+  // No candidate accepted → return EMPTY
+  console.warn(`[Page ${pageIndex + 1}] WARNING: No candidate accepted after 9 tries. Returning EMPTY.`);
+  return { url: "", accepted: false, caption: "", score: -999 };
+}
+
+// ─── MODE B: TXT2IMG (multi-character pages) ────────────────────────────
+
+/**
+ * Generate a full scene via txt2img for pages with multiple characters.
+ * No plate→inpaint — all actors (Riri + dolphins/rabbits/lions/fairies) are
+ * drawn together in a single txt2img pass.
+ */
+async function generatePageModeBTxt2img(
+  pageIndex: number,
+  seed: number,
+  identity: CharacterIdentity,
+  sceneSetting: string,
+  styleHints: string,
+  cardObjects: string[],
+  sceneCategory: string
+): Promise<{ url: string; accepted: boolean; caption: string; score: number }> {
+  // Build a rich txt2img prompt with character + setting + all actors
+  const fingerprint = identity.inpaintPrompt.split(",").slice(0, 3).join(",").trim();
+  const objectsList = cardObjects.length > 0 ? cardObjects.join(", ") : "";
+  const parts = [
+    `${identity.name} the cute cartoon ${identity.species}`,
+    fingerprint,
+    `full body, centered foreground, large and prominent`,
+    objectsList ? `with ${objectsList}` : "",
+    `Scene: ${sceneSetting}`,
+    styleHints,
+    "children's picture book illustration, clean lines, vibrant colors, soft shading",
+    "vivid saturated colors, well-lit, bright",
+    "no text, no watermark",
+  ].filter(Boolean);
+  const txt2imgPrompt = parts.join(", ");
+
+  // Build negative — don't block animals that ARE in the scene
+  const wrongAnimalNeg = [
+    "human", "person", "boy", "girl", "child", "man", "woman",
+    "astronaut", "spacesuit", "pilot",
+    "black and white", "grayscale", "monochrome", "desaturated", "faded",
+    "low quality", "blurry", "distorted", "deformed", "ugly",
+    "text", "watermark", "signature",
+  ].join(", ");
+
+  console.log(`[Page ${pageIndex + 1}] Txt2img prompt: "${txt2imgPrompt.substring(0, 120)}..."`);
+
+  // Score options — same gates as Mode A
+  const settingKeywords = deriveSettingKeywordsFromText(sceneSetting);
+  const highSalienceObjects = cardObjects.filter((obj) => HIGH_SALIENCE_OBJECTS.has(obj.toLowerCase()));
+  const scoreOpts: ScoreOptions = {
+    mustInclude: [...identity.mustInclude],
+    requireMustIncludeCount: 1,
+    settingKeywords,
+    keyObjects: highSalienceObjects,
+  };
+
+  // Generate 3 candidates per round, up to 3 rounds
+  for (let round = 1; round <= 3; round++) {
+    console.log(`[Page ${pageIndex + 1}] Txt2img round ${round}: ${CANDIDATES_PER_ROUND} candidates...`);
+    const roundSeed = seed + (round - 1) * CANDIDATES_PER_ROUND * SEED_STRIDE;
+
+    const tasks = Array.from({ length: CANDIDATES_PER_ROUND }, async (_, i) => {
+      const candidateSeed = roundSeed + i * SEED_STRIDE;
+      const url = await generateTxt2imgScene(replicate, txt2imgPrompt, wrongAnimalNeg, candidateSeed, pageIndex);
+      if (!url) return null;
+      const result = await scoreCandidate(replicate, url, scoreOpts);
+      console.log(
+        `[Page ${pageIndex + 1}] Txt2img candidate ${i + 1}: ` +
+        `${result.accepted ? "ACCEPTED" : "REJECTED"} score=${result.score}` +
+        (result.rejectReason ? ` reason="${result.rejectReason}"` : "")
+      );
+      return result;
+    });
+
+    const results = (await Promise.all(tasks)).filter((r): r is CandidateResult => r !== null);
+    const accepted = results.filter((r) => r.accepted).sort((a, b) => b.score - a.score);
+    if (accepted.length > 0) {
+      console.log(`[Page ${pageIndex + 1}] ACCEPTED txt2img round ${round}: score=${accepted[0].score}`);
+      return accepted[0];
+    }
+  }
+
+  console.warn(`[Page ${pageIndex + 1}] WARNING: No txt2img candidate accepted after 9 tries. Returning EMPTY.`);
   return { url: "", accepted: false, caption: "", score: -999 };
 }
 

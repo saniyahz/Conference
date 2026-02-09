@@ -136,6 +136,71 @@ export async function generatePlate(
   return "";
 }
 
+// ─── MODE B: TXT2IMG SCENE (multi-character pages) ──────────────────────
+
+/**
+ * Generate a full scene via txt2img — character + setting + secondary actors.
+ * Used for pages that need multiple characters (dolphins, rabbits, lions, fairies)
+ * where plate→inpaint can only paint ONE character.
+ */
+export async function generateTxt2imgScene(
+  replicate: Replicate,
+  scenePrompt: string,
+  negativePrompt: string,
+  seed: number,
+  pageIndex: number,
+  lora?: LoraConfig
+): Promise<string> {
+  const maxRetries = 3;
+  const modelVersion = lora?.version ?? SDXL_VERSION;
+
+  for (let attempt = 1; attempt <= maxRetries; attempt++) {
+    try {
+      const input: Record<string, unknown> = {
+        prompt: scenePrompt,
+        negative_prompt: negativePrompt,
+        width: 1024,
+        height: 1024,
+        num_outputs: 1,
+        scheduler: "K_EULER",
+        num_inference_steps: 40,
+        guidance_scale: 8,
+        seed,
+      };
+
+      if (lora?.loraScale !== undefined) {
+        input.lora_scale = lora.loraScale;
+      }
+
+      console.log(
+        `[Txt2img ${pageIndex}] Attempt ${attempt}/${maxRetries} ` +
+        `(mode: txt2img, seed: ${seed})`
+      );
+
+      const prediction = await replicate.predictions.create({
+        version: modelVersion,
+        input,
+      });
+
+      const completed = await pollPrediction(replicate, prediction);
+      const url = extractImageUrl(completed.output);
+      if (!url) throw new Error("No image URL in prediction output");
+
+      console.log(`[Txt2img ${pageIndex}] Success: ${url}`);
+      return url;
+    } catch (e) {
+      const msg = e instanceof Error ? e.message : String(e);
+      console.error(`[Txt2img ${pageIndex}] Attempt ${attempt} failed: ${msg}`);
+      if (attempt < maxRetries) {
+        await delay(Math.pow(2, attempt) * 1000);
+      }
+    }
+  }
+
+  console.error(`[Txt2img ${pageIndex}] All ${maxRetries} attempts failed`);
+  return "";
+}
+
 // ─── PASS B: INPAINT CHARACTER (the key change) ────────────────────────
 
 /**

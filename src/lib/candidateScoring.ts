@@ -445,23 +445,24 @@ export function acceptCandidate(
     // Bonus is applied in scoreCaption(), not here
   }
 
-  // Gate C: Key object gate — SOFT BONUS, NOT HARD REJECT
-  // Scene cards often include objects mentioned in the story text that aren't
-  // physically present in the scene (e.g., "dolphins" mentioned in conversation
-  // while in a forest, "rocket" mentioned while in a bedroom).
-  // SDXL can't draw incompatible objects (dolphins in forest, rockets in room),
-  // so Gate 5C as a hard reject kills perfectly good images.
-  // Instead, key objects provide a SCORE BONUS — images with objects rank higher,
-  // but images without them still pass if character + setting are correct.
+  // Gate C: Key object threshold — require at least some key objects visible.
+  // Thresholds: 1-2 objects → require ≥1, 3-5 → require ≥1, >5 → require ≥2
+  // This prevents accepting "rhino flying a kite" when the page needs "rocket ship + moon".
   const keyObjects = opts?.keyObjects ?? [];
   if (keyObjects.length > 0) {
     const { hits: objHits, hitTerms: objHitTerms } = countMustHits(c, keyObjects);
-    if (objHits > 0) {
-      console.log(`[Rule 5C] Key objects found: ${objHitTerms.join(", ")} (${objHits}/${keyObjects.length}) — bonus applied`);
+    const requiredHits = keyObjects.length > 5 ? 2 : 1;
+    if (objHits >= requiredHits) {
+      console.log(`[Rule 5C] Key objects found: ${objHitTerms.join(", ")} (${objHits}/${keyObjects.length}) ✓`);
+    } else if (objHits > 0) {
+      console.log(`[Rule 5C] Key objects partial: ${objHitTerms.join(", ")} (${objHits}/${keyObjects.length}, need ${requiredHits}) — passing with bonus`);
     } else {
-      console.log(`[Rule 5C] No key objects found in caption — no bonus (NOT rejecting)`);
+      console.log(`[Rule 5C] No key objects found (need ${requiredHits} of [${keyObjects.join(", ")}]) — REJECTING`);
+      return {
+        accepted: false,
+        rejectReason: `RULE 5C: KEY OBJECTS MISSING — 0/${keyObjects.length} found (need ${requiredHits})`,
+      };
     }
-    // Bonus is applied in scoreCaption(), not here
   }
 
   // Legacy must-include check (backward compat, softer)

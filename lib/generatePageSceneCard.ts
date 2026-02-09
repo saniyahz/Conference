@@ -127,42 +127,43 @@ function extractSetting(text: string): string {
 
 /**
  * Extract key objects from text - GENERIC
+ * Uses word-boundary matching to avoid false positives
+ * (e.g., "spaceship" should NOT match "ship" → "boat")
  */
 function extractKeyObjects(text: string): string[] {
   const objects: string[] = [];
 
   const objectPatterns = [
-    // Vehicles
-    { keywords: ['rocket', 'spaceship'], name: 'rocket ship' },
-    { keywords: ['boat', 'ship', 'sailboat'], name: 'boat' },
-    { keywords: ['car', 'truck', 'bus'], name: 'vehicle' },
-    { keywords: ['airplane', 'plane'], name: 'airplane' },
-    { keywords: ['balloon'], name: 'balloon' },
+    // Vehicles — use specific patterns to avoid cross-matching
+    // "spaceship" should match "rocket ship" NOT "boat"
+    { pattern: /\b(?:rocket|spaceship)\b/, name: 'rocket ship' },
+    { pattern: /\b(?:boat|sailboat)\b/, name: 'boat' },
+    { pattern: /\b(?:car|truck|bus)\b/, name: 'vehicle' },
+    { pattern: /\b(?:airplane|plane)\b/, name: 'airplane' },
+    { pattern: /\bballoon\b/, name: 'balloon' },
 
     // Nature
-    { keywords: ['rainbow'], name: 'rainbow' },
-    { keywords: ['waterfall'], name: 'waterfall' },
-    { keywords: ['river', 'stream'], name: 'river' },
+    { pattern: /\brainbow\b/, name: 'rainbow' },
+    { pattern: /\bwaterfall\b/, name: 'waterfall' },
+    { pattern: /\b(?:river|stream)\b/, name: 'river' },
 
-    // Items
-    { keywords: ['treasure', 'chest'], name: 'treasure chest' },
-    { keywords: ['crown'], name: 'crown' },
-    { keywords: ['wand', 'magic wand'], name: 'magic wand' },
-    { keywords: ['book'], name: 'book' },
-    { keywords: ['map'], name: 'map' },
-    { keywords: ['telescope'], name: 'telescope' },
-    { keywords: ['helmet'], name: 'helmet' },
+    // Items — require exact word boundaries
+    { pattern: /\btreasure\b/, name: 'treasure chest' },
+    { pattern: /\bcrown\b/, name: 'crown' },
+    { pattern: /\bmagic wand\b|\bwand\b(?!er)/, name: 'magic wand' },
+    { pattern: /\btelescope\b/, name: 'telescope' },
+    { pattern: /\bhelmet\b/, name: 'helmet' },
 
     // Celestial
-    { keywords: ['moon'], name: 'moon' },
-    { keywords: ['star', 'stars'], name: 'stars' },
-    { keywords: ['planet', 'planets'], name: 'planets' },
-    { keywords: ['sun'], name: 'sun' },
+    { pattern: /\bmoon\b/, name: 'moon' },
+    { pattern: /\bstars?\b/, name: 'stars' },
+    { pattern: /\bplanets?\b/, name: 'planets' },
+    { pattern: /\bsun\b/, name: 'sun' },
   ];
 
-  for (const pattern of objectPatterns) {
-    if (pattern.keywords.some(kw => text.includes(kw))) {
-      objects.push(pattern.name);
+  for (const { pattern, name } of objectPatterns) {
+    if (pattern.test(text)) {
+      objects.push(name);
     }
   }
 
