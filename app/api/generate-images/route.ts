@@ -373,6 +373,15 @@ async function generateOnePage(
   if (cardSetting && cardSetting !== "Storybook scene" && cardSetting !== "colorful storybook scene") {
     // Card has a real setting — USE IT, derive style hints from it
     sceneSetting = cardSetting;
+
+    // COCKPIT → EXTERIOR CONVERSION: SDXL draws humans in cockpit/interior scenes.
+    // Convert "Inside a rocket ship cockpit" → exterior with rocket visible.
+    // This is a known SDXL limitation — interior vehicle scenes always fail Rule 1.
+    if (/inside.*(?:rocket|ship|capsule)|cockpit|cabin.*(?:rocket|space)/i.test(sceneSetting)) {
+      sceneSetting = "colorful rocket ship on a bright green meadow under blue sky";
+      console.log(`[Page ${pageIndex + 1}] COCKPIT→EXTERIOR: "${cardSetting}" → "${sceneSetting}"`);
+    }
+
     styleHints = deriveStyleHintsFromSetting(sceneSetting);
     console.log(`[Page ${pageIndex + 1}] Using CARD setting: "${sceneSetting}" (classifier tag: ${sceneCategory})`);
     console.log(`[Page ${pageIndex + 1}] Style hints (from card): "${styleHints}"`);

@@ -103,9 +103,9 @@ const EXPANSIONS: Record<string, string[]> = {
   "rhino": ["rhinoceros"],
 
   // Vehicles — BLIP often says "space station" for rocket interiors
-  "rocket ship": ["rocket", "spaceship", "spacecraft", "space station", "shuttle"],
-  "rocket ship cockpit interior": ["rocket", "spaceship", "spacecraft", "space station"],
-  "rocket": ["spaceship", "spacecraft", "space station", "shuttle"],
+  "rocket ship": ["rocket", "spaceship", "spacecraft", "space station", "shuttle", "plane", "airplane"],
+  "rocket ship cockpit interior": ["rocket", "spaceship", "spacecraft", "space station", "plane", "airplane"],
+  "rocket": ["spaceship", "spacecraft", "space station", "shuttle", "plane", "airplane"],
   "boat": ["boat", "ship", "sailboat", "vessel"],
 
   // Ocean / water
@@ -160,7 +160,7 @@ const SETTING_KEYWORD_MAP: Record<string, string[]> = {
   savannah: ["savannah", "grassland", "plain", "prairie", "grass"],
   night: ["night", "star", "starlit", "starry", "dark", "moon"],
   indoor: ["room", "indoor", "interior", "cozy", "home", "house"],
-  rocket: ["rocket", "spaceship", "spacecraft", "launch", "liftoff", "space station", "shuttle", "space"],
+  rocket: ["rocket", "spaceship", "spacecraft", "launch", "liftoff", "space station", "shuttle", "space", "plane", "airplane"],
 };
 
 /**
@@ -220,7 +220,7 @@ export function deriveSettingKeywordsFromText(settingText: string): string[] {
     ["savannah", ["savannah", "grassland", "plain", "prairie"]],
     ["night", ["night", "starlit", "starry"]],
     ["indoor", ["room", "indoor", "interior", "cozy", "home", "house"]],
-    ["rocket", ["rocket", "spaceship", "spacecraft", "cockpit"]],
+    ["rocket", ["rocket", "spaceship", "spacecraft", "cockpit", "launch"]],
   ];
 
   for (const [groupKey, testWords] of checkGroups) {
@@ -424,17 +424,23 @@ export function acceptCandidate(
     }
   }
 
-  // Gate C: Key object gate
+  // Gate C: Key object gate — SOFT BONUS, NOT HARD REJECT
+  // Scene cards often include objects mentioned in the story text that aren't
+  // physically present in the scene (e.g., "dolphins" mentioned in conversation
+  // while in a forest, "rocket" mentioned while in a bedroom).
+  // SDXL can't draw incompatible objects (dolphins in forest, rockets in room),
+  // so Gate 5C as a hard reject kills perfectly good images.
+  // Instead, key objects provide a SCORE BONUS — images with objects rank higher,
+  // but images without them still pass if character + setting are correct.
   const keyObjects = opts?.keyObjects ?? [];
   if (keyObjects.length > 0) {
-    const { hits: objHits, hitTerms: objHitTerms, missedTerms: objMissed } = countMustHits(c, keyObjects);
-    if (objHits < 1) {
-      return {
-        accepted: false,
-        rejectReason: `RULE 5C: KEY OBJECTS MISSING — need 1 of [${keyObjects.join(", ")}], found none (missed: ${objMissed.join(", ")})`,
-      };
+    const { hits: objHits, hitTerms: objHitTerms } = countMustHits(c, keyObjects);
+    if (objHits > 0) {
+      console.log(`[Rule 5C] Key objects found: ${objHitTerms.join(", ")} (${objHits}/${keyObjects.length}) — bonus applied`);
+    } else {
+      console.log(`[Rule 5C] No key objects found in caption — no bonus (NOT rejecting)`);
     }
-    console.log(`[Rule 5C] Key objects OK: ${objHitTerms.join(", ")} (${objHits}/${keyObjects.length})`);
+    // Bonus is applied in scoreCaption(), not here
   }
 
   // Legacy must-include check (backward compat, softer)
