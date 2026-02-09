@@ -65,14 +65,18 @@ const BLIP_VERSION =
   "2e1dddc8621f72155f24cf2e0adbde548458d3cab9f00c0139eea840d0ac4746" as const;
 
 const WRONG_ANIMALS = [
-  "elephant", "cat", "dog", "bear", "lion", "tiger", "monkey",
+  // NOTE: "elephant" intentionally EXCLUDED — BLIP frequently misidentifies
+  // cartoon rhinoceros as elephant (similar body shape). In our plate→inpaint
+  // pipeline, we specifically inpaint a rhino — if BLIP says "elephant",
+  // it's looking at our inpainted character, not a real elephant.
+  //
+  // NOTE: "hippo"/"hippopotamus" intentionally EXCLUDED — BLIP frequently
+  // misidentifies rhinoceros as hippo because they look similar.
+  "cat", "dog", "bear", "lion", "tiger", "monkey",
   "rabbit", "horse", "cow", "giraffe", "zebra",
   "camel", "sheep", "goat", "fox", "deer",
   "wolf", "pig", "dolphin", "whale", "bird", "parrot",
   "penguin", "frog", "turtle", "snake", "fish",
-  // NOTE: "hippo"/"hippopotamus" intentionally EXCLUDED — BLIP frequently
-  // misidentifies rhinoceros as hippo because they look similar.
-  // Rejecting hippo captions kills many correct rhino images.
 ];
 
 const HUMAN_PLUS_TERMS = [
@@ -88,8 +92,11 @@ const COCKPIT_TERMS = [
 ];
 
 const BUSY_SCENE_TERMS = [
-  "crowd", "crowded", "many", "lots", "several", "group", "pack",
-  "herd", "dozens", "party", "parade", "procession",
+  "crowd", "crowded", "many", "lots", "dozens",
+  "party", "parade", "procession",
+  // NOTE: "group", "several", "pack", "herd" intentionally EXCLUDED.
+  // BLIP uses "a group of animals" for even 2-3 animals — which is
+  // expected for multi-character pages (Riri + lions/dolphins).
 ];
 
 /**
@@ -342,13 +349,19 @@ export function acceptCandidate(
   // BLIP frequently misidentifies rhinos as hippos — they look very similar.
   // Treat "hippo" as a weak rhino confirmation rather than a wrong animal.
   const blipHasHippo = /\bhippo\b|\bhippopotamus\b/.test(c);
+  // BLIP also frequently misidentifies cartoon rhinos as "elephant" —
+  // similar large gray body shape in children's illustration style.
+  // In our plate→inpaint pipeline, we specifically inpaint a rhinoceros,
+  // so if BLIP says "elephant" it's looking at our character.
+  const blipHasElephant = /\belephant\b/.test(c);
   const dinoHasRhino = !!(detectionResult?.detected && detectionResult.confidence >= 0.5);
   const clipConfirmsRiri = !!(clipResult && clipResult.similarity >= 0.82);
 
   // IMPORTANT: CLIP alone is not enough if caption strongly says a wrong animal.
   // CLIP measures visual style similarity, not species identity.
-  // Hippo counts as vision-confirmed because BLIP can't tell rhinos from hippos.
-  const rhinoConfirmedByVision = blipHasRhino || blipHasHippo || dinoHasRhino;
+  // Hippo and elephant count as vision-confirmed because BLIP can't tell
+  // cartoon rhinos from hippos/elephants.
+  const rhinoConfirmedByVision = blipHasRhino || blipHasHippo || blipHasElephant || dinoHasRhino;
   const rhinoConfirmed = rhinoConfirmedByVision || clipConfirmsRiri;
 
   // ── RULE 1: No human/cockpit (expanded) ──
@@ -492,15 +505,20 @@ export function scoreCaption(
 
   const hasRhino = /\brhino\b|\brhinoceros\b/.test(c);
   const hasHippo = /\bhippo\b|\bhippopotamus\b/.test(c);
+  const hasElephant = /\belephant\b/.test(c);
 
-  if (!hasRhino && !hasHippo) {
-    reasons.push("0 base: rhino/hippo not in caption (may be confirmed by other signals)");
+  if (!hasRhino && !hasHippo && !hasElephant) {
+    reasons.push("0 base: rhino/hippo/elephant not in caption (may be confirmed by other signals)");
     return { score: 0, reasons };
   }
 
-  // Hippo gets slightly lower base score since it's a weaker confirmation
-  let score = hasRhino ? 6 : 4;
-  reasons.push(hasRhino ? "+6 base: rhino/rhinoceros in caption" : "+4 base: hippo in caption (weak rhino)");
+  // Rhino = best, hippo = weak, elephant = weakest (but still our inpainted character)
+  let score = hasRhino ? 6 : hasHippo ? 4 : 3;
+  reasons.push(
+    hasRhino ? "+6 base: rhino/rhinoceros in caption"
+    : hasHippo ? "+4 base: hippo in caption (weak rhino)"
+    : "+3 base: elephant in caption (weak rhino — BLIP misID)"
+  );
 
   if (/\bcartoon\b|\billustration\b|\banimated\b|\bdrawing\b/.test(c)) {
     score += 1;
