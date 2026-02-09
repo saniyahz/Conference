@@ -17,6 +17,16 @@ export function buildQualityOnlyNegative(): string {
     "duplicate",
     "out of frame",
     "cropped",
+    // Color enforcement — kids' book must be vibrant, never monochrome
+    "black and white",
+    "grayscale",
+    "monochrome",
+    "pencil sketch",
+    "pencil drawing",
+    "charcoal",
+    "desaturated",
+    "faded",
+    "washed out",
   ].join(", ");
 }
 

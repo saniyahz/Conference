@@ -361,6 +361,15 @@ export function acceptCandidate(
     return { accepted: false, rejectReason: "RULE 1b: BUSY/CROWDED scene detected" };
   }
 
+  // ── RULE 1c: No black-and-white / grayscale / sketch images ──
+  // Kids' book images MUST be colorful. BLIP captions that say "black and white",
+  // "grayscale", or "sketch" indicate a dull/monotone image unsuitable for a picture book.
+  const BW_TERMS = ["black and white", "grayscale", "monochrome", "pencil sketch", "pencil drawing", "charcoal"];
+  if (BW_TERMS.some(t => c.includes(t))) {
+    const matched = BW_TERMS.find(t => c.includes(t));
+    return { accepted: false, rejectReason: `RULE 1c: BLACK-AND-WHITE/SKETCH detected ("${matched}")` };
+  }
+
   // ── RULE 2: Wrong animal gate (tightened) ──
   // If BLIP says wrong animal, CLIP alone cannot save it — need BLIP or DINO rhino.
   const wrongAnimal = WRONG_ANIMALS.find((a) => c.includes(a));

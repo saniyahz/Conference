@@ -321,12 +321,12 @@ function deriveStyleHintsFromSetting(settingText: string): string {
     [["desert", "sand", "dune"], "golden sand, warm tones, wide sky, gentle shadows"],
     [["cave", "cavern", "underground", "grotto"], "rocky walls, soft glow, stalactites, mysterious atmosphere"],
     [["savannah", "grassland", "plain", "prairie"], "golden grass, warm light, wide horizon, scattered trees"],
-    // Space/celestial
-    [["moon", "crater", "lunar"], "gray terrain, craters, starry sky, Earth visible"],
-    [["space", "star", "planet", "galaxy", "cosmos", "orbit"], "bright colorful ground, starry sky, vivid colors, colorful planets"],
+    // Space/celestial — MUST be bright and colorful for kids' book (no gray/dark)
+    [["moon", "crater", "lunar"], "bright purple and blue moon surface, colorful craters, glowing stars, bright Earth in sky, vivid colors, well-lit"],
+    [["space", "star", "planet", "galaxy", "cosmos", "orbit"], "bright colorful ground, colorful starry sky, vivid neon colors, colorful glowing planets, well-lit"],
     // Sky/weather
     [["sky", "cloud", "flying", "soar"], "blue sky, white fluffy clouds, bright sunlight"],
-    [["night", "starlit", "starry", "dark"], "night sky, stars, moonlight, soft glow"],
+    [["night", "starlit", "starry", "dark"], "deep blue night sky, bright glowing stars, moonlight, soft warm glow, well-lit foreground"],
     [["rain", "storm", "thunder"], "rain, overcast, puddles, glistening surfaces"],
     [["snow", "ice", "winter", "arctic", "frozen"], "white snow, soft blue shadows, crisp sky"],
     // Indoor/village
@@ -356,8 +356,8 @@ function buildPlatePrompt(
   const parts = [setting];
   if (sceneObjects.length > 0) parts.push(sceneObjects.join(", "));
   parts.push(styleHints);
-  parts.push("simple children's illustration, flat colors, bold outline, minimal detail");
-  parts.push("no characters, no animals, no people, no text");
+  parts.push("simple children's illustration, flat colors, bold outline, minimal detail, vivid saturated colors, well-lit, bright");
+  parts.push("no characters, no animals, no people, no text, no black and white, no grayscale, no monochrome");
   return parts.join(", ");
 }
 
@@ -393,7 +393,10 @@ async function generateOnePage(
   // Without this, "Forest scene" gets moon-style hints when classifier says "moon_surface".
   let sceneSetting: string;
   let styleHints: string;
-  if (cardSetting && cardSetting !== "Storybook scene" && cardSetting !== "colorful storybook scene") {
+  // "Storybook scene" is a generic placeholder — convert to a bright colorful landscape
+  // instead of falling through to the classifier (which often picks "moon_surface" incorrectly).
+  const isGenericSetting = !cardSetting || cardSetting === "Storybook scene" || cardSetting === "colorful storybook scene";
+  if (!isGenericSetting) {
     // Card has a real setting — USE IT, derive style hints from it
     sceneSetting = cardSetting;
 
@@ -409,12 +412,13 @@ async function generateOnePage(
     console.log(`[Page ${pageIndex + 1}] Using CARD setting: "${sceneSetting}" (classifier tag: ${sceneCategory})`);
     console.log(`[Page ${pageIndex + 1}] Style hints (from card): "${styleHints}"`);
   } else {
-    // No card setting — fall back to classifier for both setting and style hints
-    const scene = resolveSceneSetting(pagePrompt, identity.mustInclude);
-    sceneSetting = scene.setting;
-    styleHints = classifierMatch?.styleHints ?? "bright colors, friendly atmosphere";
-    console.log(`[Page ${pageIndex + 1}] No card setting, using classifier: "${sceneSetting}" (${scene.category})`);
-    console.log(`[Page ${pageIndex + 1}] Style hints (from classifier): "${styleHints}"`);
+    // Generic/missing card setting — use a bright colorful storybook landscape.
+    // DO NOT fall back to classifier — it often misclassifies (e.g. "moon_surface")
+    // just because the story text mentions "moon" somewhere.
+    sceneSetting = "colorful storybook landscape with bright green grass and blue sky";
+    styleHints = "bright colors, cheerful atmosphere, vibrant greens, blue sky, warm sunlight";
+    console.log(`[Page ${pageIndex + 1}] Generic card setting ("${cardSetting ?? "none"}") → bright storybook landscape`);
+    console.log(`[Page ${pageIndex + 1}] Style hints: "${styleHints}"`);
   }
 
   console.log(`[Page ${pageIndex + 1}] Scene objects (card): [${cardObjects.join(", ")}]`);
@@ -520,7 +524,7 @@ async function generateOnePage(
 }
 
 /** Scene categories that need higher prompt_strength to overcome dark backgrounds */
-const DARK_SCENE_CATEGORIES = new Set(["space", "night_sky", "mountain_night"]);
+const DARK_SCENE_CATEGORIES = new Set(["space", "night_sky", "mountain_night", "moon_surface"]);
 const DARK_SCENE_STRENGTH = 0.88;
 const DEFAULT_STRENGTH = 0.75;
 const ROUND3_STRENGTH = 0.92;
