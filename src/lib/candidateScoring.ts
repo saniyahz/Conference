@@ -102,10 +102,11 @@ const EXPANSIONS: Record<string, string[]> = {
   "rhinoceros": ["rhino"],
   "rhino": ["rhinoceros"],
 
-  // Vehicles
-  "rocket ship": ["rocket", "spaceship", "spacecraft"],
-  "rocket ship cockpit interior": ["rocket", "spaceship", "spacecraft"],
-  "rocket": ["spaceship", "spacecraft"],
+  // Vehicles — BLIP often says "space station" for rocket interiors
+  "rocket ship": ["rocket", "spaceship", "spacecraft", "space station", "shuttle"],
+  "rocket ship cockpit interior": ["rocket", "spaceship", "spacecraft", "space station"],
+  "rocket": ["spaceship", "spacecraft", "space station", "shuttle"],
+  "boat": ["boat", "ship", "sailboat", "vessel"],
 
   // Ocean / water
   "ocean": ["sea", "beach", "water", "wave", "shore", "coast"],
@@ -126,9 +127,10 @@ const EXPANSIONS: Record<string, string[]> = {
   "flowers": ["flower", "garden", "bloom", "meadow"],
   "butterflies": ["butterfly"],
 
-  // Objects
+  // Objects — BLIP says "trunk" for treasure chest
   "flag": ["flag"],
-  "treasure chest": ["treasure", "chest"],
+  "treasure chest": ["treasure", "chest", "trunk", "box"],
+  "treasure": ["chest", "trunk", "box"],
   "crown": ["crown"],
   "balloons": ["balloon"],
 
@@ -144,8 +146,8 @@ const EXPANSIONS: Record<string, string[]> = {
 const SETTING_KEYWORD_MAP: Record<string, string[]> = {
   ocean: ["ocean", "sea", "beach", "water", "underwater", "wave", "coral", "shore", "coast", "aqua", "swim"],
   forest: ["forest", "tree", "trees", "wood", "woods", "clearing", "jungle", "leaf", "leaves", "vine"],
-  moon: ["moon", "crater", "lunar", "space", "planet", "star"],
-  space: ["space", "star", "planet", "galaxy", "nebula", "orbit", "alien", "cosmos"],
+  moon: ["moon", "crater", "lunar", "space", "planet", "star", "desert"],
+  space: ["space", "star", "planet", "galaxy", "nebula", "orbit", "alien", "cosmos", "moon"],
   sky: ["cloud", "sky", "flying", "soar", "air"],
   mountain: ["mountain", "hill", "peak", "cliff", "summit", "rock"],
   desert: ["desert", "sand", "dune", "arid", "cactus"],
@@ -158,7 +160,7 @@ const SETTING_KEYWORD_MAP: Record<string, string[]> = {
   savannah: ["savannah", "grassland", "plain", "prairie", "grass"],
   night: ["night", "star", "starlit", "starry", "dark", "moon"],
   indoor: ["room", "indoor", "interior", "cozy", "home", "house"],
-  rocket: ["rocket", "spaceship", "spacecraft", "launch", "liftoff"],
+  rocket: ["rocket", "spaceship", "spacecraft", "launch", "liftoff", "space station", "shuttle", "space"],
 };
 
 /**
@@ -183,6 +185,53 @@ export function getSettingKeywords(category: string): string[] {
   if (category.includes("rocket") || category.includes("launch")) return SETTING_KEYWORD_MAP["rocket"];
 
   return [];
+}
+
+/**
+ * Derive setting keywords from the actual scene setting TEXT.
+ * This is more reliable than using the classifier category because
+ * when card.setting disagrees with classifier, we want keywords
+ * that match what we actually prompted SDXL with.
+ *
+ * Scans the setting text for keywords from each group,
+ * returns the BEST matching group (most keyword hits).
+ */
+export function deriveSettingKeywordsFromText(settingText: string): string[] {
+  const lower = settingText.toLowerCase();
+
+  let bestGroup: string[] = [];
+  let bestHits = 0;
+
+  // Check each setting group for keyword matches in the text
+  const checkGroups: [string, string[]][] = [
+    ["ocean", ["ocean", "sea", "beach", "underwater", "water", "wave", "shore", "coral"]],
+    ["forest", ["forest", "tree", "trees", "wood", "woods", "jungle", "clearing"]],
+    ["moon", ["moon", "crater", "lunar"]],
+    ["space", ["space", "star", "planet", "galaxy", "alien", "cosmos"]],
+    ["sky", ["cloud", "sky", "flying"]],
+    ["mountain", ["mountain", "hill", "peak", "cliff"]],
+    ["desert", ["desert", "sand", "dune"]],
+    ["snow", ["snow", "ice", "frozen", "winter", "arctic"]],
+    ["garden", ["garden", "flower", "meadow", "bloom"]],
+    ["cave", ["cave", "cavern", "grotto", "underground"]],
+    ["village", ["village", "town", "house", "home", "building"]],
+    ["lake", ["lake", "pond"]],
+    ["rain", ["rain", "storm", "thunder"]],
+    ["savannah", ["savannah", "grassland", "plain", "prairie"]],
+    ["night", ["night", "starlit", "starry"]],
+    ["indoor", ["room", "indoor", "interior", "cozy", "home", "house"]],
+    ["rocket", ["rocket", "spaceship", "spacecraft", "cockpit"]],
+  ];
+
+  for (const [groupKey, testWords] of checkGroups) {
+    const hits = testWords.filter((w) => lower.includes(w)).length;
+    if (hits > bestHits) {
+      bestHits = hits;
+      bestGroup = SETTING_KEYWORD_MAP[groupKey] || testWords;
+    }
+  }
+
+  return bestGroup;
 }
 
 /** Minimum bbox area (fraction of frame) to count as foreground character */

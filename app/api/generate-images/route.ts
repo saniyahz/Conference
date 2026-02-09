@@ -27,7 +27,7 @@ import { CharacterBible, PageSceneCard } from "@/lib/visual-types";
 import { generatePlate, generateInpaintCharacter } from "@/src/lib/imageGeneration";
 import { makeRiriZoneMaskDataUrl, makeRiriZoneLargeMaskDataUrl, makeRiriZoneExtraLargeMaskDataUrl } from "@/src/lib/maskGenerator";
 import { resolveSceneSetting, enforceMustInclude, classifyScene } from "@/src/lib/sceneSettings";
-import { scoreCandidate, CandidateResult, ScoreOptions, getSettingKeywords } from "@/src/lib/candidateScoring";
+import { scoreCandidate, CandidateResult, ScoreOptions, getSettingKeywords, deriveSettingKeywordsFromText } from "@/src/lib/candidateScoring";
 
 const replicate = new Replicate({
   auth: process.env.REPLICATE_API_TOKEN,
@@ -118,6 +118,29 @@ function extractCharacterIdentity(bible?: CharacterBible): CharacterIdentity {
 }
 
 // ─── SCENE OBJECT EXTRACTION ────────────────────────────────────────────
+
+/**
+ * HIGH-SALIENCE OBJECTS — BLIP can reliably detect these in captions.
+ * These are large, prominent objects that BLIP's 1-sentence caption will mention.
+ * Small props (magic wand, flag, crown) are NEVER mentioned by BLIP.
+ *
+ * Only objects in this set are enforced by Gate 5C.
+ * Other objects still go into the plate prompt but aren't scoring gates.
+ */
+const HIGH_SALIENCE_OBJECTS = new Set([
+  // Large animals (BLIP reliably detects these)
+  "dolphins", "dolphin", "whale", "lion", "lions", "bear", "dragon",
+  "unicorn", "elephant", "turtle", "shark", "octopus",
+  "moon rabbits", "moon rabbit", "rabbit", "bunny",
+  // Large vehicles/structures
+  "rocket ship", "rocket", "spaceship", "boat", "sailboat", "airplane",
+  // Large nature features
+  "rainbow", "waterfall", "river",
+  // Large celestial (BLIP mentions "moon" and "star" often)
+  "moon", "stars",
+  // Large objects
+  "treasure chest",
+]);
 
 /**
  * VISUAL NOUN WHITELIST — only these survive extraction.
@@ -332,15 +355,24 @@ async function generateOnePage(
   // Gate A: Character (handled by Rule 3 in scoring — rhino confirmed)
   // Gate B: Setting keywords — derived from scene category
   // Gate C: Key objects — cleaned scene objects from card
-  const settingKeywords = getSettingKeywords(sceneCategory);
+  // CRITICAL: Derive setting keywords from the ACTUAL scene setting text,
+  // not the classifier category. When card says "Indoor room" but classifier
+  // says "moon_surface", we need indoor keywords, not moon keywords.
+  const settingKeywords = deriveSettingKeywordsFromText(sceneSetting);
+
+  // Split scene objects into high-salience (for Gate 5C) and all (for plate prompt).
+  // BLIP only captions large prominent objects — it will NEVER mention "magic wand" or "sun".
+  // Gate 5C must only enforce objects BLIP can actually detect.
+  const highSalienceObjects = cardObjects.filter((obj) => HIGH_SALIENCE_OBJECTS.has(obj.toLowerCase()));
+  console.log(`[Page ${pageIndex + 1}] High-salience objects for Gate 5C: [${highSalienceObjects.join(", ")}] (from ${cardObjects.length} total)`);
 
   const scoreOpts: ScoreOptions = {
     mustInclude: [...identity.mustInclude],
     requireMustIncludeCount: 1, // Character gate (legacy, backed by Rule 3)
     settingKeywords,
-    keyObjects: cardObjects,
+    keyObjects: highSalienceObjects, // Only enforce objects BLIP can detect
   };
-  console.log(`[Page ${pageIndex + 1}] Score gates: character=[${identity.mustInclude.join(", ")}] setting=[${settingKeywords.slice(0, 5).join(", ")}...] keyObjects=[${cardObjects.join(", ")}]`);
+  console.log(`[Page ${pageIndex + 1}] Score gates: character=[${identity.mustInclude.join(", ")}] setting=[${settingKeywords.slice(0, 5).join(", ")}...] keyObjects=[${highSalienceObjects.join(", ")}]`);
 
   // Build mustInclude list for inpaint context (passed to sanitizeNegatives)
   const inpaintMustInclude = [...identity.mustInclude, ...cardObjects];
