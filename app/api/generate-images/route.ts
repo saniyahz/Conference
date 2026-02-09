@@ -26,8 +26,8 @@ import { CharacterBible, PageSceneCard } from "@/lib/visual-types";
 // ── Pipeline imports ──
 import { generatePlate, generateInpaintCharacter } from "@/src/lib/imageGeneration";
 import { makeRiriZoneMaskDataUrl, makeRiriZoneLargeMaskDataUrl, makeRiriZoneExtraLargeMaskDataUrl } from "@/src/lib/maskGenerator";
-import { resolveSceneSetting, enforceMustInclude } from "@/src/lib/sceneSettings";
-import { scoreCandidate, CandidateResult, ScoreOptions } from "@/src/lib/candidateScoring";
+import { resolveSceneSetting, enforceMustInclude, classifyScene } from "@/src/lib/sceneSettings";
+import { scoreCandidate, CandidateResult, ScoreOptions, getSettingKeywords } from "@/src/lib/candidateScoring";
 
 const replicate = new Replicate({
   auth: process.env.REPLICATE_API_TOKEN,
@@ -120,8 +120,83 @@ function extractCharacterIdentity(bible?: CharacterBible): CharacterIdentity {
 // ─── SCENE OBJECT EXTRACTION ────────────────────────────────────────────
 
 /**
+ * VISUAL NOUN WHITELIST — only these survive extraction.
+ * Anything not in this list (or a substring match) is dropped.
+ * This prevents junk tokens like "the", "his", "friends" from
+ * being treated as required visual objects.
+ */
+const VISUAL_NOUN_WHITELIST = new Set([
+  // Vehicles
+  "rocket ship", "rocket", "spaceship", "boat", "sailboat", "airplane", "vehicle",
+  // Animals / creatures
+  "dolphins", "dolphin", "whale", "butterflies", "butterfly", "fish", "birds", "bird",
+  "moon rabbits", "moon rabbit", "moon bunnies", "moon bunny", "lions", "lion",
+  "dragon", "unicorn", "fairies", "fairy", "aliens", "alien", "robot",
+  "turtle", "octopus", "shark", "owl", "fox", "bear", "rabbit", "bunny",
+  "dog", "cat", "puppy", "kitten",
+  // Nature objects
+  "rainbow", "waterfall", "river", "stream", "flowers", "flower",
+  "trees", "tree", "forest", "cave",
+  // Celestial
+  "moon", "stars", "star", "planets", "planet", "sun", "craters", "crater",
+  // Items
+  "treasure chest", "treasure", "crown", "flag", "telescope", "map",
+  "balloons", "balloon", "magic wand", "book", "helmet",
+  // Settings (these help plate prompt, not scoring)
+  "ocean", "sea", "beach", "mountain", "desert", "snow", "lake",
+]);
+
+/**
+ * STOPWORDS — always removed from extracted items.
+ */
+const STOPWORDS = new Set([
+  "the", "a", "an", "and", "or", "of", "to", "in", "on", "with", "for",
+  "is", "it", "its", "his", "her", "my", "their", "our", "this", "that",
+  "at", "by", "from", "was", "were", "be", "been", "being",
+  "full", "body", "cute", "colorful", "playful", "friendly", "magical",
+  "small", "big", "large", "little", "golden", "bright",
+]);
+
+/**
+ * Clean a raw must-include item:
+ * 1. Lowercase + strip punctuation
+ * 2. Remove stopwords
+ * 3. Check against visual noun whitelist
+ * Returns the cleaned term if it's a real visual noun, or null.
+ */
+function cleanSceneItem(raw: string): string | null {
+  const lower = raw.toLowerCase().replace(/[^\w\s]/g, " ").replace(/\s+/g, " ").trim();
+  if (!lower) return null;
+
+  // Direct whitelist match (before stripping — "rocket ship", "moon rabbits")
+  if (VISUAL_NOUN_WHITELIST.has(lower)) return lower;
+
+  // Strip stopwords and adjectives
+  const words = lower.split(" ").filter((w) => !STOPWORDS.has(w) && w.length > 1);
+  if (words.length === 0) return null;
+
+  const cleaned = words.join(" ");
+  if (!cleaned) return null;
+
+  // Check cleaned form against whitelist
+  if (VISUAL_NOUN_WHITELIST.has(cleaned)) return cleaned;
+
+  // Check if any individual word matches whitelist
+  for (const word of words) {
+    if (VISUAL_NOUN_WHITELIST.has(word)) return word;
+    // Plural check: "dolphins" → "dolphin"
+    if (word.endsWith("s") && VISUAL_NOUN_WHITELIST.has(word.slice(0, -1))) return word;
+  }
+
+  // "friends" is not visual — only specific animal groups pass
+  if (cleaned === "friends" || cleaned === "family") return null;
+
+  return null;
+}
+
+/**
  * Extract scene objects from a PageSceneCard's must_include / key_objects,
- * filtering out character-identity items (species, name).
+ * filtering out character-identity items AND junk tokens.
  *
  * These objects (rocket, dolphins, rainbow, etc.) go into:
  *   1. Plate prompt — so the background contains them
@@ -136,41 +211,38 @@ function extractSceneObjects(
   const identityLower = new Set(
     identity.mustInclude.map((s) => s.toLowerCase())
   );
-  // Also filter out items that are just character descriptions
   const isCharacterItem = (item: string): boolean => {
     const lower = item.toLowerCase();
     if (identityLower.has(lower)) return true;
-    // Filter "Riri the rhinoceros full body" type items
     if (lower.includes(identity.name.toLowerCase())) return true;
-    if (lower.includes(identity.species.toLowerCase()) && lower.includes("full body")) return true;
+    if (lower.includes(identity.species.toLowerCase()) && (lower.includes("full body") || lower.includes("the "))) return true;
     return false;
   };
 
+  const seen = new Set<string>();
   const objects: string[] = [];
 
+  const addItem = (raw: string) => {
+    if (isCharacterItem(raw)) return;
+    const cleaned = cleanSceneItem(raw);
+    if (cleaned && !seen.has(cleaned)) {
+      seen.add(cleaned);
+      objects.push(cleaned);
+    }
+  };
+
   // From must_include (e.g., "colorful rocket ship", "playful dolphins")
-  // Fall back to required_elements (legacy field) if must_include is empty
   const mustItems = (card.must_include && card.must_include.length > 0)
     ? card.must_include
     : ((card as any).required_elements || []);
-  for (const item of mustItems) {
-    if (!isCharacterItem(item)) {
-      objects.push(item);
-    }
-  }
+  for (const item of mustItems) addItem(item);
 
   // From key_objects (e.g., "rocket ship", "rainbow")
   if (card.key_objects) {
-    for (const obj of card.key_objects) {
-      // Avoid duplicates
-      const lower = obj.toLowerCase();
-      if (!objects.some((o) => o.toLowerCase().includes(lower) || lower.includes(o.toLowerCase()))) {
-        objects.push(obj);
-      }
-    }
+    for (const obj of card.key_objects) addItem(obj);
   }
 
-  console.log(`[SceneObjects] Extracted from card: [${objects.join(", ")}]`);
+  console.log(`[SceneObjects] Extracted from card (cleaned): [${objects.join(", ")}]`);
   return objects;
 }
 
@@ -208,36 +280,38 @@ async function generateOnePage(
   console.log(`========== PAGE ${pageIndex + 1}: PLATE → INPAINT → SCORE ==========`);
   console.log(`[Page ${pageIndex + 1}] Character: ${identity.name} (${identity.species})`);
 
-  // ── 1. Classify scene from the incoming prompt text ──
-  const scene = resolveSceneSetting(pagePrompt, identity.mustInclude);
-  const allMustInclude = enforceMustInclude(scene.mustInclude, identity.mustInclude);
-  const identityLower = new Set(identity.mustInclude.map((s) => s.toLowerCase()));
+  // ── 1. Determine scene setting ──
+  // CRITICAL FIX: Card setting is the SOURCE OF TRUTH for the scene.
+  // The classifier only provides a category TAG for helpers (dark scene detection, etc.)
+  // It must NEVER overwrite what the card says the scene is.
 
-  // ── 1b. Extract scene objects from BOTH taxonomy AND scene card ──
-  // Taxonomy provides generic objects (stars, trees, moon)
-  // Scene card provides story-specific objects (dolphins, rainbow, rocket)
-  const taxonomyObjects = allMustInclude.filter((item) => !identityLower.has(item.toLowerCase()));
+  // Use card.setting if available — this comes from the story text analysis
+  const cardSetting = pageSceneCard?.setting;
   const cardObjects = extractSceneObjects(pageSceneCard, identity);
 
-  // Merge and dedup — scene card objects take priority
-  const allSceneObjects: string[] = [];
-  const seenLower = new Set<string>();
-  for (const obj of [...cardObjects, ...taxonomyObjects]) {
-    const lower = obj.toLowerCase();
-    if (!seenLower.has(lower)) {
-      seenLower.add(lower);
-      allSceneObjects.push(obj);
-    }
+  // Classifier only for the category tag (dark scene detection, style hints)
+  const classifierMatch = classifyScene(pagePrompt);
+  const sceneCategory = classifierMatch?.key ?? "generic";
+  const styleHints = classifierMatch?.styleHints ?? "bright colors, friendly atmosphere";
+
+  // RULE: scene.setting = card.setting (always), classifier only for taxonomy tag
+  let sceneSetting: string;
+  if (cardSetting && cardSetting !== "Storybook scene" && cardSetting !== "colorful storybook scene") {
+    // Card has a real setting — USE IT, don't let classifier override
+    sceneSetting = cardSetting;
+    console.log(`[Page ${pageIndex + 1}] Using CARD setting: "${sceneSetting}" (classifier tag: ${sceneCategory})`);
+  } else {
+    // No card setting — fall back to classifier
+    const scene = resolveSceneSetting(pagePrompt, identity.mustInclude);
+    sceneSetting = scene.setting;
+    console.log(`[Page ${pageIndex + 1}] No card setting, using classifier: "${sceneSetting}" (${scene.category})`);
   }
 
-  console.log(`[Page ${pageIndex + 1}] Scene: "${scene.setting}" (${scene.category})`);
-  console.log(`[Page ${pageIndex + 1}] Plate objects (taxonomy): [${taxonomyObjects.join(", ")}]`);
   console.log(`[Page ${pageIndex + 1}] Scene objects (card): [${cardObjects.join(", ")}]`);
-  console.log(`[Page ${pageIndex + 1}] Combined plate objects: [${allSceneObjects.join(", ")}]`);
 
   // ── 2. Generate plate (background only — no character) ──
-  // CRITICAL: scene objects go into plate so SDXL draws them into background
-  const platePrompt = buildPlatePrompt(scene.setting, scene.styleHints, allSceneObjects);
+  // Scene objects go into plate so SDXL draws them into background
+  const platePrompt = buildPlatePrompt(sceneSetting, styleHints, cardObjects);
   console.log(`[Page ${pageIndex + 1}] Plate prompt: "${platePrompt}"`);
 
   const plateUrl = await generatePlate(replicate, platePrompt, seed, pageIndex, undefined, 0.80);
@@ -254,22 +328,28 @@ async function generateOnePage(
     makeRiriZoneExtraLargeMaskDataUrl(1024),
   ]);
 
-  // ── 4. Score options — character + scene objects ──
-  // requireMustIncludeCount: character(1) + scene objects if any(1)
-  // This ensures BLIP caption confirms BOTH the rhino AND at least one scene element
-  const scoreMustInclude = [...identity.mustInclude, ...cardObjects];
-  const requireCount = 1 + (cardObjects.length > 0 ? 1 : 0);
+  // ── 4. Score options — TIERED GATES ──
+  // Gate A: Character (handled by Rule 3 in scoring — rhino confirmed)
+  // Gate B: Setting keywords — derived from scene category
+  // Gate C: Key objects — cleaned scene objects from card
+  const settingKeywords = getSettingKeywords(sceneCategory);
+
   const scoreOpts: ScoreOptions = {
-    mustInclude: scoreMustInclude,
-    requireMustIncludeCount: requireCount,
+    mustInclude: [...identity.mustInclude],
+    requireMustIncludeCount: 1, // Character gate (legacy, backed by Rule 3)
+    settingKeywords,
+    keyObjects: cardObjects,
   };
-  console.log(`[Page ${pageIndex + 1}] Score mustInclude: [${scoreMustInclude.join(", ")}] require=${requireCount}`);
+  console.log(`[Page ${pageIndex + 1}] Score gates: character=[${identity.mustInclude.join(", ")}] setting=[${settingKeywords.slice(0, 5).join(", ")}...] keyObjects=[${cardObjects.join(", ")}]`);
+
+  // Build mustInclude list for inpaint context (passed to sanitizeNegatives)
+  const inpaintMustInclude = [...identity.mustInclude, ...cardObjects];
 
   // ── 5. Round 1: 3 candidates in parallel ──
   console.log(`[Page ${pageIndex + 1}] Round 1: ${CANDIDATES_PER_ROUND} candidates in parallel...`);
   const round1 = await runCandidateRound(
     plateUrl, initialMask, seed, CANDIDATES_PER_ROUND, pageIndex,
-    scoreOpts, allMustInclude, scene.setting, identity, scene.category
+    scoreOpts, inpaintMustInclude, sceneSetting, identity, sceneCategory
   );
   const accepted1 = round1.filter((r) => r.accepted).sort((a, b) => b.score - a.score);
   if (accepted1.length > 0) {
@@ -282,7 +362,7 @@ async function generateOnePage(
   const round2Seed = seed + CANDIDATES_PER_ROUND * SEED_STRIDE;
   const round2 = await runCandidateRound(
     plateUrl, escalatedMask, round2Seed, CANDIDATES_PER_ROUND, pageIndex,
-    scoreOpts, allMustInclude, scene.setting, identity, scene.category
+    scoreOpts, inpaintMustInclude, sceneSetting, identity, sceneCategory
   );
   const accepted2 = round2.filter((r) => r.accepted).sort((a, b) => b.score - a.score);
   if (accepted2.length > 0) {
@@ -295,7 +375,7 @@ async function generateOnePage(
   const round3Seed = seed + CANDIDATES_PER_ROUND * SEED_STRIDE * 2;
   const round3 = await runCandidateRound(
     plateUrl, extraLargeMask, round3Seed, CANDIDATES_PER_ROUND, pageIndex,
-    scoreOpts, allMustInclude, scene.setting, identity, scene.category, true
+    scoreOpts, inpaintMustInclude, sceneSetting, identity, sceneCategory, true
   );
   const accepted3 = round3.filter((r) => r.accepted).sort((a, b) => b.score - a.score);
   if (accepted3.length > 0) {
@@ -392,7 +472,7 @@ export async function POST(request: NextRequest) {
     const results: Array<{ url: string; accepted: boolean }> = new Array(imagePrompts.length);
     let nextIdx = 0;
 
-    async function worker() {
+    const worker = async () => {
       while (nextIdx < imagePrompts.length) {
         const i = nextIdx++;
         const pageSeed = seeds?.[i] ?? storySeed + i * 1000;

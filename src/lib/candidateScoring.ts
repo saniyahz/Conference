@@ -35,6 +35,12 @@ export interface ScoreOptions {
   mustInclude?: string[];
   requireMustIncludeCount?: number;
 
+  /** Setting keywords group — e.g. ["ocean","sea","water","wave","underwater"] */
+  settingKeywords?: string[];
+
+  /** Key scene objects (cleaned) — e.g. ["dolphins","rocket ship"] */
+  keyObjects?: string[];
+
   /** Riri anchor image URL for CLIP similarity comparison */
   anchorImageUrl?: string;
 
@@ -51,6 +57,8 @@ export interface ScoreOptions {
 type AcceptOpts = {
   mustInclude?: string[];
   requireMustIncludeCount?: number;
+  settingKeywords?: string[];
+  keyObjects?: string[];
 };
 
 const BLIP_VERSION =
@@ -129,6 +137,54 @@ const EXPANSIONS: Record<string, string[]> = {
   "group of moon rabbits": ["rabbit", "bunny"],
 };
 
+// ─── SETTING KEYWORD GROUPS ─────────────────────────────────────────────
+// Used by the SETTING GATE to verify the generated image matches the scene.
+// Each group is a set of BLIP-friendly synonyms for that setting type.
+
+const SETTING_KEYWORD_MAP: Record<string, string[]> = {
+  ocean: ["ocean", "sea", "beach", "water", "underwater", "wave", "coral", "shore", "coast", "aqua", "swim"],
+  forest: ["forest", "tree", "trees", "wood", "woods", "clearing", "jungle", "leaf", "leaves", "vine"],
+  moon: ["moon", "crater", "lunar", "space", "planet", "star"],
+  space: ["space", "star", "planet", "galaxy", "nebula", "orbit", "alien", "cosmos"],
+  sky: ["cloud", "sky", "flying", "soar", "air"],
+  mountain: ["mountain", "hill", "peak", "cliff", "summit", "rock"],
+  desert: ["desert", "sand", "dune", "arid", "cactus"],
+  snow: ["snow", "ice", "frozen", "winter", "arctic", "cold"],
+  garden: ["garden", "flower", "bloom", "meadow", "wildflower", "petal"],
+  cave: ["cave", "cavern", "grotto", "underground", "stalactite"],
+  village: ["village", "town", "house", "home", "building", "hut", "cottage"],
+  lake: ["lake", "pond", "reflection", "still water"],
+  rain: ["rain", "storm", "thunder", "puddle", "umbrella"],
+  savannah: ["savannah", "grassland", "plain", "prairie", "grass"],
+  night: ["night", "star", "starlit", "starry", "dark", "moon"],
+  indoor: ["room", "indoor", "interior", "cozy", "home", "house"],
+  rocket: ["rocket", "spaceship", "spacecraft", "launch", "liftoff"],
+};
+
+/**
+ * Resolve setting keywords for a scene category.
+ * Returns the keyword group matching the category, or empty array.
+ */
+export function getSettingKeywords(category: string): string[] {
+  // Direct match
+  if (SETTING_KEYWORD_MAP[category]) return SETTING_KEYWORD_MAP[category];
+
+  // Compound category — try base parts
+  // "ocean_cave" → try "ocean", "cave"
+  // "forest_waterfall" → try "forest"
+  // "mountain_meadow" → try "mountain"
+  for (const part of category.split("_")) {
+    if (SETTING_KEYWORD_MAP[part]) return SETTING_KEYWORD_MAP[part];
+  }
+
+  // Special mappings
+  if (category.includes("moon")) return SETTING_KEYWORD_MAP["moon"];
+  if (category.includes("night")) return SETTING_KEYWORD_MAP["night"];
+  if (category.includes("rocket") || category.includes("launch")) return SETTING_KEYWORD_MAP["rocket"];
+
+  return [];
+}
+
 /** Minimum bbox area (fraction of frame) to count as foreground character */
 const MIN_BBOX_AREA = 0.15;
 
@@ -195,7 +251,7 @@ function countMustHits(
       if (word.endsWith("s")) variants.push(word.slice(0, -1));
     }
 
-    const uniqueVariants = [...new Set(variants.filter(Boolean))];
+    const uniqueVariants = Array.from(new Set(variants.filter(Boolean)));
 
     if (uniqueVariants.some((v) => captionNorm.includes(v))) {
       hits++;
@@ -295,11 +351,46 @@ export function acceptCandidate(
   // If BLIP says "rhinoceros" and DINO is off, trust BLIP on size — the rhino is visible enough
   // for BLIP to caption it, which means it's not a tiny background speck.
 
-  // ── RULE 5: Must-include enforcement ──
-  // Now checks character AND scene objects (rockets, dolphins, etc.)
+  // ── RULE 5: TIERED GATE (character + setting + key objects) ──
+  //
+  // Gate A (hard): Character must be detected (already handled by Rule 3)
+  //
+  // Gate B (hard): Setting must match — at least 1 setting keyword in caption.
+  //   e.g. ocean page → caption must contain ocean/sea/water/wave/beach
+  //   This prevents "desert rhino" passing for an ocean scene.
+  //
+  // Gate C (hard-ish): At least 1 key scene object visible.
+  //   e.g. dolphins / rocket ship / rainbow
+  //   Only enforced if key objects were specified.
+
+  // Gate B: Setting gate
+  const settingKw = opts?.settingKeywords ?? [];
+  if (settingKw.length > 0) {
+    const settingHit = settingKw.some((kw) => c.includes(kw));
+    if (!settingHit) {
+      return {
+        accepted: false,
+        rejectReason: `RULE 5B: SETTING MISMATCH — caption has none of [${settingKw.slice(0, 6).join(", ")}]`,
+      };
+    }
+  }
+
+  // Gate C: Key object gate
+  const keyObjects = opts?.keyObjects ?? [];
+  if (keyObjects.length > 0) {
+    const { hits: objHits, hitTerms: objHitTerms, missedTerms: objMissed } = countMustHits(c, keyObjects);
+    if (objHits < 1) {
+      return {
+        accepted: false,
+        rejectReason: `RULE 5C: KEY OBJECTS MISSING — need 1 of [${keyObjects.join(", ")}], found none (missed: ${objMissed.join(", ")})`,
+      };
+    }
+    console.log(`[Rule 5C] Key objects OK: ${objHitTerms.join(", ")} (${objHits}/${keyObjects.length})`);
+  }
+
+  // Legacy must-include check (backward compat, softer)
   const mustInclude = opts?.mustInclude ?? [];
   const req = Math.max(0, opts?.requireMustIncludeCount ?? 0);
-
   if (req > 0 && mustInclude.length > 0) {
     const { hits, hitTerms, missedTerms } = countMustHits(c, mustInclude);
     if (hits < req) {
@@ -368,15 +459,35 @@ export function scoreCaption(
     reasons.push(`-3 wrong animal "${wrongAnimal}" also present`);
   }
 
-  // Must-include bonus — reward candidates that show scene objects
+  // Setting match bonus
+  const settingKw = opts?.settingKeywords ?? [];
+  if (settingKw.length > 0) {
+    const settingHits = settingKw.filter((kw) => c.includes(kw));
+    if (settingHits.length > 0) {
+      score += 2;
+      reasons.push(`+2 setting match (${settingHits.slice(0, 3).join(", ")})`);
+    }
+  }
+
+  // Key object bonus — +2 per key object found
+  const keyObjects = opts?.keyObjects ?? [];
+  if (keyObjects.length > 0) {
+    const { hits: objHits, hitTerms: objHitTerms } = countMustHits(c, keyObjects);
+    if (objHits > 0) {
+      const objBonus = objHits * 2;
+      score += objBonus;
+      reasons.push(`+${objBonus} key objects (${objHitTerms.join(", ")})`);
+    }
+  }
+
+  // Legacy must-include bonus (backward compat)
   const must = opts?.mustInclude ?? [];
   const requireCount = opts?.requireMustIncludeCount ?? 0;
   if (must.length > 0 && requireCount > 0) {
     const { hits, hitTerms, missedTerms } = countMustHits(c, must);
     reasons.push(`mustInclude: ${hits}/${must.length} (found: ${hitTerms.join(", ") || "none"}, missed: ${missedTerms.join(", ") || "none"})`);
     if (hits >= requireCount) {
-      // +2 per scene object hit (strongly prefer candidates with correct scene)
-      const sceneHitBonus = Math.max(0, hits - 1) * 2; // -1 for character (already scored)
+      const sceneHitBonus = Math.max(0, hits - 1) * 2;
       score += 1 + sceneHitBonus;
       reasons.push(`+${1 + sceneHitBonus} must-includes satisfied (${hits} hits)`);
     }
@@ -445,7 +556,7 @@ export async function scoreCandidate(
       : Promise.resolve(null as DetectionResult | null),
   ]);
 
-  // 1. Deterministic accept/reject WITH mustInclude
+  // 1. Deterministic accept/reject WITH tiered gates
   const { accepted, rejectReason } = acceptCandidate(
     caption,
     clipResult,
@@ -453,6 +564,8 @@ export async function scoreCandidate(
     {
       mustInclude: opts?.mustInclude,
       requireMustIncludeCount: opts?.requireMustIncludeCount,
+      settingKeywords: opts?.settingKeywords,
+      keyObjects: opts?.keyObjects,
     }
   );
 

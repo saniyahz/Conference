@@ -101,16 +101,32 @@ export function sanitizeNegatives(
 ): string {
   const combined = `${positivePrompt} ${settingContext} ${mustInclude.join(" ")}`.toLowerCase();
   const negTerms = negativePrompt.split(",").map((t) => t.trim());
+  const removed: string[] = [];
 
   const filtered = negTerms.filter((term) => {
     const lower = term.toLowerCase();
-    if (combined.includes(lower)) return false;
-    if (lower === "animal" && combined.includes("rhinoceros")) return false;
-    if (lower === "creature" && combined.includes("rhinoceros")) return false;
-    if (lower === "nature" && /forest|tree|jungle|garden/.test(combined)) return false;
-    if (lower === "water" && /stream|waterfall|river|ocean|lake/.test(combined)) return false;
+
+    // Direct substring match: "dolphin" found in "dolphins"
+    if (combined.includes(lower)) { removed.push(lower); return false; }
+
+    // Plural/singular: "dolphins" in negative but "dolphin" in mustInclude
+    const singular = lower.endsWith("s") ? lower.slice(0, -1) : lower;
+    const plural = lower.endsWith("s") ? lower : lower + "s";
+    if (combined.includes(singular) || combined.includes(plural)) { removed.push(lower); return false; }
+
+    // Semantic overrides
+    if (lower === "animal" && combined.includes("rhinoceros")) { removed.push(lower); return false; }
+    if (lower === "creature" && combined.includes("rhinoceros")) { removed.push(lower); return false; }
+    if (lower === "nature" && /forest|tree|jungle|garden/.test(combined)) { removed.push(lower); return false; }
+    if (lower === "water" && /stream|waterfall|river|ocean|lake|underwater/.test(combined)) { removed.push(lower); return false; }
+    if (lower === "fish" && /ocean|underwater|sea|coral/.test(combined)) { removed.push(lower); return false; }
+
     return true;
   });
+
+  if (removed.length > 0) {
+    console.log(`[SanitizeNeg] Removed ${removed.length} contradicting terms: [${removed.join(", ")}]`);
+  }
 
   return filtered.join(", ");
 }
