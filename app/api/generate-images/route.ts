@@ -111,22 +111,21 @@ function extractCharacterIdentity(bible?: CharacterBible): CharacterIdentity {
     .join(", ");
 
   // Framing language — forces SDXL to show full body with margins (prevents zoom/crop)
-  const framing = [
-    "wide shot",
-    "full body head-to-toe visible",
-    "feet visible",
-    "character fully inside frame",
-    "10-15% empty margin around the character",
-    "centered composition",
-    "no cropping",
-  ].join(", ");
+  // Keep this EARLY in the prompt so SDXL gives it strongest attention.
+  const framing = "wide shot, full body head-to-toe visible, feet visible, character fully inside frame, centered composition, no cropping";
+
+  // Horn clarification — prevents unicorn horn / party hat drift
+  const hornNote = species === "rhinoceros" || species === "rhino"
+    ? "two short rhino horns (not unicorn horn), no hat"
+    : "no hat";
 
   const inpaintPrompt = [
     `${name} the cute cartoon ${species}`,
     fpDetails || `a ${species}`,
+    hornNote,
     framing,
-    "children's picture book illustration, clean lines, vibrant colors, soft shading",
-    `match background lighting, only one ${species}, no text`,
+    "children's picture book illustration, vibrant colors, soft shading",
+    `only one ${species}, no text`,
   ].join(", ");
 
   return {

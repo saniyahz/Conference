@@ -75,9 +75,11 @@ export function buildCharacterSafetyNegative(): string {
     // Block duplicate rhinos
     "two rhinoceroses", "multiple rhinos", "extra rhinoceros",
     "duplicate rhino",
-    // Identity-stabilizing: prevent accessories that drift across pages
-    "hat", "saddle", "backpack", "armor", "crown",
-    "glasses", "sunglasses",
+    // Identity-stabilizing: prevent accessories + horn drift across pages
+    "hat", "party hat", "top hat", "birthday hat",
+    "crown", "helmet", "armor", "saddle", "backpack",
+    "glasses", "sunglasses", "costume", "cape",
+    "unicorn horn", "extra horn", "long horn", "spikes",
   ].join(", ");
 }
 
