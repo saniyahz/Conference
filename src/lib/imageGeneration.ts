@@ -252,14 +252,14 @@ export async function generateInpaintCharacter(
 
   let negativePrompt = buildInpaintCharacterNegative();
   negativePrompt = sanitizeNegatives(negativePrompt, effectivePrompt, settingContext, mustInclude);
-  // Append hard bans AFTER sanitize — these can never be removed.
-  // Fixes: sanitizer was stripping "hat", "unicorn horn", "text" because
-  // the positive prompt contains "no hat" / "not unicorn horn" / "no text".
-  negativePrompt = negativePrompt + ", " + buildHardBanNegative();
+  // PREPEND hard bans so they're within SDXL's ~77 token window.
+  // SDXL ignores tokens past ~77, so critical terms (hat, unicorn horn, crop blockers)
+  // MUST be at the FRONT. The sanitizable terms (wrong animals, quality) follow after.
+  negativePrompt = buildHardBanNegative() + ", " + negativePrompt;
 
-  // Log actual inpaint prompts so user can verify hard bans are present
+  // Log actual inpaint prompts — hard bans should be visible at the start
   console.log(`[Inpaint ${pageIndex}] POSITIVE: "${effectivePrompt.substring(0, 120)}..."`);
-  console.log(`[Inpaint ${pageIndex}] NEGATIVE (with hard bans): "${negativePrompt.substring(0, 200)}..."`);
+  console.log(`[Inpaint ${pageIndex}] NEGATIVE (hard bans first): "${negativePrompt.substring(0, 200)}..."`);
 
   for (let attempt = 1; attempt <= maxRetries; attempt++) {
     try {
@@ -273,7 +273,7 @@ export async function generateInpaintCharacter(
         num_outputs: 1,
         scheduler: "K_EULER",
         num_inference_steps: 40,
-        guidance_scale: 8,
+        guidance_scale: 10,  // Higher guidance = stricter prompt adherence = more consistent character
         prompt_strength: promptStrength,
         seed,
       };
@@ -286,7 +286,7 @@ export async function generateInpaintCharacter(
       console.log(
         `[Inpaint ${pageIndex}] Attempt ${attempt}/${maxRetries} ` +
         `(MODE: INPAINT, mask: ${maskDataUrl.length} bytes, ` +
-        `strength: ${promptStrength}, steps: 40, guidance: 8, seed: ${seed}` +
+        `strength: ${promptStrength}, steps: 40, guidance: 10, seed: ${seed}` +
         `${lora ? `, LoRA: ${lora.version.substring(0, 12)}..., trigger: ${lora.triggerWord}` : ""})`
       );
       console.log(

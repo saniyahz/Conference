@@ -100,24 +100,29 @@ export function buildNoTextNegative(): string {
 
 /**
  * Full negative for inpaint character pass.
+ *
+ * ORDER MATTERS — SDXL only processes ~77 tokens. Hard bans (hat, crop, text)
+ * are prepended separately in imageGeneration.ts, so this list starts with
+ * character safety (wrong animals + humans) then quality. Framing and text
+ * are handled by buildHardBanNegative() and don't need to be here.
  */
 export function buildInpaintCharacterNegative(): string {
   return [
-    buildQualityOnlyNegative(),
-    buildFramingNegative(),
-    buildCharacterSafetyNegative(),
-    buildNoTextNegative(),
+    buildCharacterSafetyNegative(),   // Wrong animals + humans (MOST IMPORTANT after hard bans)
+    buildQualityOnlyNegative(),       // Quality terms (can overflow past 77 tokens — least critical)
+    // NOTE: Framing (crop blockers) and text/watermark are in buildHardBanNegative()
+    // which is PREPENDED in imageGeneration.ts — no need to duplicate here.
   ].join(", ");
 }
 
 /**
- * HARD-BAN negatives — appended AFTER sanitizeNegatives() so they can
- * NEVER be stripped. The sanitizer incorrectly removes these because
- * the positive prompt contains "no hat" / "not unicorn horn" / "no text"
- * which includes the banned term as a substring.
+ * HARD-BAN negatives — PREPENDED before the sanitized list so they are:
+ *   1. Never stripped by sanitizeNegatives()
+ *   2. Within SDXL's ~77 token window (tokens past ~77 are ignored)
  *
- * Without this, "hat" in the negative gets removed because
- * combined.includes("hat") matches "no hat" in the positive.
+ * The sanitizer incorrectly removes "hat", "unicorn horn", "text" because
+ * the positive prompt contains "no hat" / "not unicorn horn" / "no text"
+ * and combined.includes("hat") matches the substring inside "no hat".
  */
 export function buildHardBanNegative(): string {
   return [

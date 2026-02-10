@@ -560,8 +560,33 @@ async function generateOnePage(
     return accepted3[0];
   }
 
+  // Round 4 (multi-char fallback): secondary actors (dolphins, lions) in the plate
+  // compete with the rhino for visual dominance, especially underwater.
+  // BLIP can't see the rhino through the dolphins → all 9 rejected.
+  // Fix: regenerate a SOLO plate (no secondary actors) and try again.
+  if (hasSecondaryActors) {
+    console.log(`[Page ${pageIndex + 1}] Round 4 FALLBACK: solo plate (no secondary actors)...`);
+    const soloPlatePrompt = buildPlatePrompt(sceneSetting, styleHints, nonAnimalObjects, identity.species, false);
+    console.log(`[Page ${pageIndex + 1}] Solo plate prompt: "${soloPlatePrompt.substring(0, 100)}..."`);
+
+    const soloPlateUrl = await generatePlate(replicate, soloPlatePrompt, seed + 5000, pageIndex);
+    if (soloPlateUrl) {
+      const round4 = await runCandidateRound(
+        soloPlateUrl, extraLargeMask,
+        seed + CANDIDATES_PER_ROUND * SEED_STRIDE * 3, CANDIDATES_PER_ROUND, pageIndex,
+        scoreOpts, [...identity.mustInclude], sceneSetting, identity, sceneCategory,
+        true, false  // forceHighStrength=true, isMultiChar=false
+      );
+      const accepted4 = round4.filter((r) => r.accepted).sort((a, b) => b.score - a.score);
+      if (accepted4.length > 0) {
+        console.log(`[Page ${pageIndex + 1}] ACCEPTED from round 4 (solo fallback): score=${accepted4[0].score}`);
+        return accepted4[0];
+      }
+    }
+  }
+
   // No candidate accepted → return EMPTY
-  console.warn(`[Page ${pageIndex + 1}] WARNING: No candidate accepted after 9 tries. Returning EMPTY.`);
+  console.warn(`[Page ${pageIndex + 1}] WARNING: No candidate accepted after ${hasSecondaryActors ? 12 : 9} tries. Returning EMPTY.`);
   return { url: "", accepted: false, caption: "", score: -999 };
 }
 
