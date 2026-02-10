@@ -13,7 +13,7 @@ import { detectRhinoceros, DetectionResult, DetectorModel } from "./objectDetect
  *            (CLIP alone cannot rescue — style similarity ≠ species)
  *   Rule 3:  Rhinoceros confirmed by at least one signal
  *   Rule 4:  Character not tiny/background (bbox >= 15% or composition cue)
- *   Rule 5C: Required objects MUST appear (at least 1 key object)
+ *   Rule 5C: Key objects — soft penalty (BLIP often omits objects after inpaint)
  *   Rule 5:  Must-include enforcement (at least N items visible)
  *
  * Selection: run ALL candidates per round, pick BEST accepted (not first).
@@ -85,12 +85,16 @@ const WRONG_ANIMALS = [
 // "child" excluded because it conflicts with "children's" in BLIP captions.
 const HUMAN_TERMS = [
   "human", "boy", "girl", "man", "woman", "person", "people",
-  "kid", "baby",
+  "kid",
+  // NOTE: "baby" intentionally EXCLUDED — BLIP says "baby hippo", "baby rhino"
+  // for small/young cartoon animals. Very common false positive.
 ];
 
 const BUSY_SCENE_TERMS = [
   "crowd", "crowded", "many", "lots", "dozens",
-  "party", "parade", "procession",
+  "parade", "procession",
+  // NOTE: "party" intentionally EXCLUDED — BLIP frequently says "party hat"
+  // for cartoon characters with round/colorful features. Not a busy scene.
   // NOTE: "group", "several", "pack", "herd" intentionally EXCLUDED.
   // BLIP uses "a group of animals" for even 2-3 animals — which is
   // expected for multi-character pages (Riri + lions/dolphins).
@@ -336,7 +340,7 @@ function countMustHits(
  *          (CLIP alone cannot rescue — style similarity ≠ species ID)
  * Rule 3:  Rhinoceros confirmed by at least one signal
  * Rule 4:  Character not tiny/background
- * Rule 5C: Required objects MUST appear (hard reject)
+ * Rule 5C: Key objects — soft penalty (NOT hard reject)
  * Rule 5:  Must-include enforcement (at least N items)
  */
 export function acceptCandidate(
@@ -464,25 +468,21 @@ export function acceptCandidate(
     // Bonus is applied in scoreCaption(), not here
   }
 
-  // Gate C: Key object enforcement — HARD REJECT.
-  // If the page has required objects/actors (rocket ship, dolphins, lions),
-  // at least 1 must appear in the caption. Otherwise the image doesn't match
-  // the scene description and should be rejected.
-  //
-  // Uses EXPANSIONS for fuzzy matching: "rocket ship" matches "rocket",
-  // "dolphins" matches "dolphin", etc.
+  // Gate C: Key object check — SOFT PENALTY (not hard reject).
+  // BLIP captions are only 1 sentence. They often describe the main character
+  // but omit secondary objects (rocket ship, rainbow, etc.) even when visible.
+  // Inpainting at any useful strength also destroys plate content near the mask.
+  // Hard-rejecting kills good images where the CHARACTER is correct.
+  // Instead: log the miss, penalize in scoreCaption(), but still accept.
   const keyObjects = opts?.keyObjects ?? [];
   if (keyObjects.length > 0) {
     const { hits: objHits, hitTerms: objHitTerms, missedTerms: objMissed } = countMustHits(c, keyObjects);
     if (objHits > 0) {
-      console.log(`[Rule 5C] Key objects found: ${objHitTerms.join(", ")} (${objHits}/${keyObjects.length}) — PASS`);
+      console.log(`[Rule 5C] Key objects found: ${objHitTerms.join(", ")} (${objHits}/${keyObjects.length}) — bonus applied`);
     } else {
-      console.log(`[Rule 5C] REJECTED: No key objects in caption (wanted [${keyObjects.join(", ")}], found none)`);
-      return {
-        accepted: false,
-        rejectReason: `RULE 5C: REQUIRED OBJECTS MISSING (wanted [${keyObjects.join(", ")}], found none in caption)`,
-      };
+      console.log(`[Rule 5C] No key objects in caption (wanted [${keyObjects.join(", ")}]) — penalty applied (NOT rejecting)`);
     }
+    // Actual score impact applied in scoreCaption()
   }
 
   // Legacy must-include check (backward compat, softer)
@@ -573,7 +573,7 @@ export function scoreCaption(
     }
   }
 
-  // Key object bonus — +2 per key object found
+  // Key object scoring — bonus for found, penalty for missing
   const keyObjects = opts?.keyObjects ?? [];
   if (keyObjects.length > 0) {
     const { hits: objHits, hitTerms: objHitTerms } = countMustHits(c, keyObjects);
@@ -581,6 +581,9 @@ export function scoreCaption(
       const objBonus = objHits * 2;
       score += objBonus;
       reasons.push(`+${objBonus} key objects (${objHitTerms.join(", ")})`);
+    } else {
+      score -= 3;
+      reasons.push("-3 no key objects found");
     }
   }
 

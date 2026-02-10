@@ -487,17 +487,14 @@ async function generateOnePage(
   const settingKeywords = deriveSettingKeywordsFromText(sceneSetting);
   console.log(`[Page ${pageIndex + 1}] Setting keywords: [${settingKeywords.slice(0, 6).join(", ")}${settingKeywords.length > 6 ? "..." : ""}]`);
 
-  const highSalienceObjects = cardObjects.filter((obj) => HIGH_SALIENCE_OBJECTS.has(obj.toLowerCase()));
-
-  // Include secondary actors (dolphins, lions, etc.) in required objects for scoring.
-  // These must appear in the caption — otherwise the image doesn't match the story.
-  const requiredObjects = [...highSalienceObjects];
-  for (const actor of filteredSupportingChars) {
-    const lower = actor.toLowerCase();
-    if (HIGH_SALIENCE_OBJECTS.has(lower) && !requiredObjects.some(o => o.toLowerCase() === lower)) {
-      requiredObjects.push(lower);
-    }
-  }
+  // Only INANIMATE objects go into required scoring — living creatures (rabbit, dolphins,
+  // lions) can't survive inpainting at any useful strength. BLIP also omits secondary
+  // actors from its 1-sentence caption. Enforcing them causes 80%+ reject rate.
+  const INANIMATE_SCORABLE = new Set([
+    "rocket ship", "rocket", "spaceship", "boat", "sailboat", "airplane",
+    "rainbow", "waterfall", "river", "treasure chest",
+  ]);
+  const requiredObjects = cardObjects.filter((obj) => INANIMATE_SCORABLE.has(obj.toLowerCase()));
   console.log(`[Page ${pageIndex + 1}] Required objects for scoring: [${requiredObjects.join(", ")}]`);
 
   const scoreOpts: ScoreOptions = {
@@ -577,12 +574,17 @@ async function runCandidateRound(
   forceHighStrength: boolean = false,
   isMultiChar: boolean = false
 ): Promise<CandidateResult[]> {
-  // Multi-char pages need higher strength — secondary actors (lions/dolphins)
-  // in the plate compete with Riri for visual attention. At 0.82 SDXL draws
-  // a generic animal that BLIP can't identify as rhino. 0.90 forces a clearer character.
+  // Strength selection:
+  //   Round 3 (forced): 0.95 — last resort, regenerates most of image
+  //   Dark scene (space/moon): 0.90 — overcome dark backgrounds
+  //   Default (including multi-char): 0.82 — preserve plate content
+  //
+  // Multi-char pages use DEFAULT 0.82 to preserve secondary actors in the plate.
+  // With hippo/elephant counting as rhino confirmation, 0.82 is sufficient
+  // for BLIP to identify the character without destroying the plate.
   const strength = forceHighStrength
     ? ROUND3_STRENGTH
-    : (isMultiChar || DARK_SCENE_CATEGORIES.has(sceneCategory)) ? DARK_SCENE_STRENGTH : DEFAULT_STRENGTH;
+    : DARK_SCENE_CATEGORIES.has(sceneCategory) ? DARK_SCENE_STRENGTH : DEFAULT_STRENGTH;
   const tasks = Array.from({ length: count }, async (_, i) => {
     const seed = baseSeed + i * SEED_STRIDE;
 
