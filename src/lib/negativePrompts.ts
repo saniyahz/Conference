@@ -75,11 +75,9 @@ export function buildCharacterSafetyNegative(): string {
     // Block duplicate rhinos
     "two rhinoceroses", "multiple rhinos", "extra rhinoceros",
     "duplicate rhino",
-    // Identity-stabilizing: prevent accessories + horn drift across pages
-    "hat", "party hat", "top hat", "birthday hat",
-    "crown", "helmet", "armor", "saddle", "backpack",
-    "glasses", "sunglasses", "costume", "cape",
-    "unicorn horn", "extra horn", "long horn", "spikes",
+    // NOTE: Accessories (hat, unicorn horn, cape, etc.) moved to buildHardBanNegative()
+    // which is appended AFTER sanitizeNegatives(). The sanitizer was incorrectly
+    // stripping "hat" because the positive prompt contains "no hat".
   ].join(", ");
 }
 
@@ -109,6 +107,31 @@ export function buildInpaintCharacterNegative(): string {
     buildFramingNegative(),
     buildCharacterSafetyNegative(),
     buildNoTextNegative(),
+  ].join(", ");
+}
+
+/**
+ * HARD-BAN negatives — appended AFTER sanitizeNegatives() so they can
+ * NEVER be stripped. The sanitizer incorrectly removes these because
+ * the positive prompt contains "no hat" / "not unicorn horn" / "no text"
+ * which includes the banned term as a substring.
+ *
+ * Without this, "hat" in the negative gets removed because
+ * combined.includes("hat") matches "no hat" in the positive.
+ */
+export function buildHardBanNegative(): string {
+  return [
+    // Accessories — "hat" stripped by sanitizer because positive says "no hat"
+    "hat", "party hat", "top hat", "birthday hat",
+    "crown", "cape", "costume",
+    // Horn drift — "unicorn horn" stripped because positive says "not unicorn horn"
+    "unicorn horn", "extra horn", "long horn", "spikes",
+    // Crop — always enforced
+    "cropped", "cut off", "out of frame", "close-up",
+    "zoomed in", "headshot", "portrait",
+    "partial body", "missing legs", "missing feet",
+    // Text — "text" stripped because positive says "no text"
+    "text", "watermark",
   ].join(", ");
 }
 

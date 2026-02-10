@@ -2,6 +2,7 @@ import Replicate from "replicate";
 import {
   buildPlateNegative,
   buildInpaintCharacterNegative,
+  buildHardBanNegative,
   sanitizeNegatives,
 } from "./negativePrompts";
 import { LoraConfig, prependTriggerWord } from "./loraTraining";
@@ -251,10 +252,14 @@ export async function generateInpaintCharacter(
 
   let negativePrompt = buildInpaintCharacterNegative();
   negativePrompt = sanitizeNegatives(negativePrompt, effectivePrompt, settingContext, mustInclude);
+  // Append hard bans AFTER sanitize — these can never be removed.
+  // Fixes: sanitizer was stripping "hat", "unicorn horn", "text" because
+  // the positive prompt contains "no hat" / "not unicorn horn" / "no text".
+  negativePrompt = negativePrompt + ", " + buildHardBanNegative();
 
-  // Log actual inpaint prompts (first call only) so user can verify framing terms
+  // Log actual inpaint prompts so user can verify hard bans are present
   console.log(`[Inpaint ${pageIndex}] POSITIVE: "${effectivePrompt.substring(0, 120)}..."`);
-  console.log(`[Inpaint ${pageIndex}] NEGATIVE: "${negativePrompt.substring(0, 160)}..."`);
+  console.log(`[Inpaint ${pageIndex}] NEGATIVE (with hard bans): "${negativePrompt.substring(0, 200)}..."`);
 
   for (let attempt = 1; attempt <= maxRetries; attempt++) {
     try {
