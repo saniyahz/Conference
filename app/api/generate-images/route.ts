@@ -380,7 +380,7 @@ function buildPlatePrompt(
   const parts = [setting];
   if (sceneObjects.length > 0) parts.push(sceneObjects.join(", "));
   parts.push(styleHints);
-  parts.push("simple children's illustration, flat colors, bold outline, minimal detail, vivid saturated colors, well-lit, bright");
+  parts.push("simple children's illustration, flat colors, bold outline, high clarity, crisp outlines, well-defined shapes, vivid saturated colors, well-lit, bright");
   if (hasSecondaryActors) {
     // Multi-char: allow secondary actors (dolphins, etc.), block only main character + humans
     parts.push(`no ${mainSpecies}, no people, no text, no black and white, no grayscale, no monochrome`);

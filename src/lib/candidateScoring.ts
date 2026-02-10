@@ -109,9 +109,9 @@ const BUSY_SCENE_TERMS = [
  * Values are synonyms that BLIP might use instead.
  */
 const EXPANSIONS: Record<string, string[]> = {
-  // Character — BLIP frequently misidentifies rhinos as hippos or elephants
-  "rhinoceros": ["rhino", "rhinos", "hippo", "hippos", "hippopotamus", "elephant", "elephants"],
-  "rhino": ["rhinoceros", "rhinos", "hippo", "hippos", "hippopotamus", "elephant", "elephants"],
+  // Character — strict rhino matching only (hippo/elephant no longer accepted as synonyms)
+  "rhinoceros": ["rhino", "rhinos"],
+  "rhino": ["rhinoceros", "rhinos"],
 
   // Vehicles — BLIP often says "space station" for rocket interiors
   "rocket ship": ["rocket", "spaceship", "spacecraft", "space station", "shuttle", "plane", "airplane"],
@@ -352,24 +352,20 @@ export function acceptCandidate(
   const c = norm(caption);
 
   // ── Derive confirmation signals ──
+  // STRICT: Only accept explicit "rhino"/"rhinoceros" in BLIP caption.
+  // Hippo/elephant are NOT treated as rhino confirmation — if BLIP says
+  // hippo or elephant, the inpainting likely produced the wrong animal.
   const blipHasRhino = /\brhinos?\b|\brhinoceros(es)?\b/.test(c);
-  // BLIP frequently misidentifies rhinos as hippos — they look very similar.
-  // Treat "hippo" as a weak rhino confirmation rather than a wrong animal.
   const blipHasHippo = /\bhippos?\b|\bhippopotamus(es)?\b/.test(c);
-  // BLIP also frequently misidentifies cartoon rhinos as "elephant" —
-  // similar large gray body shape in children's illustration style.
-  // In our plate→inpaint pipeline, we specifically inpaint a rhinoceros,
-  // so if BLIP says "elephant" it's looking at our character.
   const blipHasElephant = /\belephants?\b/.test(c);
   const dinoHasRhino = !!(detectionResult?.detected && detectionResult.confidence >= 0.5);
   const clipConfirmsRiri = !!(clipResult && clipResult.similarity >= 0.82);
 
-  // IMPORTANT: CLIP alone is not enough if caption strongly says a wrong animal.
-  // CLIP measures visual style similarity, not species identity.
-  // Hippo and elephant count as vision-confirmed because BLIP can't tell
-  // cartoon rhinos from hippos/elephants.
-  const rhinoConfirmedByVision = blipHasRhino || blipHasHippo || blipHasElephant || dinoHasRhino;
-  const rhinoConfirmed = rhinoConfirmedByVision || clipConfirmsRiri;
+  // STRICT rhino confirmation: BLIP must explicitly say "rhino" or DINO must detect it.
+  // Hippo/elephant are NO LONGER accepted as substitutes — they let wrong animals through.
+  // CLIP alone also cannot confirm (measures style, not species).
+  const rhinoConfirmedByVision = blipHasRhino || dinoHasRhino;
+  const rhinoConfirmed = rhinoConfirmedByVision;
 
   // ── RULE 1: No humans ──
   // Only reject actual human terms. Cockpit/astronaut/pilot are NOT rejected —
@@ -432,20 +428,19 @@ export function acceptCandidate(
         rejectReason: `RULE 4: TINY CHARACTER — bbox ${(detectionResult.bestBboxArea * 100).toFixed(1)}% < ${(MIN_BBOX_AREA * 100)}%`,
       };
     }
-  } else if (!blipHasRhino && !blipHasHippo && !blipHasElephant) {
-    // No DINO and no BLIP rhino/hippo/elephant — can't verify anything about size.
-    // (If BLIP confirmed rhino/hippo/elephant, trust it — we already passed Rule 3.
-    //  BLIP misidentifies cartoon rhinos as hippo or elephant frequently.)
+  } else if (!blipHasRhino) {
+    // No DINO and no BLIP rhino — can't verify anything about size.
+    // (If BLIP confirmed rhino, trust it — we already passed Rule 3.)
     const hasCompositionCue = /\bstanding\b|\bfull body\b|\bwhole body\b|\bcentered\b|\bforeground\b/.test(c);
     const clipIsStrong = !!(clipResult && clipResult.similarity >= 0.78);
     if (!hasCompositionCue && !clipIsStrong) {
       return {
         accepted: false,
-        rejectReason: "RULE 4: SIZE UNVERIFIED (no DINO, no BLIP rhino/hippo/elephant, weak composition + CLIP)",
+        rejectReason: "RULE 4: SIZE UNVERIFIED (no DINO, no BLIP rhino, weak composition + CLIP)",
       };
     }
   }
-  // If BLIP says "rhinoceros"/"hippo"/"elephant" and DINO is off, trust BLIP on size —
+  // If BLIP says "rhinoceros" and DINO is off, trust BLIP on size —
   // the character is visible enough for BLIP to caption it, not a tiny background speck.
 
   // ── RULE 5: TIERED GATE (character + setting + key objects) ──
@@ -525,21 +520,15 @@ export function scoreCaption(
   const reasons: string[] = [];
 
   const hasRhino = /\brhinos?\b|\brhinoceros(es)?\b/.test(c);
-  const hasHippo = /\bhippos?\b|\bhippopotamus(es)?\b/.test(c);
-  const hasElephant = /\belephants?\b/.test(c);
 
-  if (!hasRhino && !hasHippo && !hasElephant) {
-    reasons.push("0 base: rhino/hippo/elephant not in caption (may be confirmed by other signals)");
+  if (!hasRhino) {
+    reasons.push("0 base: rhino/rhinoceros not in caption");
     return { score: 0, reasons };
   }
 
-  // Rhino = best, hippo = weak, elephant = weakest (but still our inpainted character)
-  let score = hasRhino ? 6 : hasHippo ? 4 : 3;
-  reasons.push(
-    hasRhino ? "+6 base: rhino/rhinoceros in caption"
-    : hasHippo ? "+4 base: hippo in caption (weak rhino)"
-    : "+3 base: elephant in caption (weak rhino — BLIP misID)"
-  );
+  // Only rhino-confirmed images reach scoring (strict accept gate)
+  let score = 6;
+  reasons.push("+6 base: rhino/rhinoceros confirmed in caption");
 
   if (/\bcartoon\b|\billustration\b|\banimated\b|\bdrawing\b/.test(c)) {
     score += 1;
