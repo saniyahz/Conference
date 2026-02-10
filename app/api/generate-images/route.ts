@@ -325,7 +325,8 @@ function deriveStyleHintsFromSetting(settingText: string): string {
   const lower = settingText.toLowerCase();
 
   const hintGroups: [string[], string][] = [
-    // Specific compound settings first
+    // Specific compound settings first — ORDER MATTERS (first match wins)
+    [["cockpit", "inside a rocket", "inside the rocket", "interior of a rocket", "pilot seat"], "interior cockpit, control panels, glowing buttons, windows showing stars outside, warm cabin lighting, spaceship interior, bright instrument lights"],
     [["waterfall", "cascade"], "flowing water, mist, rocks, lush vegetation, dappled sunlight"],
     [["rocket", "spaceship", "blast", "launch", "liftoff"], "blue sky, white clouds, rocket trail, bright colors"],
     [["underwater"], "deep blue water, coral, bubbles, ocean light, fish"],

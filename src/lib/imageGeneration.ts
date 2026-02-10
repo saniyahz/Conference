@@ -252,6 +252,10 @@ export async function generateInpaintCharacter(
   let negativePrompt = buildInpaintCharacterNegative();
   negativePrompt = sanitizeNegatives(negativePrompt, effectivePrompt, settingContext, mustInclude);
 
+  // Log actual inpaint prompts (first call only) so user can verify framing terms
+  console.log(`[Inpaint ${pageIndex}] POSITIVE: "${effectivePrompt.substring(0, 120)}..."`);
+  console.log(`[Inpaint ${pageIndex}] NEGATIVE: "${negativePrompt.substring(0, 160)}..."`);
+
   for (let attempt = 1; attempt <= maxRetries; attempt++) {
     try {
       const input: Record<string, unknown> = {
