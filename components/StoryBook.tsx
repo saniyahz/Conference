@@ -4,7 +4,8 @@ import { useState, useEffect, useRef } from 'react'
 import { useRouter } from 'next/navigation'
 import { ChevronLeft, ChevronRight, Download, RotateCcw, Loader2, Volume2, VolumeX, PlayCircle, PauseCircle } from 'lucide-react'
 import { Story } from '@/app/page'
-import Image from 'next/image'
+// NOTE: Using plain <img> instead of next/image to avoid fill-mode re-render bugs
+// where pages 2-10 images fail to display despite valid URLs
 
 interface StoryBookProps {
   story: Story
@@ -377,17 +378,19 @@ export default function StoryBook({ story, onReset }: StoryBookProps) {
           {/* Left Side - Image */}
           <div className="relative min-h-[400px] md:min-h-[600px] bg-gradient-to-br from-teal-50 to-green-50">
             {story.pages[currentPage].imageUrl ? (
-              <Image
+              <img
+                key={currentPage}
                 src={story.pages[currentPage].imageUrl}
                 alt={`Page ${currentPage + 1} illustration`}
-                fill
-                className="object-cover"
-                unoptimized
-                priority
+                className="absolute inset-0 w-full h-full object-cover"
+                onError={(e) => {
+                  console.error(`[StoryBook] Image failed to load for page ${currentPage + 1}:`, story.pages[currentPage].imageUrl)
+                  e.currentTarget.style.display = 'none'
+                }}
               />
             ) : (
               <div className="flex items-center justify-center h-full">
-                <p className="text-gray-400 italic">Loading illustration...</p>
+                <p className="text-gray-400 italic">No illustration available</p>
               </div>
             )}
           </div>

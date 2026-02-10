@@ -111,6 +111,12 @@ export default function Home() {
 
       const imagesData = await imagesResponse.json()
 
+      // Debug: log received image URLs
+      console.log(`[Frontend] Received ${imagesData.imageUrls?.length ?? 0} image URLs from API`)
+      imagesData.imageUrls?.forEach((url: string, i: number) => {
+        console.log(`[Frontend] Page ${i + 1}: ${url ? url.substring(0, 80) + '...' : 'EMPTY'}`)
+      })
+
       // Step 3: Combine story with images
       const storyWithImages = {
         ...storyData.story,
@@ -120,6 +126,12 @@ export default function Home() {
           imageUrl: imagesData.imageUrls[index] || undefined
         }))
       }
+
+      // Debug: verify all pages have imageUrl set
+      console.log(`[Frontend] Story pages with images:`)
+      storyWithImages.pages.forEach((p: any, i: number) => {
+        console.log(`[Frontend] Page ${i + 1} imageUrl: ${p.imageUrl ? 'SET' : 'MISSING'}`)
+      })
 
       setStory(storyWithImages)
       setStep('book')
