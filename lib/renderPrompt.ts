@@ -465,7 +465,9 @@ export function renderPrompt(bible: CharacterBible, card: PageSceneCard, pageTex
  * Build negative prompt from card's must_not_include + smart defaults
  */
 export function renderNegativePrompt(card: PageSceneCard, isAnimal?: boolean, species?: string): string {
-  // Base negatives (always include)
+  // Base negatives — ONLY style/safety. NO environment words ever.
+  // Environment words (forest, trees, ocean, water, buildings, space, planets, rockets)
+  // are NEVER included because they sabotage scenes that need those elements.
   const base = [
     'photorealistic', 'realistic', 'photograph', 'photo', '3D render', '3D', 'CGI',
     'sketch', 'pencil drawing', 'black and white', 'grayscale',
@@ -473,18 +475,13 @@ export function renderNegativePrompt(card: PageSceneCard, isAnimal?: boolean, sp
     'scary', 'horror', 'gore', 'weapon'
   ];
 
-  // Add card's must_not_include
-  if (card.must_not_include) {
-    for (const item of card.must_not_include) {
-      if (!base.includes(item)) {
-        base.push(item);
-      }
-    }
-  }
+  // SKIP card.must_not_include — it often contains environment words
+  // (forest, trees, ocean, water, buildings, space, planets, rockets)
+  // that directly conflict with pages that need those settings.
 
   // Add human exclusions for animal stories
   if (isAnimal) {
-    base.push('human', 'person', 'boy', 'girl', 'child', 'man', 'woman', 'portrait', 'hands');
+    base.push('human', 'person', 'boy', 'girl', 'man', 'woman');
 
     // ANTI-DRIFT NEGATIVES: Block animals that SDXL commonly substitutes
     // This is CRITICAL for character consistency

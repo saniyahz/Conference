@@ -40,12 +40,15 @@ export function buildQualityOnlyNegative(): string {
  */
 export function buildCharacterSafetyNegative(): string {
   return [
-    // Block humans (including space-themed human appearances)
-    "human", "boy", "girl", "person", "child", "man", "woman",
+    // Block humans — basic terms only.
+    // Do NOT include "child" (conflicts with "children's picture book" in prompt).
+    // Do NOT include space-themed terms (astronaut/pilot/helmet/cockpit) —
+    // those are legitimate for space-themed story pages.
+    "human", "boy", "girl", "person", "man", "woman",
     "people", "realistic human", "photo of person",
-    "astronaut", "spacesuit", "space suit", "helmet", "pilot",
-    "cosmonaut", "crew member", "space explorer",
-    // Block wrong animals (common SDXL substitutions)
+    // Block wrong animals (common SDXL substitutions for rhino).
+    // These are removed by sanitizeNegatives() for multi-char pages
+    // that need specific secondary actors (lions, dolphins, etc).
     "elephant", "cat", "dog", "bear", "lion", "tiger", "rabbit",
     "monkey", "horse", "cow", "giraffe", "zebra", "hippo",
     "hippopotamus", "camel", "deer", "wolf", "fox", "pig",
@@ -54,8 +57,8 @@ export function buildCharacterSafetyNegative(): string {
     "two rhinoceroses", "multiple rhinos", "extra rhinoceros",
     "duplicate rhino",
     // Identity-stabilizing: prevent accessories that drift across pages
-    "hat", "helmet", "saddle", "backpack", "armor", "crown",
-    "glasses", "sunglasses", "cape", "wings",
+    "hat", "saddle", "backpack", "armor", "crown",
+    "glasses", "sunglasses",
   ].join(", ");
 }
 

@@ -7,12 +7,13 @@ import { detectRhinoceros, DetectionResult, DetectorModel } from "./objectDetect
  *
  * Accept gate: 5 hard rules, ALL must pass.
  *
- *   Rule 1:  No human/cockpit (expanded: astronaut/helmet/pilot/etc)
- *   Rule 1b: No busy/crowded scenes (crowd/many/group/herd/parade)
+ *   Rule 1:  No humans (boy/girl/man/woman/person only)
+ *   Rule 1b: No busy/crowded scenes (crowd/many/parade)
  *   Rule 2:  No wrong animal unless rhino confirmed by BLIP or DINO
  *            (CLIP alone cannot rescue — style similarity ≠ species)
  *   Rule 3:  Rhinoceros confirmed by at least one signal
  *   Rule 4:  Character not tiny/background (bbox >= 15% or composition cue)
+ *   Rule 5C: Required objects MUST appear (at least 1 key object)
  *   Rule 5:  Must-include enforcement (at least N items visible)
  *
  * Selection: run ALL candidates per round, pick BEST accepted (not first).
@@ -79,16 +80,12 @@ const WRONG_ANIMALS = [
   "penguin", "frog", "turtle", "snake", "fish",
 ];
 
-const HUMAN_PLUS_TERMS = [
+// Only reject ACTUAL human terms. Do NOT include space-themed terms
+// (astronaut, pilot, helmet, cockpit) — those are valid for space stories.
+// "child" excluded because it conflicts with "children's" in BLIP captions.
+const HUMAN_TERMS = [
   "human", "boy", "girl", "man", "woman", "person", "people",
-  "child", "kid", "baby", "astronaut", "pilot", "captain",
-  "crew", "spacesuit", "space suit", "helmet visor",
-  "helmet", "cosmonaut",
-];
-
-const COCKPIT_TERMS = [
-  "cockpit", "control panel", "dashboard", "joystick", "steering",
-  "airplane cockpit", "spaceship cockpit", "fighter jet",
+  "kid", "baby",
 ];
 
 const BUSY_SCENE_TERMS = [
@@ -144,9 +141,14 @@ const EXPANSIONS: Record<string, string[]> = {
   "crown": ["crown"],
   "balloons": ["balloon"],
 
-  // Creatures
+  // Creatures / animals (plurals + common BLIP variants)
+  "lions": ["lion"],
+  "lion": ["lions"],
+  "dolphins": ["dolphin"],
   "moon rabbits": ["rabbit", "bunny"],
   "group of moon rabbits": ["rabbit", "bunny"],
+  "rabbits": ["rabbit", "bunny"],
+  "rabbit": ["rabbits", "bunny"],
 };
 
 // ─── SETTING KEYWORD GROUPS ─────────────────────────────────────────────
@@ -328,12 +330,13 @@ function countMustHits(
 /**
  * Deterministic accept/reject. Five rules, all must pass.
  *
- * Rule 1:  No human/cockpit (expanded list)
+ * Rule 1:  No humans (boy/girl/man/woman/person)
  * Rule 1b: No busy/crowded scenes (kids-book = simple)
  * Rule 2:  No wrong animal unless rhino confirmed by BLIP or DINO
  *          (CLIP alone cannot rescue — style similarity ≠ species ID)
  * Rule 3:  Rhinoceros confirmed by at least one signal
  * Rule 4:  Character not tiny/background
+ * Rule 5C: Required objects MUST appear (hard reject)
  * Rule 5:  Must-include enforcement (at least N items)
  */
 export function acceptCandidate(
@@ -364,9 +367,11 @@ export function acceptCandidate(
   const rhinoConfirmedByVision = blipHasRhino || blipHasHippo || blipHasElephant || dinoHasRhino;
   const rhinoConfirmed = rhinoConfirmedByVision || clipConfirmsRiri;
 
-  // ── RULE 1: No human/cockpit (expanded) ──
-  if (includesAny(c, HUMAN_PLUS_TERMS) || includesAny(c, COCKPIT_TERMS)) {
-    return { accepted: false, rejectReason: "RULE 1: HUMAN/COCKPIT detected" };
+  // ── RULE 1: No humans ──
+  // Only reject actual human terms. Cockpit/astronaut/pilot are NOT rejected —
+  // they're valid for space-themed stories where Riri is inside a rocket.
+  if (includesAny(c, HUMAN_TERMS)) {
+    return { accepted: false, rejectReason: "RULE 1: HUMAN detected" };
   }
 
   // ── RULE 1b: No busy/crowded scenes (kids-book = simple) ──
@@ -459,18 +464,24 @@ export function acceptCandidate(
     // Bonus is applied in scoreCaption(), not here
   }
 
-  // Gate C: Key object bonus — SOFT, NOT HARD REJECT.
-  // BLIP captions are extremely terse (1 sentence). They almost never mention
-  // specific objects like "dolphins", "rocket ship", or "moon".
-  // Hard-rejecting on key objects kills 90%+ of valid images.
-  // Bonus is applied in scoreCaption() — here we just log.
+  // Gate C: Key object enforcement — HARD REJECT.
+  // If the page has required objects/actors (rocket ship, dolphins, lions),
+  // at least 1 must appear in the caption. Otherwise the image doesn't match
+  // the scene description and should be rejected.
+  //
+  // Uses EXPANSIONS for fuzzy matching: "rocket ship" matches "rocket",
+  // "dolphins" matches "dolphin", etc.
   const keyObjects = opts?.keyObjects ?? [];
   if (keyObjects.length > 0) {
-    const { hits: objHits, hitTerms: objHitTerms } = countMustHits(c, keyObjects);
+    const { hits: objHits, hitTerms: objHitTerms, missedTerms: objMissed } = countMustHits(c, keyObjects);
     if (objHits > 0) {
-      console.log(`[Rule 5C] Key objects found: ${objHitTerms.join(", ")} (${objHits}/${keyObjects.length}) — bonus applied`);
+      console.log(`[Rule 5C] Key objects found: ${objHitTerms.join(", ")} (${objHits}/${keyObjects.length}) — PASS`);
     } else {
-      console.log(`[Rule 5C] No key objects in caption (wanted [${keyObjects.join(", ")}]) — no bonus (NOT rejecting)`);
+      console.log(`[Rule 5C] REJECTED: No key objects in caption (wanted [${keyObjects.join(", ")}], found none)`);
+      return {
+        accepted: false,
+        rejectReason: `RULE 5C: REQUIRED OBJECTS MISSING (wanted [${keyObjects.join(", ")}], found none in caption)`,
+      };
     }
   }
 

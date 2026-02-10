@@ -488,13 +488,23 @@ async function generateOnePage(
   console.log(`[Page ${pageIndex + 1}] Setting keywords: [${settingKeywords.slice(0, 6).join(", ")}${settingKeywords.length > 6 ? "..." : ""}]`);
 
   const highSalienceObjects = cardObjects.filter((obj) => HIGH_SALIENCE_OBJECTS.has(obj.toLowerCase()));
-  console.log(`[Page ${pageIndex + 1}] High-salience objects: [${highSalienceObjects.join(", ")}]`);
+
+  // Include secondary actors (dolphins, lions, etc.) in required objects for scoring.
+  // These must appear in the caption — otherwise the image doesn't match the story.
+  const requiredObjects = [...highSalienceObjects];
+  for (const actor of filteredSupportingChars) {
+    const lower = actor.toLowerCase();
+    if (HIGH_SALIENCE_OBJECTS.has(lower) && !requiredObjects.some(o => o.toLowerCase() === lower)) {
+      requiredObjects.push(lower);
+    }
+  }
+  console.log(`[Page ${pageIndex + 1}] Required objects for scoring: [${requiredObjects.join(", ")}]`);
 
   const scoreOpts: ScoreOptions = {
     mustInclude: [...identity.mustInclude],
     requireMustIncludeCount: 1,
     settingKeywords,
-    keyObjects: highSalienceObjects,
+    keyObjects: requiredObjects,
   };
 
   const inpaintMustInclude = [...identity.mustInclude, ...cardObjects];
