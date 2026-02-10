@@ -1,7 +1,7 @@
 'use client'
 
-import { useState } from 'react'
-import Link from 'next/link'
+import { useState, useEffect, useCallback } from 'react'
+import { useRouter } from 'next/navigation'
 import SpeechRecorder from '@/components/SpeechRecorder'
 import StoryBook from '@/components/StoryBook'
 import LoadingSpinner from '@/components/LoadingSpinner'
@@ -24,6 +24,32 @@ export default function Home() {
   const [story, setStory] = useState<Story | null>(null)
   const [transcription, setTranscription] = useState<string>('')
   const [loadingMessage, setLoadingMessage] = useState('Creating your magical story...')
+  const router = useRouter()
+
+  const isGenerating = step === 'generating' || step === 'generating-images'
+
+  // Warn on browser tab close / refresh while generating
+  useEffect(() => {
+    if (!isGenerating) return
+
+    const handleBeforeUnload = (e: BeforeUnloadEvent) => {
+      e.preventDefault()
+    }
+
+    window.addEventListener('beforeunload', handleBeforeUnload)
+    return () => window.removeEventListener('beforeunload', handleBeforeUnload)
+  }, [isGenerating])
+
+  // Guarded navigation for in-app links
+  const guardedNavigate = useCallback((href: string) => {
+    if (isGenerating) {
+      const confirmed = window.confirm(
+        'Your story is still being created! If you leave now, you\'ll lose your progress. Are you sure?'
+      )
+      if (!confirmed) return
+    }
+    router.push(href)
+  }, [isGenerating, router])
 
   const handleTranscriptionComplete = async (text: string, authorName: string) => {
     setTranscription(text)
@@ -121,25 +147,25 @@ export default function Home() {
             <span className="text-xl font-bold text-teal-700">Benny's Story Time</span>
           </div>
           <div className="flex gap-3">
-            <Link
-              href="/about"
+            <button
+              onClick={() => guardedNavigate('/about')}
               className="px-4 py-2 text-teal-600 hover:text-teal-800 font-semibold"
             >
               About Us
-            </Link>
-            <Link
-              href="/pricing"
+            </button>
+            <button
+              onClick={() => guardedNavigate('/pricing')}
               className="px-4 py-2 text-teal-600 hover:text-teal-800 font-semibold"
             >
               Pricing
-            </Link>
-            <Link
-              href="/dashboard"
+            </button>
+            <button
+              onClick={() => guardedNavigate('/dashboard')}
               className="px-4 py-2 bg-teal-500 text-white rounded-lg hover:bg-teal-600 font-semibold flex items-center gap-2"
             >
               <BookOpen className="w-5 h-5" />
               My Library
-            </Link>
+            </button>
           </div>
         </div>
 
