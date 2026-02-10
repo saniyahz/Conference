@@ -6,22 +6,22 @@ import sharp from "sharp";
  * White = area to inpaint (character goes here).
  * Black = preserved area (background stays untouched).
  *
- * Ellipse is center-lower foreground, sized for ~45% frame coverage.
- * Lifted slightly from the very bottom so Riri has ground to stand on.
+ * STANDARD mask — generous full-body coverage with headroom and foot room.
+ * Centered slightly below middle to leave sky/background visible above.
  *
  * For 1024×1024:
  *   cx = 512 (centered)
- *   cy = 740 (72% down — lower foreground, but not cut off at bottom)
- *   rx = 320 (62% width coverage — generous horizontal room)
- *   ry = 280 (55% height coverage — full body head to feet)
+ *   cy = 614 (60% down — balanced headroom + foot room)
+ *   rx = 379 (74% width coverage)
+ *   ry = 420 (82% height coverage — head-to-toe with margins)
  */
 export async function makeRiriZoneMaskDataUrl(
   size: number = 1024
 ): Promise<string> {
   const cx = size * 0.50;
-  const cy = size * 0.72;
-  const rx = size * 0.31;
-  const ry = size * 0.27;
+  const cy = size * 0.60;
+  const rx = size * 0.37;
+  const ry = size * 0.41;
 
   const svg = `
   <svg width="${size}" height="${size}" xmlns="http://www.w3.org/2000/svg">
@@ -34,19 +34,21 @@ export async function makeRiriZoneMaskDataUrl(
 }
 
 /**
- * Larger Riri zone — center-foreground, covers more of the frame.
- * Use this when you want Riri to dominate the composition (~50-60%).
+ * LARGE mask — for multi-char round 1 or when standard mask isn't enough.
+ * Wider and taller to give the character more room in busy scenes.
  *
- * The ellipse extends from roughly the middle of the frame to near
- * the bottom, with generous horizontal coverage.
+ *   cx = 50% centered
+ *   cy = 60% (balanced)
+ *   rx = 39% (78% width coverage)
+ *   ry = 43% (86% height coverage)
  */
 export async function makeRiriZoneLargeMaskDataUrl(
   size: number = 1024
 ): Promise<string> {
   const cx = size * 0.50;
-  const cy = size * 0.65;
-  const rx = size * 0.30;
-  const ry = size * 0.30;
+  const cy = size * 0.60;
+  const rx = size * 0.39;
+  const ry = size * 0.43;
 
   const svg = `
   <svg width="${size}" height="${size}" xmlns="http://www.w3.org/2000/svg">
@@ -59,22 +61,21 @@ export async function makeRiriZoneLargeMaskDataUrl(
 }
 
 /**
- * Extra-large Riri zone — for Round 3 fallback when standard masks fail.
- * Covers ~70% of the frame, giving the character maximum room.
- * Used for dark/space scenes where the character tends to get lost.
+ * EXTRA-LARGE mask — Round 3 fallback when standard/large masks fail.
+ * Covers ~88% of the frame, giving the character maximum room.
  *
- * cx = 50% centered
- * cy = 58% (slightly below center)
- * rx = 42% width (84% total width coverage)
- * ry = 40% height (80% total height coverage)
+ *   cx = 50% centered
+ *   cy = 56% (slightly above center for headroom)
+ *   rx = 44% (88% width coverage)
+ *   ry = 44% (88% height coverage)
  */
 export async function makeRiriZoneExtraLargeMaskDataUrl(
   size: number = 1024
 ): Promise<string> {
   const cx = size * 0.50;
-  const cy = size * 0.58;
-  const rx = size * 0.42;
-  const ry = size * 0.40;
+  const cy = size * 0.56;
+  const rx = size * 0.44;
+  const ry = size * 0.44;
 
   const svg = `
   <svg width="${size}" height="${size}" xmlns="http://www.w3.org/2000/svg">

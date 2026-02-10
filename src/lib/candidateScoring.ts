@@ -392,6 +392,15 @@ export function acceptCandidate(
     return { accepted: false, rejectReason: `RULE 1c: BLACK-AND-WHITE/SKETCH detected ("${matched}")` };
   }
 
+  // ── RULE 1d: No cropped / close-up / portrait images ──
+  // Kids' book needs full-body character. If BLIP describes a close-up or
+  // partial body, the mask/framing failed and the image is unusable.
+  const CROP_TERMS = ["close up", "close-up", "closeup", "portrait", "headshot", "face only", "cropped", "cut off", "partial"];
+  const cropMatch = CROP_TERMS.find(t => c.includes(t));
+  if (cropMatch) {
+    return { accepted: false, rejectReason: `RULE 1d: CROPPED/CLOSE-UP detected ("${cropMatch}")` };
+  }
+
   // ── RULE 2: Wrong animal gate (tightened) ──
   // If BLIP says wrong animal, CLIP alone cannot save it — need BLIP or DINO rhino.
   const wrongAnimal = WRONG_ANIMALS.find((a) => c.includes(a));

@@ -15,8 +15,6 @@ export function buildQualityOnlyNegative(): string {
     "worst quality",
     "jpeg artifacts",
     "duplicate",
-    "out of frame",
-    "cropped",
     // Color enforcement — kids' book must be vibrant, never monochrome
     "black and white",
     "grayscale",
@@ -27,6 +25,27 @@ export function buildQualityOnlyNegative(): string {
     "desaturated",
     "faded",
     "washed out",
+  ].join(", ");
+}
+
+/**
+ * Framing negatives — prevent zoom/crop that hides the character's body.
+ * These force SDXL to keep the full body visible with margins.
+ */
+export function buildFramingNegative(): string {
+  return [
+    "cropped",
+    "cut off",
+    "out of frame",
+    "partial body",
+    "missing legs",
+    "missing feet",
+    "zoomed in",
+    "close-up",
+    "headshot",
+    "portrait",
+    "bust",
+    "face only",
   ].join(", ");
 }
 
@@ -85,6 +104,7 @@ export function buildNoTextNegative(): string {
 export function buildInpaintCharacterNegative(): string {
   return [
     buildQualityOnlyNegative(),
+    buildFramingNegative(),
     buildCharacterSafetyNegative(),
     buildNoTextNegative(),
   ].join(", ");

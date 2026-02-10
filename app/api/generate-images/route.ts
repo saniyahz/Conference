@@ -110,10 +110,21 @@ function extractCharacterIdentity(bible?: CharacterBible): CharacterIdentity {
     .slice(0, 4)
     .join(", ");
 
+  // Framing language — forces SDXL to show full body with margins (prevents zoom/crop)
+  const framing = [
+    "wide shot",
+    "full body head-to-toe visible",
+    "feet visible",
+    "character fully inside frame",
+    "10-15% empty margin around the character",
+    "centered composition",
+    "no cropping",
+  ].join(", ");
+
   const inpaintPrompt = [
     `${name} the cute cartoon ${species}`,
     fpDetails || `a ${species}`,
-    "full body, centered foreground, large and prominent",
+    framing,
     "children's picture book illustration, clean lines, vibrant colors, soft shading",
     `match background lighting, only one ${species}, no text`,
   ].join(", ");
