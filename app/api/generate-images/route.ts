@@ -494,9 +494,11 @@ async function generateOnePage(
     makeRiriZoneExtraLargeMaskDataUrl(1024),
   ]);
 
-  // Score options
-  const settingKeywords = deriveSettingKeywordsFromText(sceneSetting);
-  console.log(`[Page ${pageIndex + 1}] Setting keywords: [${settingKeywords.slice(0, 6).join(", ")}${settingKeywords.length > 6 ? "..." : ""}]`);
+  // Score options — derive setting keywords from the CARD setting text, NOT the
+  // generic fallback. The fallback contains "blue sky" which triggers the sky keyword
+  // group, causing wrong scoring for generic/storybook pages.
+  const settingKeywords = isGenericSetting ? [] : deriveSettingKeywordsFromText(sceneSetting);
+  console.log(`[Page ${pageIndex + 1}] Setting keywords: [${settingKeywords.slice(0, 6).join(", ")}${settingKeywords.length > 6 ? "..." : ""}]${isGenericSetting ? " (generic — skipped)" : ""}`);
 
   // Only INANIMATE objects go into required scoring — living creatures (rabbit, dolphins,
   // lions) can't survive inpainting at any useful strength. BLIP also omits secondary
@@ -592,17 +594,18 @@ async function generateOnePage(
 
 /**
  * FIXED inpaint strength for ALL pages and rounds.
- * Varying strength (0.82/0.90/0.95) was the #1 cause of character inconsistency:
- *   - 0.82: plate bleeds through → character color changes per scene
- *   - 0.90: moderate override → different look on dark scenes
- *   - 0.95: full regeneration → completely different character
  *
- * 0.83 balances character rendering with plate preservation.
- * Lower than 0.85 → rockets, rivers, and other plate objects survive inpainting.
- * Round 3 uses 0.86 — slightly more aggressive for difficult scenes.
+ * prompt_strength controls how much SDXL overwrites the ENTIRE image:
+ *   - 0.85+: nearly full regen → plate composition destroyed, identity drift
+ *   - 0.65: background stays locked, mask region fills from prompt
+ *   - 0.55: very conservative, slight edits only
+ *
+ * 0.65 preserves the plate (rockets, rivers, forests stay intact) while
+ * still painting a recognizable rhinoceros in the mask region.
+ * Round 3 uses 0.70 for difficult scenes where 0.65 isn't enough.
  */
-const INPAINT_STRENGTH = 0.83;
-const ROUND3_STRENGTH = 0.86;
+const INPAINT_STRENGTH = 0.65;
+const ROUND3_STRENGTH = 0.70;
 
 async function runCandidateRound(
   plateUrl: string,

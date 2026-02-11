@@ -218,7 +218,7 @@ export async function generateTxt2imgScene(
  *   - 0.65 = background stays locked, mask region fills from prompt
  *   - 0.55 = very conservative, slight edits only
  *
- * We use 0.75: background mostly stable, mask region strongly overwritten with character.
+ * We use 0.65: background stays locked, mask region fills with character.
  */
 export async function generateInpaintCharacter(
   replicate: Replicate,
@@ -273,7 +273,7 @@ export async function generateInpaintCharacter(
         num_outputs: 1,
         scheduler: "K_EULER",
         num_inference_steps: 40,
-        guidance_scale: 10,  // Higher guidance = stricter prompt adherence = more consistent character
+        guidance_scale: 7,  // Moderate guidance — too high overwrites plate + causes identity drift
         prompt_strength: promptStrength,
         seed,
       };
@@ -286,7 +286,7 @@ export async function generateInpaintCharacter(
       console.log(
         `[Inpaint ${pageIndex}] Attempt ${attempt}/${maxRetries} ` +
         `(MODE: INPAINT, mask: ${maskDataUrl.length} bytes, ` +
-        `strength: ${promptStrength}, steps: 40, guidance: 10, seed: ${seed}` +
+        `strength: ${promptStrength}, steps: 40, guidance: 7, seed: ${seed}` +
         `${lora ? `, LoRA: ${lora.version.substring(0, 12)}..., trigger: ${lora.triggerWord}` : ""})`
       );
       console.log(

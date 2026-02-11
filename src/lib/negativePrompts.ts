@@ -126,6 +126,9 @@ export function buildInpaintCharacterNegative(): string {
  */
 export function buildHardBanNegative(): string {
   return [
+    // Near-species confusions — SDXL frequently snaps to these instead of rhinoceros.
+    // MUST be first in the negative (highest SDXL attention = first tokens).
+    "elephant", "baby elephant", "hippo", "hippopotamus",
     // Accessories — "hat" stripped by sanitizer because positive says "no hat"
     "hat", "party hat", "top hat", "birthday hat",
     "crown", "cape", "costume",
