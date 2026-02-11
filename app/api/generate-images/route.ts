@@ -38,7 +38,10 @@ const replicate = new Replicate({
 
 const CANDIDATES_PER_ROUND = 3;
 const SEED_STRIDE = 29;
-const PAGE_CONCURRENCY = 2;
+// Serialize pages to avoid Replicate API rate limiting (429).
+// Low-credit accounts are limited to 6 req/min with burst of 1.
+// Running 2 pages × 3 candidates = 6+ simultaneous requests → instant 429.
+const PAGE_CONCURRENCY = 1;
 
 // ─── CHARACTER IDENTITY ─────────────────────────────────────────────────
 
@@ -597,15 +600,17 @@ async function generateOnePage(
  *
  * prompt_strength controls how much SDXL overwrites the ENTIRE image:
  *   - 0.85+: nearly full regen → plate composition destroyed, identity drift
- *   - 0.65: background stays locked, mask region fills from prompt
+ *   - 0.75: good balance — character renders clearly, plate mostly preserved
+ *   - 0.65: TOO LOW — character doesn't render (just flowers/butterflies)
  *   - 0.55: very conservative, slight edits only
  *
- * 0.65 preserves the plate (rockets, rivers, forests stay intact) while
- * still painting a recognizable rhinoceros in the mask region.
- * Round 3 uses 0.70 for difficult scenes where 0.65 isn't enough.
+ * 0.65 was tested and produced "a painting of flowers and butterflies in a field"
+ * with NO rhinoceros at all. 0.75 should be strong enough to paint the character
+ * in the mask region while preserving most of the plate composition.
+ * Round 3 uses 0.80 for difficult scenes where 0.75 isn't enough.
  */
-const INPAINT_STRENGTH = 0.65;
-const ROUND3_STRENGTH = 0.70;
+const INPAINT_STRENGTH = 0.75;
+const ROUND3_STRENGTH = 0.80;
 
 async function runCandidateRound(
   plateUrl: string,
@@ -622,9 +627,13 @@ async function runCandidateRound(
   isMultiChar: boolean = false
 ): Promise<CandidateResult[]> {
   // FIXED strength for consistency: same character appearance every page.
-  // Round 3 uses slightly higher 0.88 for difficult scenes, otherwise 0.85.
   const strength = forceHighStrength ? ROUND3_STRENGTH : INPAINT_STRENGTH;
-  const tasks = Array.from({ length: count }, async (_, i) => {
+
+  // SERIALIZE candidates (one at a time) to avoid Replicate 429 rate limiting.
+  // Low-credit accounts get burst=1 — parallel requests all get throttled.
+  // Sequential requests with natural processing time (~15-30s each) stay under the limit.
+  const results: CandidateResult[] = [];
+  for (let i = 0; i < count; i++) {
     const seed = baseSeed + i * SEED_STRIDE;
 
     console.log(`[Page ${pageIndex + 1}] Candidate ${i + 1}/${count} seed=${seed} [INPAINT strength=${strength}]`);
@@ -636,7 +645,7 @@ async function runCandidateRound(
 
     if (!url) {
       console.warn(`[Page ${pageIndex + 1}] Candidate ${i + 1} generation failed`);
-      return null;
+      continue;
     }
 
     const result = await scoreCandidate(replicate, url, scoreOpts);
@@ -647,11 +656,17 @@ async function runCandidateRound(
       (result.rejectReason ? ` reason="${result.rejectReason}"` : "")
     );
 
-    return result;
-  });
+    results.push(result);
 
-  const results = await Promise.all(tasks);
-  return results.filter((r): r is CandidateResult => r !== null);
+    // Early exit: if this candidate was accepted, skip remaining candidates
+    // in this round. Saves API calls and avoids rate limiting.
+    if (result.accepted) {
+      console.log(`[Page ${pageIndex + 1}] Early accept — skipping remaining candidates in this round`);
+      break;
+    }
+  }
+
+  return results;
 }
 
 // ─── API ROUTE ───────────────────────────────────────────────────────────

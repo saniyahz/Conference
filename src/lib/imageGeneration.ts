@@ -18,6 +18,15 @@ function delay(ms: number): Promise<void> {
   return new Promise((resolve) => setTimeout(resolve, ms));
 }
 
+/**
+ * Check if an error is a 429 rate limit error.
+ * Replicate returns 429 when account is low on credit or hitting rate limits.
+ */
+function is429Error(e: unknown): boolean {
+  const msg = e instanceof Error ? e.message : String(e);
+  return msg.includes("429") || msg.includes("rate limit") || msg.includes("Too Many Requests");
+}
+
 function extractImageUrl(output: unknown): string {
   if (Array.isArray(output) && output.length > 0 && typeof output[0] === "string") {
     return output[0];
@@ -80,7 +89,7 @@ export async function generatePlate(
   lora?: LoraConfig,
   negativeOverride?: string
 ): Promise<string> {
-  const maxRetries = 3;
+  const maxRetries = 4;
   const negativePrompt = negativeOverride || buildPlateNegative();
 
   const modelVersion = lora?.version ?? SDXL_VERSION;
@@ -129,7 +138,12 @@ export async function generatePlate(
       const msg = e instanceof Error ? e.message : String(e);
       console.error(`[Plate ${pageIndex}] Attempt ${attempt} failed: ${msg}`);
       if (attempt < maxRetries) {
-        await delay(Math.pow(2, attempt) * 1000);
+        // 429 rate limit: wait longer (15s, 30s, 45s). Regular errors: 2s, 4s, 8s.
+        const waitMs = is429Error(e)
+          ? attempt * 15000
+          : Math.pow(2, attempt) * 1000;
+        console.log(`[Plate ${pageIndex}] Waiting ${waitMs / 1000}s before retry...`);
+        await delay(waitMs);
       }
     }
   }
@@ -218,7 +232,8 @@ export async function generateTxt2imgScene(
  *   - 0.65 = background stays locked, mask region fills from prompt
  *   - 0.55 = very conservative, slight edits only
  *
- * We use 0.65: background stays locked, mask region fills with character.
+ * We use 0.75: character renders clearly in mask region, plate mostly preserved.
+ * 0.65 was too low — produced no character at all (just plate background).
  */
 export async function generateInpaintCharacter(
   replicate: Replicate,
@@ -242,7 +257,7 @@ export async function generateInpaintCharacter(
     );
   }
 
-  const maxRetries = 3;
+  const maxRetries = 4;
   const modelVersion = lora?.version ?? SDXL_VERSION;
 
   // If LoRA is active, prepend trigger word to the prompt
@@ -309,7 +324,12 @@ export async function generateInpaintCharacter(
       const msg = e instanceof Error ? e.message : String(e);
       console.error(`[Inpaint ${pageIndex}] Attempt ${attempt} failed: ${msg}`);
       if (attempt < maxRetries) {
-        await delay(Math.pow(2, attempt) * 1000);
+        // 429 rate limit: wait longer (15s, 30s, 45s). Regular errors: 2s, 4s, 8s.
+        const waitMs = is429Error(e)
+          ? attempt * 15000
+          : Math.pow(2, attempt) * 1000;
+        console.log(`[Inpaint ${pageIndex}] Waiting ${waitMs / 1000}s before retry...`);
+        await delay(waitMs);
       }
     }
   }
