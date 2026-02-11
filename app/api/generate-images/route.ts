@@ -39,10 +39,10 @@ const replicate = new Replicate({
 
 const CANDIDATES_PER_ROUND = 3;
 const SEED_STRIDE = 29;
-// Serialize pages to avoid Replicate API rate limiting (429).
-// Low-credit accounts are limited to 6 req/min with burst of 1.
-// Running 2 pages × 3 candidates = 6+ simultaneous requests → instant 429.
-const PAGE_CONCURRENCY = 1;
+// Bounded page concurrency. With sequential candidates + early-accept,
+// each page has ~1-2 active Replicate calls at a time. Running 2 pages
+// concurrently means ~2-4 simultaneous requests — well within rate limits.
+const PAGE_CONCURRENCY = 2;
 
 // ─── CHARACTER IDENTITY ─────────────────────────────────────────────────
 
