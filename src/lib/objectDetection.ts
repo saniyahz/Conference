@@ -33,18 +33,23 @@ import Replicate from "replicate";
  * Update this version hash if a newer deployment is available.
  * The model accepts { image, query, box_threshold, text_threshold }
  * and returns detections with bounding boxes + confidence scores.
+ *
+ * NOTE: The correct Replicate username is "adirik", NOT "schananas".
+ * "schananas/grounding-dino" does not exist on Replicate (422 errors).
  */
-const GROUNDING_DINO_MODEL = "schananas/grounding-dino" as const;
+const GROUNDING_DINO_MODEL = "adirik/grounding-dino" as const;
 const GROUNDING_DINO_VERSION =
-  "ee39be7bde22bc5e03b0340bd2a3e2a3e98e5065a98a80e1536e7e9c7aa9c965" as const;
+  "efd10a8ddc57ea28773327e881ce95e20cc1d734c589f7dd01d2036921ed78aa" as const;
 
 /**
  * OWL-ViT fallback model on Replicate.
  * Used if GroundingDINO is unavailable.
+ *
+ * NOTE: The correct Replicate username is "adirik", NOT "alaradirik".
+ * "alaradirik" is the GitHub username; Replicate username is "adirik".
+ * Uses versionless call (latest deployment) for resilience.
  */
-const OWLVIT_MODEL = "alaradirik/owlvit-base-patch32" as const;
-const OWLVIT_VERSION =
-  "4ffd055c3ec46cce1f3400caec3fa3ef13830492d42f23fccaa1b18c659e4c9e" as const;
+const OWLVIT_MODEL = "adirik/owlvit-base-patch32" as const;
 
 export type DetectorModel = "grounding-dino" | "owlvit";
 
@@ -171,7 +176,7 @@ export async function detectWithOwlVit(
 ): Promise<Detection[]> {
   try {
     const output = await replicate.run(
-      `${OWLVIT_MODEL}:${OWLVIT_VERSION}`,
+      OWLVIT_MODEL,
       {
         input: {
           image: imageUrl,

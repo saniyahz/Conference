@@ -24,7 +24,7 @@ import Replicate from "replicate";
  */
 
 const CLIP_FEATURES_VERSION =
-  "75b33f253f7714a281ad3e9b28f63e3232d583716ef6718f2e46641077ea040a" as const;
+  "71addf5a5e7c400e091f33ef8ae1c40d72a25966897d05ebe36a7edb06a86a2c" as const;
 
 export interface ClipResult {
   similarity: number;
@@ -53,17 +53,29 @@ export async function getClipEmbedding(
       }
     );
 
-    // clip-features returns an array of floats (the embedding)
+    // clip-features output format varies by version:
+    //   1. [{input: "url", embedding: [0.1, 0.2, ...]}]  — named embeddings (current)
+    //   2. [[0.1, 0.2, ...]]  — nested array
+    //   3. [0.1, 0.2, ...]    — flat array
+    //   4. {embedding: [0.1, 0.2, ...]}  — object with embedding key
     if (Array.isArray(output) && output.length > 0) {
-      if (Array.isArray(output[0])) return output[0] as number[];
-      return output as number[];
+      // Format 1: [{input, embedding}] — array of named embedding objects
+      const first = output[0];
+      if (first && typeof first === "object" && !Array.isArray(first) && "embedding" in first) {
+        return (first as { embedding: number[] }).embedding;
+      }
+      // Format 2: [[0.1, 0.2, ...]] — nested array
+      if (Array.isArray(first)) return first as number[];
+      // Format 3: [0.1, 0.2, ...] — flat array of numbers
+      if (typeof first === "number") return output as number[];
     }
 
-    // Some versions return { embedding: [...] }
-    if (output && typeof output === "object" && "embedding" in (output as Record<string, unknown>)) {
+    // Format 4: {embedding: [...]} — object with embedding key
+    if (output && typeof output === "object" && !Array.isArray(output) && "embedding" in (output as Record<string, unknown>)) {
       return (output as { embedding: number[] }).embedding;
     }
 
+    console.warn(`[CLIP] Unexpected output format: ${JSON.stringify(output).slice(0, 200)}`);
     throw new Error("Unexpected CLIP output format");
   } catch (e) {
     const msg = e instanceof Error ? e.message : String(e);
