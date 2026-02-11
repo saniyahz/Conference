@@ -363,6 +363,45 @@ function deriveStyleHintsFromSetting(settingText: string): string {
   return "bright colors, friendly atmosphere";
 }
 
+// ─── ROCKET/SKY SCENE DETECTION ─────────────────────────────────────────
+
+/**
+ * Detect if a scene setting is a "rocket in sky/space" scene.
+ * These scenes produce plates where a giant rocket fills the frame,
+ * leaving no room for the character in the inpaint mask region.
+ *
+ * Fix: rewrite plate to show rocket SMALL in background with ground foreground.
+ */
+function isRocketSkyScene(setting: string): boolean {
+  const lower = setting.toLowerCase();
+  const hasRocket = /\brocket\b|\bspaceship\b|\bblast\w*\s+off\b|\blaunch\b|\bliftoff\b/.test(lower);
+  const hasSky = /\bsky\b|\bspace\b|\bflying\b|\bcloud\b|\bsoar\b|\bair\b/.test(lower);
+  return hasRocket && hasSky;
+}
+
+/**
+ * Rewrite a rocket/sky plate prompt to keep rocket small in background.
+ * The original "Rocket ship blasting off into space" fills the entire frame
+ * with rocket → inpaint mask overlaps with rocket → character can't render.
+ *
+ * Instead: ground-level composition with small rocket in distance.
+ */
+function rewriteRocketPlatePrompt(
+  styleHints: string,
+  sceneObjects: string[]
+): string {
+  // Filter out "rocket ship"/"rocket" from scene objects — it's already in the rewritten prompt
+  const otherObjects = sceneObjects.filter(o => !/rocket|spaceship/i.test(o));
+  const parts = [
+    "wide landscape scene, bright green grass foreground, small rocket ship flying far away in the sky background",
+  ];
+  if (otherObjects.length > 0) parts.push(otherObjects.join(", "));
+  parts.push(styleHints);
+  parts.push("simple children's illustration, flat colors, bold outline, high clarity, crisp outlines, well-defined shapes, vivid saturated colors, well-lit, bright");
+  parts.push("no characters, no animals, no people, no text, no black and white, no grayscale, no monochrome");
+  return parts.join(", ");
+}
+
 // ─── PLATE PROMPT BUILDER ───────────────────────────────────────────────
 
 /**
@@ -475,7 +514,16 @@ async function generateOnePage(
   // ── 3. ALL pages: PLATE → INPAINT → SCORE (identity lock) ──
   console.log(`========== PAGE ${pageIndex + 1}: PLATE → INPAINT → SCORE ==========`);
 
-  const platePrompt = buildPlatePrompt(sceneSetting, styleHints, plateObjects, identity.species, hasSecondaryActors);
+  // Rocket/sky scenes: rocket fills the frame → no room for character.
+  // Rewrite plate to show rocket small in background with ground foreground.
+  const rocketSky = isRocketSkyScene(sceneSetting);
+  let platePrompt: string;
+  if (rocketSky && !hasSecondaryActors) {
+    platePrompt = rewriteRocketPlatePrompt(styleHints, plateObjects);
+    console.log(`[Page ${pageIndex + 1}] ROCKET-SKY REWRITE: rocket moved to background, ground foreground added`);
+  } else {
+    platePrompt = buildPlatePrompt(sceneSetting, styleHints, plateObjects, identity.species, hasSecondaryActors);
+  }
   console.log(`[Page ${pageIndex + 1}] Plate prompt: "${platePrompt}"`);
 
   // Multi-char plates use a special negative that allows secondary actors
@@ -527,6 +575,17 @@ async function generateOnePage(
   const round1Mask = hasSecondaryActors ? escalatedMask : initialMask;
   const round2Mask = hasSecondaryActors ? extraLargeMask : escalatedMask;
 
+  // Large secondary animals (lions, bears) almost always dominate the plate
+  // and prevent the rhino from being recognized. Skip to solo plate faster.
+  const LARGE_ANIMALS = new Set(["lions", "lion", "bear", "bears", "dragon", "dragons"]);
+  const hasLargeSecondary = hasSecondaryActors && animalObjects.some(a => LARGE_ANIMALS.has(a.toLowerCase()));
+  // For large secondary animals: only try 1 multi-char round, then go solo.
+  // For smaller animals (dolphins, butterflies): try all 3 rounds first.
+  const multiCharMaxRounds = hasLargeSecondary ? 1 : 3;
+  if (hasLargeSecondary) {
+    console.log(`[Page ${pageIndex + 1}] LARGE secondary animals detected — will fast-track to solo plate after 1 round`);
+  }
+
   // Round 1
   console.log(`[Page ${pageIndex + 1}] Round 1: ${CANDIDATES_PER_ROUND} candidates${hasSecondaryActors ? " (multi-char: escalated mask + high strength)" : ""}...`);
   const round1 = await runCandidateRound(
@@ -540,58 +599,65 @@ async function generateOnePage(
     return accepted1[0];
   }
 
-  // Round 2: escalated mask (or extra-large for multi-char)
-  console.log(`[Page ${pageIndex + 1}] Round 2: ${hasSecondaryActors ? "EXTRA-LARGE" : "ESCALATED"} mask...`);
-  const round2 = await runCandidateRound(
-    plateUrl, round2Mask, seed + CANDIDATES_PER_ROUND * SEED_STRIDE, CANDIDATES_PER_ROUND, pageIndex,
-    scoreOpts, inpaintMustInclude, sceneSetting, identity, sceneCategory,
-    false, hasSecondaryActors
-  );
-  const accepted2 = round2.filter((r) => r.accepted).sort((a, b) => b.score - a.score);
-  if (accepted2.length > 0) {
-    console.log(`[Page ${pageIndex + 1}] ACCEPTED from round 2: score=${accepted2[0].score}`);
-    return accepted2[0];
+  if (multiCharMaxRounds >= 2) {
+    // Round 2: escalated mask (or extra-large for multi-char)
+    console.log(`[Page ${pageIndex + 1}] Round 2: ${hasSecondaryActors ? "EXTRA-LARGE" : "ESCALATED"} mask...`);
+    const round2 = await runCandidateRound(
+      plateUrl, round2Mask, seed + CANDIDATES_PER_ROUND * SEED_STRIDE, CANDIDATES_PER_ROUND, pageIndex,
+      scoreOpts, inpaintMustInclude, sceneSetting, identity, sceneCategory,
+      false, hasSecondaryActors
+    );
+    const accepted2 = round2.filter((r) => r.accepted).sort((a, b) => b.score - a.score);
+    if (accepted2.length > 0) {
+      console.log(`[Page ${pageIndex + 1}] ACCEPTED from round 2: score=${accepted2[0].score}`);
+      return accepted2[0];
+    }
   }
 
-  // Round 3: extra-large mask + high strength
-  console.log(`[Page ${pageIndex + 1}] Round 3: EXTRA-LARGE mask + high strength...`);
-  const round3 = await runCandidateRound(
-    plateUrl, extraLargeMask, seed + CANDIDATES_PER_ROUND * SEED_STRIDE * 2, CANDIDATES_PER_ROUND, pageIndex,
-    scoreOpts, inpaintMustInclude, sceneSetting, identity, sceneCategory, true, hasSecondaryActors
-  );
-  const accepted3 = round3.filter((r) => r.accepted).sort((a, b) => b.score - a.score);
-  if (accepted3.length > 0) {
-    console.log(`[Page ${pageIndex + 1}] ACCEPTED from round 3: score=${accepted3[0].score}`);
-    return accepted3[0];
+  if (multiCharMaxRounds >= 3) {
+    // Round 3: extra-large mask + high strength
+    console.log(`[Page ${pageIndex + 1}] Round 3: EXTRA-LARGE mask + high strength...`);
+    const round3 = await runCandidateRound(
+      plateUrl, extraLargeMask, seed + CANDIDATES_PER_ROUND * SEED_STRIDE * 2, CANDIDATES_PER_ROUND, pageIndex,
+      scoreOpts, inpaintMustInclude, sceneSetting, identity, sceneCategory, true, hasSecondaryActors
+    );
+    const accepted3 = round3.filter((r) => r.accepted).sort((a, b) => b.score - a.score);
+    if (accepted3.length > 0) {
+      console.log(`[Page ${pageIndex + 1}] ACCEPTED from round 3: score=${accepted3[0].score}`);
+      return accepted3[0];
+    }
   }
 
-  // Round 4 (multi-char fallback): secondary actors (dolphins, lions) in the plate
-  // compete with the rhino for visual dominance, especially underwater.
-  // BLIP can't see the rhino through the dolphins → all 9 rejected.
+  // Solo plate fallback: secondary actors (dolphins, lions) in the plate
+  // compete with the rhino for visual dominance.
+  // BLIP can't see the rhino through the other animals → most rejected.
   // Fix: regenerate a SOLO plate (no secondary actors) and try again.
   if (hasSecondaryActors) {
-    console.log(`[Page ${pageIndex + 1}] Round 4 FALLBACK: solo plate (no secondary actors)...`);
+    console.log(`[Page ${pageIndex + 1}] SOLO PLATE FALLBACK (no secondary actors)...`);
     const soloPlatePrompt = buildPlatePrompt(sceneSetting, styleHints, nonAnimalObjects, identity.species, false);
     console.log(`[Page ${pageIndex + 1}] Solo plate prompt: "${soloPlatePrompt.substring(0, 100)}..."`);
 
     const soloPlateUrl = await generatePlate(replicate, soloPlatePrompt, seed + 5000, pageIndex);
     if (soloPlateUrl) {
-      const round4 = await runCandidateRound(
+      const soloRound = await runCandidateRound(
         soloPlateUrl, extraLargeMask,
         seed + CANDIDATES_PER_ROUND * SEED_STRIDE * 3, CANDIDATES_PER_ROUND, pageIndex,
         scoreOpts, [...identity.mustInclude], sceneSetting, identity, sceneCategory,
         true, false  // forceHighStrength=true, isMultiChar=false
       );
-      const accepted4 = round4.filter((r) => r.accepted).sort((a, b) => b.score - a.score);
-      if (accepted4.length > 0) {
-        console.log(`[Page ${pageIndex + 1}] ACCEPTED from round 4 (solo fallback): score=${accepted4[0].score}`);
-        return accepted4[0];
+      const acceptedSolo = soloRound.filter((r) => r.accepted).sort((a, b) => b.score - a.score);
+      if (acceptedSolo.length > 0) {
+        console.log(`[Page ${pageIndex + 1}] ACCEPTED from solo fallback: score=${acceptedSolo[0].score}`);
+        return acceptedSolo[0];
       }
     }
   }
 
   // No candidate accepted → return EMPTY
-  console.warn(`[Page ${pageIndex + 1}] WARNING: No candidate accepted after ${hasSecondaryActors ? 12 : 9} tries. Returning EMPTY.`);
+  const totalTries = hasSecondaryActors
+    ? (multiCharMaxRounds * CANDIDATES_PER_ROUND + CANDIDATES_PER_ROUND)
+    : (3 * CANDIDATES_PER_ROUND);
+  console.warn(`[Page ${pageIndex + 1}] WARNING: No candidate accepted after ${totalTries} tries. Returning EMPTY.`);
   return { url: "", accepted: false, caption: "", score: -999 };
 }
 
