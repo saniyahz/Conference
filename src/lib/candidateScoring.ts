@@ -361,11 +361,13 @@ export function acceptCandidate(
   const blipHasRhino = /\brhinos?\b|\brhinoceros(es)?\b/.test(c);
   const blipHasHippo = /\bhippos?\b|\bhippopotamus(es)?\b/.test(c);
   const blipHasElephant = /\belephants?\b/.test(c);
-  const dinoHasRhino = !!(detectionResult?.detected && detectionResult.confidence >= 0.45);
-  const clipConfirmsRiri = !!(clipResult && clipResult.similarity >= 0.82);
+  const dinoHasRhino = !!(detectionResult?.detected && detectionResult.confidence >= 0.50);
+  const clipConfirmsRiri = !!(clipResult && clipResult.similarity >= 0.78);
+  const clipAvailable = !!(clipResult && clipResult.similarity > 0);
+  const clipRejectsRiri = clipAvailable && clipResult!.similarity < 0.50;
 
   // Rhino confirmation: BLIP says "rhino", DINO detects it, OR CLIP strongly
-  // matches the anchor image. CLIP >= 0.82 means the candidate looks very similar
+  // matches the anchor image. CLIP >= 0.78 means the candidate looks very similar
   // to the reference Riri image — even if BLIP captions it as "cartoon animal" or
   // "gray creature", the visual match confirms it's the right character.
   // Elephant/hippo are in WRONG_ANIMALS — they are always rejected by Rule 2 first.
@@ -418,17 +420,30 @@ export function acceptCandidate(
     if (a.endsWith("s")) allowedSet.add(a.slice(0, -1));  // "lions" → "lion"
     else allowedSet.add(a + "s");  // "lion" → "lions"
   }
+  // DINO override for Rule 2 requires HIGHER confidence (0.55) than general detection.
+  // When BLIP says "giraffe" but DINO says "rhinoceros", we only override if:
+  //   1. DINO confidence >= 0.55 (strong detection, not just marginal)
+  //   2. CLIP doesn't actively reject (similarity >= 0.50 if available)
+  // This prevents accepting images that look like wrong animals just because
+  // DINO found something vaguely rhino-shaped.
   const dinoConfirmsRhino = !!(detectionResult?.detected
-    && detectionResult.confidence >= 0.45);
+    && detectionResult.confidence >= 0.55);
   const wrongAnimal = WRONG_ANIMALS.find((a) => c.includes(a) && !allowedSet.has(a));
   if (wrongAnimal) {
-    if (dinoConfirmsRhino) {
-      // DINO confirms rhinoceros — BLIP is misidentifying the rhino.
-      console.log(`[Rule 2] BLIP says "${wrongAnimal}" but DINO confirms rhinoceros (conf=${detectionResult!.confidence.toFixed(2)}, bbox=${(detectionResult!.bestBboxArea * 100).toFixed(1)}%) — OVERRIDING BLIP`);
+    if (dinoConfirmsRhino && !clipRejectsRiri) {
+      // DINO strongly confirms rhinoceros AND CLIP doesn't reject — BLIP is misidentifying.
+      console.log(`[Rule 2] BLIP says "${wrongAnimal}" but DINO confirms rhinoceros (conf=${detectionResult!.confidence.toFixed(2)}, bbox=${(detectionResult!.bestBboxArea * 100).toFixed(1)}%, CLIP=${clipAvailable ? clipResult!.similarity.toFixed(3) : "off"}) — OVERRIDING BLIP`);
+    } else if (dinoConfirmsRhino && clipRejectsRiri) {
+      // DINO says rhino but CLIP says it doesn't look like the reference.
+      // The image probably IS a wrong animal — DINO is fooled but CLIP isn't.
+      return {
+        accepted: false,
+        rejectReason: `RULE 2: WRONG ANIMAL "${wrongAnimal}" — DINO says rhino (conf=${detectionResult!.confidence.toFixed(2)}) but CLIP rejects (sim=${clipResult!.similarity.toFixed(3)} < 0.50)`,
+      };
     } else {
       return {
         accepted: false,
-        rejectReason: `RULE 2: WRONG ANIMAL "${wrongAnimal}" detected in caption (not an expected actor)`,
+        rejectReason: `RULE 2: WRONG ANIMAL "${wrongAnimal}" detected in caption (DINO conf=${detectionResult?.confidence?.toFixed(2) ?? "off"} < 0.55)`,
       };
     }
   }
@@ -443,6 +458,20 @@ export function acceptCandidate(
     return {
       accepted: false,
       rejectReason: `RULE 3: MISSING CHARACTER (no rhino confirmed: ${signals})`,
+    };
+  }
+
+  // ── RULE 3b: CLIP identity gate — candidate must resemble the reference ──
+  // When CLIP is available, reject candidates with very low similarity to the
+  // anchor image. This catches cases where the image technically has "a rhinoceros"
+  // (per BLIP or DINO) but it looks completely different from the reference Riri.
+  // Threshold 0.50 is generous — only rejects images that look nothing like the anchor.
+  if (clipRejectsRiri && !blipHasRhino) {
+    // If BLIP explicitly says "rhino", trust it over CLIP (CLIP can be noisy on cartoons).
+    // But if BLIP doesn't say rhino, CLIP similarity < 0.50 means it's a different character.
+    return {
+      accepted: false,
+      rejectReason: `RULE 3b: CLIP IDENTITY MISMATCH (similarity=${clipResult!.similarity.toFixed(3)} < 0.50, doesn't resemble reference)`,
     };
   }
 

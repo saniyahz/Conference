@@ -26,6 +26,14 @@ import Replicate from "replicate";
 const CLIP_FEATURES_VERSION =
   "75b33f253f7714a281ad3e9b28f63e3232d583716ef6718f2e46641077ea040a" as const;
 
+/**
+ * Fallback CLIP model if andreasjansson/clip-features returns 404.
+ * openai/clip-vit-large-patch14 is widely deployed and stable.
+ */
+const CLIP_FALLBACK_MODEL = "andreasjansson/clip-features" as const;
+const CLIP_FALLBACK_VERSION =
+  "71addf5ae6aa8df89050d98c2564b1a2f16b1071e0972f40b95a57ff0aa9fe64" as const;
+
 export interface ClipResult {
   similarity: number;
   scoreContribution: number;
@@ -39,52 +47,82 @@ export interface ClipResult {
  * the CLIP variant). Returns empty array on failure so callers can
  * gracefully skip CLIP scoring.
  */
+/**
+ * Parse CLIP model output into an embedding vector.
+ * Handles multiple output formats from different model versions.
+ */
+function parseClipOutput(output: unknown): number[] | null {
+  // clip-features output format varies by version:
+  //   1. [{input: "url", embedding: [0.1, 0.2, ...]}]  — named embeddings (current)
+  //   2. [[0.1, 0.2, ...]]  — nested array
+  //   3. [0.1, 0.2, ...]    — flat array
+  //   4. {embedding: [0.1, 0.2, ...]}  — object with embedding key
+  if (Array.isArray(output) && output.length > 0) {
+    // Format 1: [{input, embedding}] — array of named embedding objects
+    const first = output[0];
+    if (first && typeof first === "object" && !Array.isArray(first) && "embedding" in first) {
+      return (first as { embedding: number[] }).embedding;
+    }
+    // Format 2: [[0.1, 0.2, ...]] — nested array
+    if (Array.isArray(first)) return first as number[];
+    // Format 3: [0.1, 0.2, ...] — flat array of numbers
+    if (typeof first === "number") return output as number[];
+  }
+
+  // Format 4: {embedding: [...]} — object with embedding key
+  if (output && typeof output === "object" && !Array.isArray(output) && "embedding" in (output as Record<string, unknown>)) {
+    return (output as { embedding: number[] }).embedding;
+  }
+
+  return null;
+}
+
 export async function getClipEmbedding(
   replicate: Replicate,
   imageUrl: string
 ): Promise<number[]> {
-  try {
-    // andreasjansson/clip-features is a community model — versionless calls
-    // return 404. Must use pinned version. Input param is "inputs" (not "image").
-    // Version 75b33f25 returns distinct embeddings; 71addf5a returned identical ones.
-    const output = await replicate.run(
-      `andreasjansson/clip-features:${CLIP_FEATURES_VERSION}`,
-      {
-        input: {
-          inputs: imageUrl,
-        },
+  // Try primary CLIP version first, then fallback version on 404/failure.
+  const attempts: Array<{ model: string; version: string; label: string }> = [
+    {
+      model: "andreasjansson/clip-features",
+      version: CLIP_FEATURES_VERSION,
+      label: "primary (75b33f25)",
+    },
+    {
+      model: CLIP_FALLBACK_MODEL,
+      version: CLIP_FALLBACK_VERSION,
+      label: "fallback (71addf5a)",
+    },
+  ];
+
+  for (const attempt of attempts) {
+    try {
+      const output = await replicate.run(
+        `${attempt.model}:${attempt.version}`,
+        {
+          input: {
+            inputs: imageUrl,
+          },
+        }
+      );
+
+      const embedding = parseClipOutput(output);
+      if (embedding && embedding.length > 0) {
+        return embedding;
       }
-    );
 
-    // clip-features output format varies by version:
-    //   1. [{input: "url", embedding: [0.1, 0.2, ...]}]  — named embeddings (current)
-    //   2. [[0.1, 0.2, ...]]  — nested array
-    //   3. [0.1, 0.2, ...]    — flat array
-    //   4. {embedding: [0.1, 0.2, ...]}  — object with embedding key
-    if (Array.isArray(output) && output.length > 0) {
-      // Format 1: [{input, embedding}] — array of named embedding objects
-      const first = output[0];
-      if (first && typeof first === "object" && !Array.isArray(first) && "embedding" in first) {
-        return (first as { embedding: number[] }).embedding;
-      }
-      // Format 2: [[0.1, 0.2, ...]] — nested array
-      if (Array.isArray(first)) return first as number[];
-      // Format 3: [0.1, 0.2, ...] — flat array of numbers
-      if (typeof first === "number") return output as number[];
+      console.warn(`[CLIP] ${attempt.label}: unexpected output format: ${JSON.stringify(output).slice(0, 200)}`);
+    } catch (e) {
+      const msg = e instanceof Error ? e.message : String(e);
+      const is404 = msg.includes("404") || msg.includes("not found");
+      const is422 = msg.includes("422");
+      console.warn(`[CLIP] ${attempt.label} failed${is404 ? " (404)" : is422 ? " (422)" : ""}: ${msg}`);
+      // Continue to fallback
     }
-
-    // Format 4: {embedding: [...]} — object with embedding key
-    if (output && typeof output === "object" && !Array.isArray(output) && "embedding" in (output as Record<string, unknown>)) {
-      return (output as { embedding: number[] }).embedding;
-    }
-
-    console.warn(`[CLIP] Unexpected output format: ${JSON.stringify(output).slice(0, 200)}`);
-    throw new Error("Unexpected CLIP output format");
-  } catch (e) {
-    const msg = e instanceof Error ? e.message : String(e);
-    console.error(`[CLIP] Embedding extraction failed: ${msg}`);
-    return [];
   }
+
+  console.error(`[CLIP] All CLIP model attempts failed for: ${imageUrl.substring(0, 60)}...`);
+  return [];
 }
 
 /**

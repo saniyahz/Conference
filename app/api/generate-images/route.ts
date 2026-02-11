@@ -37,7 +37,7 @@ const replicate = new Replicate({
 
 // ─── CONFIG ──────────────────────────────────────────────────────────────
 
-const CANDIDATES_PER_ROUND = 2;
+const CANDIDATES_PER_ROUND = 3;
 const SEED_STRIDE = 29;
 // Bounded page concurrency. With sequential candidates + early-accept,
 // each page has ~1-2 active Replicate calls at a time. Running 2 pages
@@ -705,17 +705,18 @@ async function generateOnePage(
  *
  * prompt_strength controls how much SDXL overwrites the ENTIRE image:
  *   - 0.90+: nearly full regen → plate composition destroyed, identity drift
- *   - 0.82: character renders reliably, plate mostly preserved
- *   - 0.75: was too low — frequently produced no character (just background)
+ *   - 0.85: character renders reliably, plate mostly preserved, stronger identity
+ *   - 0.82: was sometimes too weak — character renders but with wrong species traits
+ *   - 0.75: too low — frequently produced no character (just background)
  *   - 0.65: TOO LOW — no character at all (just flowers/butterflies)
  *
- * Testing showed 0.75 fails on 60%+ of pages (space, moon, indoor scenes).
- * BLIP captions like "butterflies in a field" or "planets in space" with
- * no rhinoceros confirm the character isn't rendering at 0.75.
- * Increased to 0.82 base / 0.87 round 3 for reliable character rendering.
+ * Increased base from 0.82 → 0.85 to produce stronger character rendering.
+ * At 0.82 SDXL sometimes blends the character into the plate too much,
+ * producing ambiguous animals that BLIP misidentifies. At 0.85 the character
+ * identity prompt has more influence, producing more consistent rhinoceros.
  */
-const INPAINT_STRENGTH = 0.82;
-const ROUND3_STRENGTH = 0.87;
+const INPAINT_STRENGTH = 0.85;
+const ROUND3_STRENGTH = 0.90;
 
 async function runCandidateRound(
   plateUrl: string,
@@ -787,11 +788,14 @@ async function runCandidateRound(
 
     results.push(result);
 
-    // Early exit: if this candidate was accepted, skip remaining candidates
-    // in this round. Saves API calls and avoids rate limiting.
-    if (result.accepted) {
-      console.log(`[Page ${pageIndex + 1}] Early accept — skipping remaining candidates in this round`);
+    // Early exit: if this candidate was accepted WITH good quality, skip remaining.
+    // Only early-accept if score >= 8 (decent BLIP + CLIP + DINO signals).
+    // Lower-scored accepts might be marginal — worth trying more candidates.
+    if (result.accepted && result.score >= 8) {
+      console.log(`[Page ${pageIndex + 1}] Early accept (score=${result.score} >= 8) — skipping remaining candidates`);
       break;
+    } else if (result.accepted) {
+      console.log(`[Page ${pageIndex + 1}] Accepted but marginal (score=${result.score} < 8) — trying more candidates`);
     }
   }
 
@@ -829,10 +833,10 @@ export async function POST(request: NextRequest) {
     try {
       console.log(`\n[CLIP] Generating character reference image for anchor embedding...`);
       const refPrompt = [
-        `${identity.name} the cute cartoon ${identity.species}`,
-        identity.inpaintPrompt.split(",").slice(1, 3).join(",").trim(),
-        "simple white background, centered, full body, children's picture book illustration",
-        "no text, no other characters",
+        `${identity.name} the cute cartoon ${identity.species}, full body, standing`,
+        identity.inpaintPrompt.split(",").slice(1, 4).join(",").trim(),
+        "simple solid white background, centered in frame, children's picture book illustration",
+        "vibrant colors, bold outline, no text, no other characters, no scene, no props",
       ].filter(Boolean).join(", ");
       const refUrl = await generatePlate(replicate, refPrompt, storySeed + 99999, 99);
       if (refUrl) {

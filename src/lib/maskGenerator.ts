@@ -9,19 +9,24 @@ import sharp from "sharp";
  * STANDARD mask — generous full-body coverage with headroom and foot room.
  * Centered slightly below middle to leave sky/background visible above.
  *
+ * Increased from 74%×82% to 80%×86% coverage to ensure the character
+ * renders large enough to pass the bbox size check on the first attempt.
+ * The old smaller mask frequently produced characters with bbox < 8%,
+ * wasting API calls on escalation rounds.
+ *
  * For 1024×1024:
  *   cx = 512 (centered)
  *   cy = 614 (60% down — balanced headroom + foot room)
- *   rx = 379 (74% width coverage)
- *   ry = 420 (82% height coverage — head-to-toe with margins)
+ *   rx = 410 (80% width coverage)
+ *   ry = 440 (86% height coverage — head-to-toe with margins)
  */
 export async function makeRiriZoneMaskDataUrl(
   size: number = 1024
 ): Promise<string> {
   const cx = size * 0.50;
   const cy = size * 0.60;
-  const rx = size * 0.37;
-  const ry = size * 0.41;
+  const rx = size * 0.40;
+  const ry = size * 0.43;
 
   const svg = `
   <svg width="${size}" height="${size}" xmlns="http://www.w3.org/2000/svg">
@@ -37,18 +42,20 @@ export async function makeRiriZoneMaskDataUrl(
  * LARGE mask — for multi-char round 1 or when standard mask isn't enough.
  * Wider and taller to give the character more room in busy scenes.
  *
+ * Increased from 78%×86% to 84%×88% coverage.
+ *
  *   cx = 50% centered
- *   cy = 60% (balanced)
- *   rx = 39% (78% width coverage)
- *   ry = 43% (86% height coverage)
+ *   cy = 58% (slightly higher for more headroom)
+ *   rx = 42% (84% width coverage)
+ *   ry = 44% (88% height coverage)
  */
 export async function makeRiriZoneLargeMaskDataUrl(
   size: number = 1024
 ): Promise<string> {
   const cx = size * 0.50;
-  const cy = size * 0.60;
-  const rx = size * 0.39;
-  const ry = size * 0.43;
+  const cy = size * 0.58;
+  const rx = size * 0.42;
+  const ry = size * 0.44;
 
   const svg = `
   <svg width="${size}" height="${size}" xmlns="http://www.w3.org/2000/svg">
