@@ -9,11 +9,11 @@ import { detectRhinoceros, DetectionResult, DetectorModel } from "./objectDetect
  *
  *   Rule 1:  No humans (boy/girl/man/woman/person only)
  *   Rule 1b: No busy/crowded scenes (crowd/many/parade)
- *   Rule 2:  No wrong animal unless rhino confirmed by BLIP or DINO
- *            (CLIP alone cannot rescue — style similarity ≠ species)
+ *   Rule 2:  No wrong animal (elephant/hippo/cow/pig etc.) — ALWAYS reject,
+ *            even if rhino is also confirmed (two animals = wrong image)
  *   Rule 3:  Rhinoceros confirmed by at least one signal
  *   Rule 4:  Character not tiny/background (bbox >= 15% or composition cue)
- *   Rule 5C: Key objects — soft penalty (BLIP often omits objects after inpaint)
+ *   Rule 5C: Key objects — HARD REJECT if no required inanimate objects found
  *   Rule 5:  Must-include enforcement (at least N items visible)
  *
  * Selection: run ALL candidates per round, pick BEST accepted (not first).
@@ -66,13 +66,11 @@ const BLIP_VERSION =
   "2e1dddc8621f72155f24cf2e0adbde548458d3cab9f00c0139eea840d0ac4746" as const;
 
 const WRONG_ANIMALS = [
-  // NOTE: "elephant" intentionally EXCLUDED — BLIP frequently misidentifies
-  // cartoon rhinoceros as elephant (similar body shape). In our plate→inpaint
-  // pipeline, we specifically inpaint a rhino — if BLIP says "elephant",
-  // it's looking at our inpainted character, not a real elephant.
-  //
-  // NOTE: "hippo"/"hippopotamus" intentionally EXCLUDED — BLIP frequently
-  // misidentifies rhinoceros as hippo because they look similar.
+  // ALL wrong animals — including elephant/hippo which BLIP sometimes uses
+  // to misidentify rhinos. If BLIP can't tell it's a rhino, the image isn't
+  // good enough. If BLIP says "elephant AND rhino", there are two animals
+  // in the image which is wrong. Either way: reject.
+  "elephant", "hippo", "hippopotamus",
   "cat", "dog", "bear", "lion", "tiger", "monkey",
   "rabbit", "horse", "cow", "giraffe", "zebra",
   "camel", "sheep", "goat", "fox", "deer",
@@ -340,7 +338,7 @@ function countMustHits(
  *          (CLIP alone cannot rescue — style similarity ≠ species ID)
  * Rule 3:  Rhinoceros confirmed by at least one signal
  * Rule 4:  Character not tiny/background
- * Rule 5C: Key objects — soft penalty (NOT hard reject)
+ * Rule 5C: Key objects — HARD REJECT if no required objects found
  * Rule 5:  Must-include enforcement (at least N items)
  */
 export function acceptCandidate(
@@ -362,8 +360,8 @@ export function acceptCandidate(
   const clipConfirmsRiri = !!(clipResult && clipResult.similarity >= 0.82);
 
   // STRICT rhino confirmation: BLIP must explicitly say "rhino" or DINO must detect it.
-  // Hippo/elephant are NO LONGER accepted as substitutes — they let wrong animals through.
-  // CLIP alone also cannot confirm (measures style, not species).
+  // Elephant/hippo are in WRONG_ANIMALS — they are always rejected by Rule 2.
+  // CLIP alone cannot confirm (measures style, not species).
   const rhinoConfirmedByVision = blipHasRhino || dinoHasRhino;
   const rhinoConfirmed = rhinoConfirmedByVision;
 
@@ -397,13 +395,16 @@ export function acceptCandidate(
     return { accepted: false, rejectReason: `RULE 1d: CROPPED/CLOSE-UP detected ("${cropMatch}")` };
   }
 
-  // ── RULE 2: Wrong animal gate (tightened) ──
-  // If BLIP says wrong animal, CLIP alone cannot save it — need BLIP or DINO rhino.
+  // ── RULE 2: Wrong animal gate — ALWAYS reject ──
+  // ANY wrong animal in caption = reject, even if rhino is also confirmed.
+  // "elephant and a rhino" means two animals visible (wrong image).
+  // "elephant" alone means BLIP can't identify our rhino (bad inpaint).
+  // Either way: reject and regenerate.
   const wrongAnimal = WRONG_ANIMALS.find((a) => c.includes(a));
-  if (wrongAnimal && !rhinoConfirmedByVision) {
+  if (wrongAnimal) {
     return {
       accepted: false,
-      rejectReason: `RULE 2: WRONG ANIMAL "${wrongAnimal}" and no BLIP/DINO rhino confirmation`,
+      rejectReason: `RULE 2: WRONG ANIMAL "${wrongAnimal}" detected in caption (always reject)`,
     };
   }
 
@@ -472,21 +473,21 @@ export function acceptCandidate(
     // Bonus is applied in scoreCaption(), not here
   }
 
-  // Gate C: Key object check — SOFT PENALTY (not hard reject).
-  // BLIP captions are only 1 sentence. They often describe the main character
-  // but omit secondary objects (rocket ship, rainbow, etc.) even when visible.
-  // Inpainting at any useful strength also destroys plate content near the mask.
-  // Hard-rejecting kills good images where the CHARACTER is correct.
-  // Instead: log the miss, penalize in scoreCaption(), but still accept.
+  // Gate C: Key object check — HARD REJECT if none found.
+  // Required objects are INANIMATE (rocket ship, rainbow, river) that should
+  // survive inpainting. If BLIP can't see ANY of them, the image doesn't
+  // match the page description. Reject and regenerate.
   const keyObjects = opts?.keyObjects ?? [];
   if (keyObjects.length > 0) {
     const { hits: objHits, hitTerms: objHitTerms, missedTerms: objMissed } = countMustHits(c, keyObjects);
     if (objHits > 0) {
       console.log(`[Rule 5C] Key objects found: ${objHitTerms.join(", ")} (${objHits}/${keyObjects.length}) — bonus applied`);
     } else {
-      console.log(`[Rule 5C] No key objects in caption (wanted [${keyObjects.join(", ")}]) — penalty applied (NOT rejecting)`);
+      return {
+        accepted: false,
+        rejectReason: `RULE 5C: MISSING KEY OBJECTS — wanted [${keyObjects.join(", ")}], none found in caption`,
+      };
     }
-    // Actual score impact applied in scoreCaption()
   }
 
   // Legacy must-include check (backward compat, softer)

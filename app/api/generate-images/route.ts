@@ -597,12 +597,12 @@ async function generateOnePage(
  *   - 0.90: moderate override → different look on dark scenes
  *   - 0.95: full regeneration → completely different character
  *
- * 0.85 is the sweet spot: enough to render a recognizable rhinoceros,
- * but preserves enough plate for scene context (rockets, forests, etc).
- * Round 3 uses 0.88 — slightly more aggressive for difficult scenes.
+ * 0.83 balances character rendering with plate preservation.
+ * Lower than 0.85 → rockets, rivers, and other plate objects survive inpainting.
+ * Round 3 uses 0.86 — slightly more aggressive for difficult scenes.
  */
-const INPAINT_STRENGTH = 0.85;
-const ROUND3_STRENGTH = 0.88;
+const INPAINT_STRENGTH = 0.83;
+const ROUND3_STRENGTH = 0.86;
 
 async function runCandidateRound(
   plateUrl: string,
