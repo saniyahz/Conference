@@ -403,10 +403,13 @@ export function acceptCandidate(
   }
 
   // ── RULE 2: Wrong animal gate ──
-  // Wrong animal in caption = reject, UNLESS the animal is an expected
-  // secondary actor for this page (lions, dolphins, rabbits in the scene card).
-  // "elephant and a rhino" = reject (elephant is never a valid secondary actor).
-  // "a rhinoceros and a lion in a forest" = accept (if lion is an allowed animal).
+  // Wrong animal in caption = reject, UNLESS:
+  //   a) The animal is an expected secondary actor (lions, dolphins, rabbits), OR
+  //   b) GroundingDINO strongly confirms rhinoceros (conf >= 0.7, bbox >= 15%).
+  //      BLIP frequently misidentifies cartoon rhinoceros as "giraffe", "cow",
+  //      "cat", "donkey", "pig", etc. When DINO says "yes, rhinoceros at 85%
+  //      confidence", the "wrong animal" in BLIP's caption is just BLIP being
+  //      wrong about the species — not a second animal in the image.
   const allowedList = (opts?.allowedAnimals ?? []).map(a => a.toLowerCase());
   const allowedSet = new Set(allowedList);
   // Expand allowed animals to include singular/plural variants
@@ -414,12 +417,21 @@ export function acceptCandidate(
     if (a.endsWith("s")) allowedSet.add(a.slice(0, -1));  // "lions" → "lion"
     else allowedSet.add(a + "s");  // "lion" → "lions"
   }
+  const dinoStrongConfirm = !!(detectionResult?.detected
+    && detectionResult.confidence >= 0.7
+    && detectionResult.bestBboxArea >= 0.15);
   const wrongAnimal = WRONG_ANIMALS.find((a) => c.includes(a) && !allowedSet.has(a));
   if (wrongAnimal) {
-    return {
-      accepted: false,
-      rejectReason: `RULE 2: WRONG ANIMAL "${wrongAnimal}" detected in caption (not an expected actor)`,
-    };
+    if (dinoStrongConfirm) {
+      // DINO strongly confirms rhinoceros — BLIP is misidentifying the rhino.
+      // Don't reject; the "wrong animal" is just BLIP's bad species label.
+      console.log(`[Rule 2] BLIP says "${wrongAnimal}" but DINO confirms rhinoceros (conf=${detectionResult!.confidence.toFixed(2)}, bbox=${(detectionResult!.bestBboxArea * 100).toFixed(1)}%) — OVERRIDING BLIP`);
+    } else {
+      return {
+        accepted: false,
+        rejectReason: `RULE 2: WRONG ANIMAL "${wrongAnimal}" detected in caption (not an expected actor)`,
+      };
+    }
   }
 
   // ── RULE 3: Rhinoceros confirmed by at least one signal ──
@@ -505,10 +517,22 @@ export function acceptCandidate(
   }
 
   // Legacy must-include check (backward compat, softer)
+  // When DINO strongly confirms rhinoceros, count "rhinoceros"/"riri" as found
+  // even if BLIP didn't say it. BLIP misidentifies cartoon rhinos ~70% of the time.
   const mustInclude = opts?.mustInclude ?? [];
   const req = Math.max(0, opts?.requireMustIncludeCount ?? 0);
   if (req > 0 && mustInclude.length > 0) {
-    const { hits, hitTerms, missedTerms } = countMustHits(c, mustInclude);
+    let { hits, hitTerms, missedTerms } = countMustHits(c, mustInclude);
+    // DINO override: if DINO found rhinoceros, credit any rhino/riri must-include items
+    if (dinoHasRhino && missedTerms.length > 0) {
+      const rhinoTerms = missedTerms.filter(t => /rhino|riri/i.test(t));
+      if (rhinoTerms.length > 0) {
+        hits += rhinoTerms.length;
+        hitTerms = [...hitTerms, ...rhinoTerms.map(t => `${t} (DINO)`)];
+        missedTerms = missedTerms.filter(t => !/rhino|riri/i.test(t));
+        console.log(`[Rule 5] DINO override: counted ${rhinoTerms.join(", ")} as found via detection`);
+      }
+    }
     if (hits < req) {
       return {
         accepted: false,

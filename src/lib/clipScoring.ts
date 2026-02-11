@@ -44,8 +44,10 @@ export async function getClipEmbedding(
   imageUrl: string
 ): Promise<number[]> {
   try {
+    // Use versionless call (latest deployment) — pinned versions have returned
+    // identical embeddings for all inputs (similarity always 1.000).
     const output = await replicate.run(
-      `andreasjansson/clip-features:${CLIP_FEATURES_VERSION}`,
+      "andreasjansson/clip-features",
       {
         input: {
           image: imageUrl,
