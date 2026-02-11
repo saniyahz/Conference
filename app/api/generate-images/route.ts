@@ -591,7 +591,7 @@ async function generateOnePage(
   const round1 = await runCandidateRound(
     plateUrl, round1Mask, seed, CANDIDATES_PER_ROUND, pageIndex,
     scoreOpts, inpaintMustInclude, sceneSetting, identity, sceneCategory,
-    false, hasSecondaryActors
+    false, hasSecondaryActors, cardObjects
   );
   const accepted1 = round1.filter((r) => r.accepted).sort((a, b) => b.score - a.score);
   if (accepted1.length > 0) {
@@ -605,7 +605,7 @@ async function generateOnePage(
     const round2 = await runCandidateRound(
       plateUrl, round2Mask, seed + CANDIDATES_PER_ROUND * SEED_STRIDE, CANDIDATES_PER_ROUND, pageIndex,
       scoreOpts, inpaintMustInclude, sceneSetting, identity, sceneCategory,
-      false, hasSecondaryActors
+      false, hasSecondaryActors, cardObjects
     );
     const accepted2 = round2.filter((r) => r.accepted).sort((a, b) => b.score - a.score);
     if (accepted2.length > 0) {
@@ -619,7 +619,7 @@ async function generateOnePage(
     console.log(`[Page ${pageIndex + 1}] Round 3: EXTRA-LARGE mask + high strength...`);
     const round3 = await runCandidateRound(
       plateUrl, extraLargeMask, seed + CANDIDATES_PER_ROUND * SEED_STRIDE * 2, CANDIDATES_PER_ROUND, pageIndex,
-      scoreOpts, inpaintMustInclude, sceneSetting, identity, sceneCategory, true, hasSecondaryActors
+      scoreOpts, inpaintMustInclude, sceneSetting, identity, sceneCategory, true, hasSecondaryActors, cardObjects
     );
     const accepted3 = round3.filter((r) => r.accepted).sort((a, b) => b.score - a.score);
     if (accepted3.length > 0) {
@@ -630,7 +630,6 @@ async function generateOnePage(
 
   // Solo plate fallback: secondary actors (dolphins, lions) in the plate
   // compete with the rhino for visual dominance.
-  // BLIP can't see the rhino through the other animals → most rejected.
   // Fix: regenerate a SOLO plate (no secondary actors) and try again.
   if (hasSecondaryActors) {
     console.log(`[Page ${pageIndex + 1}] SOLO PLATE FALLBACK (no secondary actors)...`);
@@ -643,7 +642,7 @@ async function generateOnePage(
         soloPlateUrl, extraLargeMask,
         seed + CANDIDATES_PER_ROUND * SEED_STRIDE * 3, CANDIDATES_PER_ROUND, pageIndex,
         scoreOpts, [...identity.mustInclude], sceneSetting, identity, sceneCategory,
-        true, false  // forceHighStrength=true, isMultiChar=false
+        true, false, nonAnimalObjects  // solo: only non-animal objects
       );
       const acceptedSolo = soloRound.filter((r) => r.accepted).sort((a, b) => b.score - a.score);
       if (acceptedSolo.length > 0) {
@@ -653,10 +652,37 @@ async function generateOnePage(
     }
   }
 
-  // No candidate accepted → return EMPTY
+  // TXT2IMG FALLBACK: If plate→inpaint pipeline failed completely,
+  // generate a full scene with txt2img (character + objects + setting in one prompt).
+  // This sacrifices identity consistency but guarantees SOMETHING on the page.
+  console.log(`[Page ${pageIndex + 1}] TXT2IMG FALLBACK: generating full scene...`);
+  const txt2imgPrompt = [
+    `${identity.name} the cute cartoon ${identity.species}`,
+    identity.inpaintPrompt.split(",").slice(1, 4).join(",").trim(),
+    cardObjects.length > 0 ? cardObjects.join(", ") : "",
+    sceneSetting,
+    "children's picture book illustration, vibrant colors, soft shading, no text",
+  ].filter(Boolean).join(", ");
+  console.log(`[Page ${pageIndex + 1}] Txt2img prompt: "${txt2imgPrompt.substring(0, 120)}..."`);
+
+  const txt2imgUrl = await generatePlate(replicate, txt2imgPrompt, seed + 9000, pageIndex);
+  if (txt2imgUrl) {
+    // Score the txt2img result — it might have wrong animals or no rhino
+    const txt2imgResult = await scoreCandidate(replicate, txt2imgUrl, scoreOpts);
+    if (txt2imgResult.accepted) {
+      console.log(`[Page ${pageIndex + 1}] TXT2IMG FALLBACK ACCEPTED: score=${txt2imgResult.score}`);
+      return txt2imgResult;
+    }
+    console.log(`[Page ${pageIndex + 1}] Txt2img fallback rejected: ${txt2imgResult.rejectReason}`);
+    // Last resort: return the txt2img image anyway (better than empty)
+    console.warn(`[Page ${pageIndex + 1}] Using txt2img image as last resort (may not match character)`);
+    return { ...txt2imgResult, url: txt2imgUrl, accepted: false };
+  }
+
+  // Truly nothing worked
   const totalTries = hasSecondaryActors
-    ? (multiCharMaxRounds * CANDIDATES_PER_ROUND + CANDIDATES_PER_ROUND)
-    : (3 * CANDIDATES_PER_ROUND);
+    ? (multiCharMaxRounds * CANDIDATES_PER_ROUND + CANDIDATES_PER_ROUND + 1)
+    : (3 * CANDIDATES_PER_ROUND + 1);
   console.warn(`[Page ${pageIndex + 1}] WARNING: No candidate accepted after ${totalTries} tries. Returning EMPTY.`);
   return { url: "", accepted: false, caption: "", score: -999 };
 }
@@ -690,10 +716,34 @@ async function runCandidateRound(
   identity: CharacterIdentity,
   sceneCategory: string = "",
   forceHighStrength: boolean = false,
-  isMultiChar: boolean = false
+  isMultiChar: boolean = false,
+  sceneObjects: string[] = []
 ): Promise<CandidateResult[]> {
   // FIXED strength for consistency: same character appearance every page.
   const strength = forceHighStrength ? ROUND3_STRENGTH : INPAINT_STRENGTH;
+
+  // Build SCENE-AWARE inpaint prompt: character identity + scene objects + setting.
+  // The identity-only prompt causes SDXL to ignore scene objects in the plate,
+  // producing images where the character is correct but rockets/dolphins/etc. vanish.
+  // Adding scene objects and a short setting hint keeps both character AND scene.
+  let sceneAwarePrompt = identity.inpaintPrompt;
+  if (sceneObjects.length > 0) {
+    // Filter out items that are character-identity (already in prompt)
+    const identityLower = new Set(identity.mustInclude.map(s => s.toLowerCase()));
+    const objectsForPrompt = sceneObjects
+      .filter(obj => !identityLower.has(obj.toLowerCase()))
+      .slice(0, 3);  // Max 3 objects to stay within ~77 token limit
+    if (objectsForPrompt.length > 0) {
+      sceneAwarePrompt += `, ${objectsForPrompt.join(" and ")} visible in scene`;
+    }
+  }
+  // Add short setting context
+  if (settingContext && settingContext !== "colorful storybook landscape with bright green grass and blue sky") {
+    // Shorten setting to key words only
+    const shortSetting = settingContext.split(",")[0].trim().substring(0, 40);
+    sceneAwarePrompt += `, ${shortSetting}`;
+  }
+  console.log(`[Page ${pageIndex + 1}] Scene-aware inpaint: "${sceneAwarePrompt.substring(0, 140)}..."`);
 
   // SERIALIZE candidates (one at a time) to avoid Replicate 429 rate limiting.
   // Low-credit accounts get burst=1 — parallel requests all get throttled.
@@ -705,7 +755,7 @@ async function runCandidateRound(
     console.log(`[Page ${pageIndex + 1}] Candidate ${i + 1}/${count} seed=${seed} [INPAINT strength=${strength}]`);
 
     const url = await generateInpaintCharacter(
-      replicate, identity.inpaintPrompt, plateUrl, maskDataUrl,
+      replicate, sceneAwarePrompt, plateUrl, maskDataUrl,
       seed, pageIndex, settingContext, mustInclude, undefined, strength
     );
 

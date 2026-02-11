@@ -13,7 +13,7 @@ import { detectRhinoceros, DetectionResult, DetectorModel } from "./objectDetect
  *            even if rhino is also confirmed (two animals = wrong image)
  *   Rule 3:  Rhinoceros confirmed by at least one signal
  *   Rule 4:  Character not tiny/background (bbox >= 15% or composition cue)
- *   Rule 5C: Key objects — soft penalty (BLIP often omits objects after inpaint)
+ *   Rule 5C: Key objects — hard reject (objects now in inpaint prompt too)
  *   Rule 5:  Must-include enforcement (at least N items visible)
  *
  * Selection: run ALL candidates per round, pick BEST accepted (not first).
@@ -334,11 +334,11 @@ function countMustHits(
  *
  * Rule 1:  No humans (boy/girl/man/woman/person)
  * Rule 1b: No busy/crowded scenes (kids-book = simple)
- * Rule 2:  No wrong animal unless rhino confirmed by BLIP or DINO
- *          (CLIP alone cannot rescue — style similarity ≠ species ID)
+ * Rule 2:  No wrong animal — ALWAYS reject, even if rhino also confirmed
+ *          (two animals visible = wrong image)
  * Rule 3:  Rhinoceros confirmed by at least one signal
  * Rule 4:  Character not tiny/background
- * Rule 5C: Key objects — soft penalty (BLIP often omits objects)
+ * Rule 5C: Key objects — hard reject (objects also in inpaint prompt)
  * Rule 5:  Must-include enforcement (at least N items)
  */
 export function acceptCandidate(
@@ -473,20 +473,22 @@ export function acceptCandidate(
     // Bonus is applied in scoreCaption(), not here
   }
 
-  // Gate C: Key object check — SOFT PENALTY (not hard reject).
-  // BLIP captions are only 1 sentence. They often describe the main character
-  // but omit secondary objects (rocket ship, rainbow) even when visible.
-  // Hard-rejecting causes too many false rejects and empty pages.
-  // Instead: log the miss, penalize in scoreCaption(), but still accept.
+  // Gate C: Key object check — HARD REJECT if NO required objects found.
+  // Required objects (rocket ship, rainbow, etc.) are now also included in the
+  // inpaint prompt, so SDXL should render them in the mask region.
+  // If BLIP can't see ANY of them, the image is missing critical scene elements.
   const keyObjects = opts?.keyObjects ?? [];
   if (keyObjects.length > 0) {
     const { hits: objHits, hitTerms: objHitTerms, missedTerms: objMissed } = countMustHits(c, keyObjects);
     if (objHits > 0) {
       console.log(`[Rule 5C] Key objects found: ${objHitTerms.join(", ")} (${objHits}/${keyObjects.length}) — bonus applied`);
     } else {
-      console.log(`[Rule 5C] No key objects in caption (wanted [${keyObjects.join(", ")}]) — penalty applied (NOT rejecting)`);
+      console.log(`[Rule 5C] REJECT: No key objects in caption (wanted [${keyObjects.join(", ")}])`);
+      return {
+        accepted: false,
+        rejectReason: `RULE 5C: MISSING KEY OBJECTS (wanted [${keyObjects.join(", ")}], found none)`,
+      };
     }
-    // Actual score impact applied in scoreCaption()
   }
 
   // Legacy must-include check (backward compat, softer)

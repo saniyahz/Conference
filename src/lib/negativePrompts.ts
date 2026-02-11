@@ -129,8 +129,10 @@ export function buildHardBanNegative(): string {
     // Near-species confusions — SDXL frequently snaps to these instead of rhinoceros.
     // MUST be first in the negative (highest SDXL attention = first tokens).
     "elephant", "baby elephant", "hippo", "hippopotamus",
-    // Accessories — "hat" stripped by sanitizer because positive says "no hat"
-    "hat", "party hat", "top hat", "birthday hat",
+    // Accessories — only SPECIFIC bad hats. Generic "hat" removed because
+    // the character wears a "shiny silver helmet" and SDXL treats "hat" in
+    // negative as suppressing ALL headwear including helmets.
+    "party hat", "top hat", "birthday hat", "santa hat", "wizard hat",
     "crown", "cape", "costume",
     // Clothing — SDXL invents outfits (orange jacket, scarf, dress)
     "clothing", "jacket", "shirt", "dress", "outfit", "scarf",
