@@ -39,6 +39,11 @@ const replicate = new Replicate({
 
 const CANDIDATES_PER_ROUND = 3;
 const SEED_STRIDE = 29;
+// Minimum score to accept from rounds 1-2. If the best accepted candidate
+// scores below this, continue to the next round for better options.
+// Without this, score=2-4 images (BLIP can't even identify the animal)
+// get returned from round 1, causing visible character inconsistency.
+const MIN_ROUND_ACCEPT = 6;
 // Bounded page concurrency. With sequential candidates + early-accept,
 // each page has ~1-2 active Replicate calls at a time. Running 2 pages
 // concurrently means ~2-4 simultaneous requests — well within rate limits.
@@ -599,6 +604,20 @@ async function generateOnePage(
     console.log(`[Page ${pageIndex + 1}] LARGE secondary animals detected — will fast-track to solo plate after 1 round`);
   }
 
+  // Track the best accepted candidate across ALL rounds.
+  // Rounds 1-2 require score >= MIN_ROUND_ACCEPT to return early.
+  // If the best is below that threshold, continue to the next round.
+  // After all rounds, return the overall best (even if marginal).
+  let overallBest: CandidateResult | null = null;
+
+  function pickBest(candidates: CandidateResult[], current: CandidateResult | null): CandidateResult | null {
+    const accepted = candidates.filter((r) => r.accepted).sort((a, b) => b.score - a.score);
+    if (accepted.length > 0 && (!current || accepted[0].score > current.score)) {
+      return accepted[0];
+    }
+    return current;
+  }
+
   // Round 1
   console.log(`[Page ${pageIndex + 1}] Round 1: ${CANDIDATES_PER_ROUND} candidates${hasSecondaryActors ? " (multi-char: escalated mask + high strength)" : ""}...`);
   const round1 = await runCandidateRound(
@@ -606,10 +625,13 @@ async function generateOnePage(
     scoreOpts, inpaintMustInclude, sceneSetting, identity, sceneCategory,
     false, hasSecondaryActors, cardObjects
   );
-  const accepted1 = round1.filter((r) => r.accepted).sort((a, b) => b.score - a.score);
-  if (accepted1.length > 0) {
-    console.log(`[Page ${pageIndex + 1}] ACCEPTED from round 1: score=${accepted1[0].score}`);
-    return accepted1[0];
+  overallBest = pickBest(round1, overallBest);
+  if (overallBest && overallBest.score >= MIN_ROUND_ACCEPT) {
+    console.log(`[Page ${pageIndex + 1}] ACCEPTED from round 1: score=${overallBest.score}`);
+    return overallBest;
+  }
+  if (overallBest) {
+    console.log(`[Page ${pageIndex + 1}] Round 1 best score=${overallBest.score} < ${MIN_ROUND_ACCEPT} — continuing for better match`);
   }
 
   if (multiCharMaxRounds >= 2) {
@@ -620,31 +642,35 @@ async function generateOnePage(
       scoreOpts, inpaintMustInclude, sceneSetting, identity, sceneCategory,
       false, hasSecondaryActors, cardObjects
     );
-    const accepted2 = round2.filter((r) => r.accepted).sort((a, b) => b.score - a.score);
-    if (accepted2.length > 0) {
-      console.log(`[Page ${pageIndex + 1}] ACCEPTED from round 2: score=${accepted2[0].score}`);
-      return accepted2[0];
+    overallBest = pickBest(round2, overallBest);
+    if (overallBest && overallBest.score >= MIN_ROUND_ACCEPT) {
+      console.log(`[Page ${pageIndex + 1}] ACCEPTED from round 2: score=${overallBest.score}`);
+      return overallBest;
+    }
+    if (overallBest) {
+      console.log(`[Page ${pageIndex + 1}] Round 2 best score=${overallBest.score} < ${MIN_ROUND_ACCEPT} — continuing for better match`);
     }
   }
 
   if (multiCharMaxRounds >= 3) {
-    // Round 3: extra-large mask + high strength
+    // Round 3: extra-large mask + high strength — accept anything
     console.log(`[Page ${pageIndex + 1}] Round 3: EXTRA-LARGE mask + high strength...`);
     const round3 = await runCandidateRound(
       plateUrl, extraLargeMask, seed + CANDIDATES_PER_ROUND * SEED_STRIDE * 2, CANDIDATES_PER_ROUND, pageIndex,
       scoreOpts, inpaintMustInclude, sceneSetting, identity, sceneCategory, true, hasSecondaryActors, cardObjects
     );
-    const accepted3 = round3.filter((r) => r.accepted).sort((a, b) => b.score - a.score);
-    if (accepted3.length > 0) {
-      console.log(`[Page ${pageIndex + 1}] ACCEPTED from round 3: score=${accepted3[0].score}`);
-      return accepted3[0];
+    overallBest = pickBest(round3, overallBest);
+    if (overallBest) {
+      console.log(`[Page ${pageIndex + 1}] ACCEPTED from round 3: score=${overallBest.score}`);
+      return overallBest;
     }
   }
 
   // Solo plate fallback: secondary actors (dolphins, lions) in the plate
   // compete with the rhino for visual dominance.
   // Fix: regenerate a SOLO plate (no secondary actors) and try again.
-  if (hasSecondaryActors) {
+  // Also try this when earlier rounds only found marginal accepts.
+  if (hasSecondaryActors && (!overallBest || overallBest.score < MIN_ROUND_ACCEPT)) {
     console.log(`[Page ${pageIndex + 1}] SOLO PLATE FALLBACK (no secondary actors)...`);
     const soloPlatePrompt = buildPlatePrompt(sceneSetting, styleHints, nonAnimalObjects, identity.species, false);
     console.log(`[Page ${pageIndex + 1}] Solo plate prompt: "${soloPlatePrompt.substring(0, 100)}..."`);
@@ -657,12 +683,18 @@ async function generateOnePage(
         scoreOpts, [...identity.mustInclude], sceneSetting, identity, sceneCategory,
         true, false, nonAnimalObjects  // solo: only non-animal objects
       );
-      const acceptedSolo = soloRound.filter((r) => r.accepted).sort((a, b) => b.score - a.score);
-      if (acceptedSolo.length > 0) {
-        console.log(`[Page ${pageIndex + 1}] ACCEPTED from solo fallback: score=${acceptedSolo[0].score}`);
-        return acceptedSolo[0];
+      overallBest = pickBest(soloRound, overallBest);
+      if (overallBest && overallBest.score >= MIN_ROUND_ACCEPT) {
+        console.log(`[Page ${pageIndex + 1}] ACCEPTED from solo fallback: score=${overallBest.score}`);
+        return overallBest;
       }
     }
+  }
+
+  // Return best from any round if we have one (even below MIN_ROUND_ACCEPT)
+  if (overallBest) {
+    console.log(`[Page ${pageIndex + 1}] Returning best across all rounds: score=${overallBest.score}`);
+    return overallBest;
   }
 
   // TXT2IMG FALLBACK: If plate→inpaint pipeline failed completely,
@@ -788,14 +820,15 @@ async function runCandidateRound(
 
     results.push(result);
 
-    // Early exit: if this candidate was accepted WITH good quality, skip remaining.
-    // Only early-accept if score >= 8 (decent BLIP + CLIP + DINO signals).
-    // Lower-scored accepts might be marginal — worth trying more candidates.
-    if (result.accepted && result.score >= 8) {
-      console.log(`[Page ${pageIndex + 1}] Early accept (score=${result.score} >= 8) — skipping remaining candidates`);
+    // Early exit: if this candidate was accepted WITH strong quality, skip remaining.
+    // Raised from 8 → 10: with increased CLIP weights, a score of 10+ means
+    // BLIP confirmed rhino AND CLIP shows good visual similarity to reference.
+    // Lower-scored accepts are marginal — worth trying more candidates.
+    if (result.accepted && result.score >= 10) {
+      console.log(`[Page ${pageIndex + 1}] Early accept (score=${result.score} >= 10) — skipping remaining candidates`);
       break;
     } else if (result.accepted) {
-      console.log(`[Page ${pageIndex + 1}] Accepted but marginal (score=${result.score} < 8) — trying more candidates`);
+      console.log(`[Page ${pageIndex + 1}] Accepted but marginal (score=${result.score} < 10) — trying more candidates`);
     }
   }
 
