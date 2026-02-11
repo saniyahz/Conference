@@ -254,7 +254,7 @@ export function deriveSettingKeywordsFromText(settingText: string): string[] {
 }
 
 /** Minimum bbox area (fraction of frame) to count as foreground character */
-const MIN_BBOX_AREA = 0.15;
+const MIN_BBOX_AREA = 0.08;
 
 function norm(s: string): string {
   return s.toLowerCase().replace(/[^\w\s]/g, " ").replace(/\s+/g, " ").trim();
@@ -361,7 +361,7 @@ export function acceptCandidate(
   const blipHasRhino = /\brhinos?\b|\brhinoceros(es)?\b/.test(c);
   const blipHasHippo = /\bhippos?\b|\bhippopotamus(es)?\b/.test(c);
   const blipHasElephant = /\belephants?\b/.test(c);
-  const dinoHasRhino = !!(detectionResult?.detected && detectionResult.confidence >= 0.5);
+  const dinoHasRhino = !!(detectionResult?.detected && detectionResult.confidence >= 0.45);
   const clipConfirmsRiri = !!(clipResult && clipResult.similarity >= 0.82);
 
   // Rhino confirmation: BLIP says "rhino", DINO detects it, OR CLIP strongly
@@ -405,11 +405,12 @@ export function acceptCandidate(
   // ── RULE 2: Wrong animal gate ──
   // Wrong animal in caption = reject, UNLESS:
   //   a) The animal is an expected secondary actor (lions, dolphins, rabbits), OR
-  //   b) GroundingDINO strongly confirms rhinoceros (conf >= 0.7, bbox >= 15%).
+  //   b) GroundingDINO detects rhinoceros (conf >= 0.45).
   //      BLIP frequently misidentifies cartoon rhinoceros as "giraffe", "cow",
-  //      "cat", "donkey", "pig", etc. When DINO says "yes, rhinoceros at 85%
-  //      confidence", the "wrong animal" in BLIP's caption is just BLIP being
-  //      wrong about the species — not a second animal in the image.
+  //      "cat", "donkey", "pig", "bear", "fish", etc. (~70% of the time).
+  //      When DINO says "rhinoceros detected", the wrong animal label is just
+  //      BLIP being wrong — not a second animal in the image. No bbox requirement
+  //      here; size is handled separately by Rule 4.
   const allowedList = (opts?.allowedAnimals ?? []).map(a => a.toLowerCase());
   const allowedSet = new Set(allowedList);
   // Expand allowed animals to include singular/plural variants
@@ -417,14 +418,12 @@ export function acceptCandidate(
     if (a.endsWith("s")) allowedSet.add(a.slice(0, -1));  // "lions" → "lion"
     else allowedSet.add(a + "s");  // "lion" → "lions"
   }
-  const dinoStrongConfirm = !!(detectionResult?.detected
-    && detectionResult.confidence >= 0.7
-    && detectionResult.bestBboxArea >= 0.15);
+  const dinoConfirmsRhino = !!(detectionResult?.detected
+    && detectionResult.confidence >= 0.45);
   const wrongAnimal = WRONG_ANIMALS.find((a) => c.includes(a) && !allowedSet.has(a));
   if (wrongAnimal) {
-    if (dinoStrongConfirm) {
-      // DINO strongly confirms rhinoceros — BLIP is misidentifying the rhino.
-      // Don't reject; the "wrong animal" is just BLIP's bad species label.
+    if (dinoConfirmsRhino) {
+      // DINO confirms rhinoceros — BLIP is misidentifying the rhino.
       console.log(`[Rule 2] BLIP says "${wrongAnimal}" but DINO confirms rhinoceros (conf=${detectionResult!.confidence.toFixed(2)}, bbox=${(detectionResult!.bestBboxArea * 100).toFixed(1)}%) — OVERRIDING BLIP`);
     } else {
       return {

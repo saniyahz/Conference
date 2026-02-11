@@ -24,7 +24,7 @@ import Replicate from "replicate";
  */
 
 const CLIP_FEATURES_VERSION =
-  "71addf5a5e7c400e091f33ef8ae1c40d72a25966897d05ebe36a7edb06a86a2c" as const;
+  "75b33f253f7714a281ad3e9b28f63e3232d583716ef6718f2e46641077ea040a" as const;
 
 export interface ClipResult {
   similarity: number;
@@ -44,13 +44,14 @@ export async function getClipEmbedding(
   imageUrl: string
 ): Promise<number[]> {
   try {
-    // Use versionless call (latest deployment) — pinned versions have returned
-    // identical embeddings for all inputs (similarity always 1.000).
+    // andreasjansson/clip-features is a community model — versionless calls
+    // return 404. Must use pinned version. Input param is "inputs" (not "image").
+    // Version 75b33f25 returns distinct embeddings; 71addf5a returned identical ones.
     const output = await replicate.run(
-      "andreasjansson/clip-features",
+      `andreasjansson/clip-features:${CLIP_FEATURES_VERSION}`,
       {
         input: {
-          image: imageUrl,
+          inputs: imageUrl,
         },
       }
     );
