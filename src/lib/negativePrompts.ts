@@ -129,11 +129,14 @@ export function buildHardBanNegative(): string {
     // Accessories — "hat" stripped by sanitizer because positive says "no hat"
     "hat", "party hat", "top hat", "birthday hat",
     "crown", "cape", "costume",
+    // Clothing — SDXL invents outfits (orange jacket, scarf, dress)
+    "clothing", "jacket", "shirt", "dress", "outfit", "scarf",
     // Horn drift — "unicorn horn" stripped because positive says "not unicorn horn"
-    "unicorn horn", "extra horn", "long horn", "spikes",
+    "unicorn horn", "extra horn", "long horn",
+    // Duplicate rhinos — must be in hard bans (not past 77-token window)
+    "multiple rhinos", "many animals", "duplicate",
     // Crop — always enforced
     "cropped", "cut off", "out of frame", "close-up",
-    "zoomed in", "headshot", "portrait",
     "partial body", "missing legs", "missing feet",
     // Text — "text" stripped because positive says "no text"
     "text", "watermark",

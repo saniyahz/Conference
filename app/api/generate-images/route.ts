@@ -590,11 +590,19 @@ async function generateOnePage(
   return { url: "", accepted: false, caption: "", score: -999 };
 }
 
-/** Scene categories that need higher prompt_strength to overcome dark backgrounds */
-const DARK_SCENE_CATEGORIES = new Set(["space", "night_sky", "mountain_night", "moon_surface"]);
-const DARK_SCENE_STRENGTH = 0.90;
-const DEFAULT_STRENGTH = 0.82;
-const ROUND3_STRENGTH = 0.95;
+/**
+ * FIXED inpaint strength for ALL pages and rounds.
+ * Varying strength (0.82/0.90/0.95) was the #1 cause of character inconsistency:
+ *   - 0.82: plate bleeds through → character color changes per scene
+ *   - 0.90: moderate override → different look on dark scenes
+ *   - 0.95: full regeneration → completely different character
+ *
+ * 0.85 is the sweet spot: enough to render a recognizable rhinoceros,
+ * but preserves enough plate for scene context (rockets, forests, etc).
+ * Round 3 uses 0.88 — slightly more aggressive for difficult scenes.
+ */
+const INPAINT_STRENGTH = 0.85;
+const ROUND3_STRENGTH = 0.88;
 
 async function runCandidateRound(
   plateUrl: string,
@@ -610,17 +618,9 @@ async function runCandidateRound(
   forceHighStrength: boolean = false,
   isMultiChar: boolean = false
 ): Promise<CandidateResult[]> {
-  // Strength selection:
-  //   Round 3 (forced): 0.95 — last resort, regenerates most of image
-  //   Dark scene (space/moon): 0.90 — overcome dark backgrounds
-  //   Default (including multi-char): 0.82 — preserve plate content
-  //
-  // Multi-char pages use DEFAULT 0.82 to preserve secondary actors in the plate.
-  // With hippo/elephant counting as rhino confirmation, 0.82 is sufficient
-  // for BLIP to identify the character without destroying the plate.
-  const strength = forceHighStrength
-    ? ROUND3_STRENGTH
-    : DARK_SCENE_CATEGORIES.has(sceneCategory) ? DARK_SCENE_STRENGTH : DEFAULT_STRENGTH;
+  // FIXED strength for consistency: same character appearance every page.
+  // Round 3 uses slightly higher 0.88 for difficult scenes, otherwise 0.85.
+  const strength = forceHighStrength ? ROUND3_STRENGTH : INPAINT_STRENGTH;
   const tasks = Array.from({ length: count }, async (_, i) => {
     const seed = baseSeed + i * SEED_STRIDE;
 
