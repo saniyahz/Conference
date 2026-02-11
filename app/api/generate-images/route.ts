@@ -28,6 +28,7 @@ import { generatePlate, generateInpaintCharacter } from "@/src/lib/imageGenerati
 import { makeRiriZoneMaskDataUrl, makeRiriZoneLargeMaskDataUrl, makeRiriZoneExtraLargeMaskDataUrl } from "@/src/lib/maskGenerator";
 import { resolveSceneSetting, enforceMustInclude, classifyScene } from "@/src/lib/sceneSettings";
 import { scoreCandidate, CandidateResult, ScoreOptions, getSettingKeywords, deriveSettingKeywordsFromText } from "@/src/lib/candidateScoring";
+import { cacheAnchorEmbedding } from "@/src/lib/clipScoring";
 import { buildMultiCharPlateNegative } from "@/src/lib/negativePrompts";
 
 const replicate = new Replicate({
@@ -380,11 +381,12 @@ function isRocketSkyScene(setting: string): boolean {
 }
 
 /**
- * Rewrite a rocket/sky plate prompt to keep rocket small in background.
+ * Rewrite a rocket/sky plate prompt to keep rocket visible but not frame-filling.
  * The original "Rocket ship blasting off into space" fills the entire frame
  * with rocket → inpaint mask overlaps with rocket → character can't render.
  *
- * Instead: ground-level composition with small rocket in distance.
+ * Fix: place rocket clearly visible in upper portion of frame, character space
+ * in lower/center. Rocket must be large enough for BLIP to caption it.
  */
 function rewriteRocketPlatePrompt(
   styleHints: string,
@@ -393,7 +395,7 @@ function rewriteRocketPlatePrompt(
   // Filter out "rocket ship"/"rocket" from scene objects — it's already in the rewritten prompt
   const otherObjects = sceneObjects.filter(o => !/rocket|spaceship/i.test(o));
   const parts = [
-    "wide landscape scene, bright green grass foreground, small rocket ship flying far away in the sky background",
+    "wide scene, bright green grass and ground in lower half, large colorful rocket ship clearly visible in upper right sky, rocket trail with flames",
   ];
   if (otherObjects.length > 0) parts.push(otherObjects.join(", "));
   parts.push(styleHints);
@@ -441,7 +443,8 @@ async function generateOnePage(
   seed: number,
   identity: CharacterIdentity,
   customNegative?: string,
-  pageSceneCard?: PageSceneCard
+  pageSceneCard?: PageSceneCard,
+  clipAnchorEmbedding?: number[]
 ): Promise<{ url: string; accepted: boolean; caption: string; score: number }> {
   console.log(`\n${"=".repeat(60)}`);
   console.log(`[Page ${pageIndex + 1}] Character: ${identity.name} (${identity.species})`);
@@ -566,6 +569,16 @@ async function generateOnePage(
     requireMustIncludeCount: 1,
     settingKeywords,
     keyObjects: requiredObjects,
+    // Allow expected secondary actors (lions, dolphins, etc.) in Rule 2.
+    // Without this, "a rhinoceros and a lion in a forest" gets rejected even
+    // when lions ARE the expected scene element.
+    allowedAnimals: animalObjects,
+    // CLIP identity scoring: compare each candidate to the anchor image.
+    // This enforces visual consistency — Riri must look similar across all pages.
+    cachedAnchorEmbedding: clipAnchorEmbedding,
+    // DINO detection: secondary confirmation that rhinoceros is in the image.
+    // Rescues images where BLIP misidentifies the species but rhino IS there.
+    enableDetection: true,
   };
 
   const inpaintMustInclude = [...identity.mustInclude, ...cardObjects];
@@ -691,18 +704,18 @@ async function generateOnePage(
  * FIXED inpaint strength for ALL pages and rounds.
  *
  * prompt_strength controls how much SDXL overwrites the ENTIRE image:
- *   - 0.85+: nearly full regen → plate composition destroyed, identity drift
- *   - 0.75: good balance — character renders clearly, plate mostly preserved
- *   - 0.65: TOO LOW — character doesn't render (just flowers/butterflies)
- *   - 0.55: very conservative, slight edits only
+ *   - 0.90+: nearly full regen → plate composition destroyed, identity drift
+ *   - 0.82: character renders reliably, plate mostly preserved
+ *   - 0.75: was too low — frequently produced no character (just background)
+ *   - 0.65: TOO LOW — no character at all (just flowers/butterflies)
  *
- * 0.65 was tested and produced "a painting of flowers and butterflies in a field"
- * with NO rhinoceros at all. 0.75 should be strong enough to paint the character
- * in the mask region while preserving most of the plate composition.
- * Round 3 uses 0.80 for difficult scenes where 0.75 isn't enough.
+ * Testing showed 0.75 fails on 60%+ of pages (space, moon, indoor scenes).
+ * BLIP captions like "butterflies in a field" or "planets in space" with
+ * no rhinoceros confirm the character isn't rendering at 0.75.
+ * Increased to 0.82 base / 0.87 round 3 for reliable character rendering.
  */
-const INPAINT_STRENGTH = 0.75;
-const ROUND3_STRENGTH = 0.80;
+const INPAINT_STRENGTH = 0.82;
+const ROUND3_STRENGTH = 0.87;
 
 async function runCandidateRound(
   plateUrl: string,
@@ -809,7 +822,32 @@ export async function POST(request: NextRequest) {
     const imageUrls: string[] = [];
     const usedSeeds: number[] = [];
 
-    // Generate pages with bounded concurrency (2 at a time)
+    // ── CLIP ANCHOR: Generate reference image for identity consistency ──
+    // Create a clean reference of the character (no complex scene) and cache
+    // its CLIP embedding. All subsequent pages compare against this anchor.
+    let clipAnchorEmbedding: number[] = [];
+    try {
+      console.log(`\n[CLIP] Generating character reference image for anchor embedding...`);
+      const refPrompt = [
+        `${identity.name} the cute cartoon ${identity.species}`,
+        identity.inpaintPrompt.split(",").slice(1, 3).join(",").trim(),
+        "simple white background, centered, full body, children's picture book illustration",
+        "no text, no other characters",
+      ].filter(Boolean).join(", ");
+      const refUrl = await generatePlate(replicate, refPrompt, storySeed + 99999, 99);
+      if (refUrl) {
+        clipAnchorEmbedding = await cacheAnchorEmbedding(replicate, refUrl);
+        if (clipAnchorEmbedding.length > 0) {
+          console.log(`[CLIP] Anchor embedding ready (${clipAnchorEmbedding.length} dims) — identity scoring enabled`);
+        } else {
+          console.warn(`[CLIP] Anchor embedding failed — identity scoring disabled`);
+        }
+      }
+    } catch (e) {
+      console.warn(`[CLIP] Anchor generation failed, proceeding without identity scoring:`, e);
+    }
+
+    // Generate pages with bounded concurrency
     const results: Array<{ url: string; accepted: boolean }> = new Array(imagePrompts.length);
     let nextIdx = 0;
 
@@ -822,7 +860,10 @@ export async function POST(request: NextRequest) {
 
         const pageCard = sceneCards?.[i] as PageSceneCard | undefined;
         console.log(`\n========== GENERATING PAGE ${i + 1}/${imagePrompts.length} ==========`);
-        results[i] = await generateOnePage(imagePrompts[i], i, pageSeed, identity, customNeg, pageCard);
+        results[i] = await generateOnePage(
+          imagePrompts[i], i, pageSeed, identity, customNeg, pageCard,
+          clipAnchorEmbedding.length > 0 ? clipAnchorEmbedding : undefined
+        );
       }
     }
 

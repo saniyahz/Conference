@@ -13,7 +13,7 @@ import { detectRhinoceros, DetectionResult, DetectorModel } from "./objectDetect
  *            even if rhino is also confirmed (two animals = wrong image)
  *   Rule 3:  Rhinoceros confirmed by at least one signal
  *   Rule 4:  Character not tiny/background (bbox >= 15% or composition cue)
- *   Rule 5C: Key objects — hard reject (objects now in inpaint prompt too)
+ *   Rule 5C: Key objects — soft penalty (BLIP unreliable for object detection)
  *   Rule 5:  Must-include enforcement (at least N items visible)
  *
  * Selection: run ALL candidates per round, pick BEST accepted (not first).
@@ -42,6 +42,9 @@ export interface ScoreOptions {
   /** Key scene objects (cleaned) — e.g. ["dolphins","rocket ship"] */
   keyObjects?: string[];
 
+  /** Animals that are expected secondary actors on this page (exempt from Rule 2) */
+  allowedAnimals?: string[];
+
   /** Riri anchor image URL for CLIP similarity comparison */
   anchorImageUrl?: string;
 
@@ -60,6 +63,8 @@ type AcceptOpts = {
   requireMustIncludeCount?: number;
   settingKeywords?: string[];
   keyObjects?: string[];
+  /** Animals that are expected secondary actors on this page (exempt from Rule 2) */
+  allowedAnimals?: string[];
 };
 
 const BLIP_VERSION =
@@ -146,7 +151,7 @@ const EXPANSIONS: Record<string, string[]> = {
   // Creatures / animals (plurals + common BLIP variants)
   "lions": ["lion"],
   "lion": ["lions"],
-  "dolphins": ["dolphin"],
+  // "dolphins" already defined above in Ocean section
   "moon rabbits": ["rabbit", "bunny"],
   "group of moon rabbits": ["rabbit", "bunny"],
   "rabbits": ["rabbit", "bunny"],
@@ -338,7 +343,7 @@ function countMustHits(
  *          (two animals visible = wrong image)
  * Rule 3:  Rhinoceros confirmed by at least one signal
  * Rule 4:  Character not tiny/background
- * Rule 5C: Key objects — hard reject (objects also in inpaint prompt)
+ * Rule 5C: Key objects — soft penalty (BLIP unreliable for secondary objects)
  * Rule 5:  Must-include enforcement (at least N items)
  */
 export function acceptCandidate(
@@ -359,11 +364,13 @@ export function acceptCandidate(
   const dinoHasRhino = !!(detectionResult?.detected && detectionResult.confidence >= 0.5);
   const clipConfirmsRiri = !!(clipResult && clipResult.similarity >= 0.82);
 
-  // STRICT rhino confirmation: BLIP must explicitly say "rhino" or DINO must detect it.
-  // Elephant/hippo are in WRONG_ANIMALS — they are always rejected by Rule 2.
-  // CLIP alone cannot confirm (measures style, not species).
+  // Rhino confirmation: BLIP says "rhino", DINO detects it, OR CLIP strongly
+  // matches the anchor image. CLIP >= 0.82 means the candidate looks very similar
+  // to the reference Riri image — even if BLIP captions it as "cartoon animal" or
+  // "gray creature", the visual match confirms it's the right character.
+  // Elephant/hippo are in WRONG_ANIMALS — they are always rejected by Rule 2 first.
   const rhinoConfirmedByVision = blipHasRhino || dinoHasRhino;
-  const rhinoConfirmed = rhinoConfirmedByVision;
+  const rhinoConfirmed = rhinoConfirmedByVision || clipConfirmsRiri;
 
   // ── RULE 1: No humans ──
   // Only reject actual human terms. Cockpit/astronaut/pilot are NOT rejected —
@@ -395,16 +402,23 @@ export function acceptCandidate(
     return { accepted: false, rejectReason: `RULE 1d: CROPPED/CLOSE-UP detected ("${cropMatch}")` };
   }
 
-  // ── RULE 2: Wrong animal gate — ALWAYS reject ──
-  // ANY wrong animal in caption = reject, even if rhino is also confirmed.
-  // "elephant and a rhino" means two animals visible (wrong image).
-  // "elephant" alone means BLIP can't identify our rhino (bad inpaint).
-  // Either way: reject and regenerate.
-  const wrongAnimal = WRONG_ANIMALS.find((a) => c.includes(a));
+  // ── RULE 2: Wrong animal gate ──
+  // Wrong animal in caption = reject, UNLESS the animal is an expected
+  // secondary actor for this page (lions, dolphins, rabbits in the scene card).
+  // "elephant and a rhino" = reject (elephant is never a valid secondary actor).
+  // "a rhinoceros and a lion in a forest" = accept (if lion is an allowed animal).
+  const allowedList = (opts?.allowedAnimals ?? []).map(a => a.toLowerCase());
+  const allowedSet = new Set(allowedList);
+  // Expand allowed animals to include singular/plural variants
+  for (const a of allowedList) {
+    if (a.endsWith("s")) allowedSet.add(a.slice(0, -1));  // "lions" → "lion"
+    else allowedSet.add(a + "s");  // "lion" → "lions"
+  }
+  const wrongAnimal = WRONG_ANIMALS.find((a) => c.includes(a) && !allowedSet.has(a));
   if (wrongAnimal) {
     return {
       accepted: false,
-      rejectReason: `RULE 2: WRONG ANIMAL "${wrongAnimal}" detected in caption (always reject)`,
+      rejectReason: `RULE 2: WRONG ANIMAL "${wrongAnimal}" detected in caption (not an expected actor)`,
     };
   }
 
@@ -473,21 +487,20 @@ export function acceptCandidate(
     // Bonus is applied in scoreCaption(), not here
   }
 
-  // Gate C: Key object check — HARD REJECT if NO required objects found.
-  // Required objects (rocket ship, rainbow, etc.) are now also included in the
-  // inpaint prompt, so SDXL should render them in the mask region.
-  // If BLIP can't see ANY of them, the image is missing critical scene elements.
+  // Gate C: Key object check — SOFT PENALTY, NOT HARD REJECT.
+  // BLIP captions are extremely terse (1 sentence) and unreliable at detecting
+  // secondary objects like "rocket ship" even when they're clearly visible.
+  // Hard-rejecting for missing objects causes 80%+ false-reject rates.
+  // Instead: apply a score penalty so images with correct character are still
+  // accepted, but images that DO show objects score higher and get selected.
   const keyObjects = opts?.keyObjects ?? [];
   if (keyObjects.length > 0) {
     const { hits: objHits, hitTerms: objHitTerms, missedTerms: objMissed } = countMustHits(c, keyObjects);
     if (objHits > 0) {
       console.log(`[Rule 5C] Key objects found: ${objHitTerms.join(", ")} (${objHits}/${keyObjects.length}) — bonus applied`);
     } else {
-      console.log(`[Rule 5C] REJECT: No key objects in caption (wanted [${keyObjects.join(", ")}])`);
-      return {
-        accepted: false,
-        rejectReason: `RULE 5C: MISSING KEY OBJECTS (wanted [${keyObjects.join(", ")}], found none)`,
-      };
+      console.log(`[Rule 5C] No key objects in caption (wanted [${keyObjects.join(", ")}]) — penalty applied (NOT rejecting)`);
+      // Penalty is applied in scoreCaption(), not here — no hard reject
     }
   }
 
@@ -573,17 +586,19 @@ export function scoreCaption(
     }
   }
 
-  // Key object scoring — bonus for found, penalty for missing
+  // Key object scoring — large bonus for found, moderate penalty for missing.
+  // This replaces the old hard-reject: candidates with objects rank much higher,
+  // but candidates without objects are still accepted if the character is correct.
   const keyObjects = opts?.keyObjects ?? [];
   if (keyObjects.length > 0) {
     const { hits: objHits, hitTerms: objHitTerms } = countMustHits(c, keyObjects);
     if (objHits > 0) {
-      const objBonus = objHits * 2;
+      const objBonus = objHits * 3;
       score += objBonus;
       reasons.push(`+${objBonus} key objects (${objHitTerms.join(", ")})`);
     } else {
-      score -= 3;
-      reasons.push("-3 no key objects found");
+      score -= 4;
+      reasons.push("-4 no key objects found (BLIP may have missed them)");
     }
   }
 
@@ -673,6 +688,7 @@ export async function scoreCandidate(
       requireMustIncludeCount: opts?.requireMustIncludeCount,
       settingKeywords: opts?.settingKeywords,
       keyObjects: opts?.keyObjects,
+      allowedAnimals: opts?.allowedAnimals,
     }
   );
 
