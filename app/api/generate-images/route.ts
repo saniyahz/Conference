@@ -37,7 +37,7 @@ const replicate = new Replicate({
 
 // ─── CONFIG ──────────────────────────────────────────────────────────────
 
-const CANDIDATES_PER_ROUND = 3;
+const CANDIDATES_PER_ROUND = 2;
 const SEED_STRIDE = 29;
 // Bounded page concurrency. With sequential candidates + early-accept,
 // each page has ~1-2 active Replicate calls at a time. Running 2 pages
