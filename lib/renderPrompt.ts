@@ -135,26 +135,51 @@ function extractSetting(text: string): string {
 }
 
 /**
- * Extract action from text
+ * Extract action from text — returns POSE-ORIENTED descriptions.
+ *
+ * These feed into the Template A prompt's scene section AND are used
+ * by actionToPose() in the image pipeline to inject body positions
+ * into the inpaint prompt. Descriptive actions = distinct poses per page.
  */
 function extractAction(text: string, charName: string): string {
-  const name = charName.toLowerCase();
+  // Priority 1: Multi-word compound actions (most specific)
+  if (text.includes('blasted off') || text.includes('blast off')) return `${charName} blasting off excitedly with arms raised`;
+  if (text.includes('soared over') || text.includes('soaring over')) return `${charName} soaring high with arms spread wide`;
+  if (text.includes('flew over') || text.includes('flying over')) return `${charName} flying forward with arms outstretched`;
+  if (text.includes('landed safely') || text.includes('safe landing')) return `${charName} landing with feet touching down`;
+  if (text.includes('climbed inside') || text.includes('climbing inside')) return `${charName} climbing forward eagerly`;
+  if (text.includes('taking off') || text.includes('took off')) return `${charName} leaping upward excitedly`;
+  if (text.includes('dived in') || text.includes('dove in') || text.includes('jumped in')) return `${charName} diving forward arms first`;
+  if (text.includes('splash')) return `${charName} splashing in water with legs kicking`;
 
-  // Check for specific actions
-  if (text.includes('wave') || text.includes('waving')) return `${charName} waves happily`;
-  if (text.includes('welcome') || text.includes('greeted')) return `${charName} being welcomed by friends`;
-  if (text.includes('explore') || text.includes('exploring')) return `${charName} explores curiously`;
-  if (text.includes('discover') || text.includes('found') || text.includes('stumbled')) return `${charName} discovers something amazing`;
-  if (text.includes('flying') || text.includes('soar')) return `${charName} flying through the scene`;
-  if (text.includes('float') || text.includes('weightless')) return `${charName} floating weightlessly`;
-  if (text.includes('land') || text.includes('arrived')) return `${charName} has just landed`;
-  if (text.includes('play') || text.includes('playing')) return `${charName} plays joyfully`;
-  if (text.includes('run') || text.includes('running')) return `${charName} runs with joy`;
-  if (text.includes('swim') || text.includes('swimming')) return `${charName} swims happily`;
-  if (text.includes('climb') || text.includes('climbing')) return `${charName} climbs eagerly`;
-  if (text.includes('look') || text.includes('gaze') || text.includes('marvel')) return `${charName} gazes in wonder`;
+  // Priority 2: Single verbs with pose detail
+  if (text.includes('wave') || text.includes('waving')) return `${charName} waving one arm up high`;
+  if (text.includes('welcome') || text.includes('greeted')) return `${charName} waving happily with one arm raised`;
+  if (text.includes('explore') || text.includes('exploring')) return `${charName} walking forward looking around curiously`;
+  if (text.includes('discover') || text.includes('found') || text.includes('stumbled')) return `${charName} leaning forward curiously reaching out`;
+  if (text.includes('flying') || text.includes('soar')) return `${charName} soaring with arms spread wide`;
+  if (text.includes('float') || text.includes('weightless')) return `${charName} floating weightlessly with limbs spread`;
+  if (text.includes('land') || text.includes('arrived')) return `${charName} landing with feet touching down`;
+  if (text.includes('play') || text.includes('playing')) return `${charName} bouncing playfully mid-motion`;
+  if (text.includes('run') || text.includes('running')) return `${charName} running forward with legs in stride`;
+  if (text.includes('swim') || text.includes('swimming')) return `${charName} swimming forward with legs kicking`;
+  if (text.includes('climb') || text.includes('climbing')) return `${charName} climbing upward with arms reaching high`;
+  if (text.includes('jump') || text.includes('jumping') || text.includes('leap')) return `${charName} jumping up with legs off the ground`;
+  if (text.includes('danc') || text.includes('dancing')) return `${charName} dancing joyfully with arms raised`;
+  if (text.includes('look') || text.includes('gaze') || text.includes('marvel')) return `${charName} looking upward with wide eyes in awe`;
+  if (text.includes('cheer')) return `${charName} cheering with both arms raised high`;
+  if (text.includes('hug')) return `${charName} hugging with arms wrapped warmly`;
+  if (text.includes('sleep')) return `${charName} curled up sleeping peacefully`;
+  if (text.includes('point')) return `${charName} pointing forward excitedly`;
 
-  return `${charName} in the scene with happy expression`;
+  // Priority 3: Emotion-based pose
+  if (text.includes('excit') || text.includes('thrill')) return `${charName} jumping excitedly with arms raised`;
+  if (text.includes('wonder') || text.includes('amaz')) return `${charName} gazing upward in wonder`;
+  if (text.includes('curious')) return `${charName} leaning forward curiously`;
+  if (text.includes('happy') || text.includes('joy')) return `${charName} bouncing joyfully mid-jump`;
+  if (text.includes('brave') || text.includes('courage')) return `${charName} standing tall with a determined pose`;
+
+  return `${charName} standing with one arm waving happily`;
 }
 
 /**

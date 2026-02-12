@@ -253,17 +253,35 @@ function extractTimeWeather(text: string): string {
 }
 
 /**
- * Extract action from text - expanded list for space/adventure stories
+ * Extract action from text - expanded list with SPECIFIC BODY POSES.
+ *
+ * Returns pose-descriptive actions like "Riri running forward excitedly"
+ * instead of generic "Riri running". The pose detail is critical because
+ * actionToPose() in the image pipeline maps these to SDXL body positions.
+ *
+ * Priority:
+ *   1. Multi-word compound actions (most specific)
+ *   2. Single-verb actions with pose detail
+ *   3. Emotion/state-based poses
+ *   4. Fallback: context-aware pose from setting
  */
 function extractAction(text: string, characterName: string): string {
-  // Priority actions - more specific first
+  // Priority 1: Multi-word compound actions (most specific)
   const priorityActions = [
-    { keywords: ['blasted off', 'blast off'], action: 'blasting off in rocket' },
-    { keywords: ['soared over', 'soaring over'], action: 'soaring over' },
-    { keywords: ['flew over', 'flying over'], action: 'flying over' },
-    { keywords: ['landed safely', 'safe landing'], action: 'landing safely' },
-    { keywords: ['climbed inside', 'climbing inside'], action: 'climbing inside' },
-    { keywords: ['taking off', 'took off'], action: 'taking off' },
+    { keywords: ['blasted off', 'blast off', 'blasts off'], action: 'blasting off excitedly with arms raised' },
+    { keywords: ['soared over', 'soaring over', 'soars over'], action: 'soaring high with arms spread wide' },
+    { keywords: ['flew over', 'flying over', 'flies over'], action: 'flying forward with arms outstretched' },
+    { keywords: ['landed safely', 'safe landing', 'lands safely'], action: 'landing with feet touching down' },
+    { keywords: ['climbed inside', 'climbing inside', 'climbs inside'], action: 'climbing forward eagerly' },
+    { keywords: ['taking off', 'took off', 'takes off'], action: 'leaping upward excitedly' },
+    { keywords: ['dived in', 'dove in', 'dives in', 'jumped in'], action: 'diving forward arms first' },
+    { keywords: ['reached the', 'arrived at', 'got to'], action: 'walking forward with arms raised in triumph' },
+    { keywords: ['waved goodbye', 'waving goodbye'], action: 'waving one arm high in the air' },
+    { keywords: ['splash'], action: 'splashing in water with legs kicking' },
+    { keywords: ['bounced', 'bouncing', 'bounces'], action: 'bouncing up mid-jump' },
+    { keywords: ['tiptoed', 'tiptoeing', 'tiptoes'], action: 'tiptoeing forward carefully' },
+    { keywords: ['peeked', 'peeking', 'peeks'], action: 'peeking around curiously' },
+    { keywords: ['pointed', 'pointing', 'points'], action: 'pointing forward excitedly' },
   ];
 
   for (const { keywords, action } of priorityActions) {
@@ -272,21 +290,65 @@ function extractAction(text: string, characterName: string): string {
     }
   }
 
-  // General actions
-  const actions = [
-    'flying', 'swimming', 'running', 'walking', 'jumping', 'dancing',
-    'playing', 'exploring', 'climbing', 'sleeping', 'eating', 'reading',
-    'laughing', 'smiling', 'waving', 'hugging', 'looking', 'standing',
-    'soaring', 'blasting', 'landing', 'cheering', 'exclaiming', 'leading'
+  // Priority 2: Single-verb actions with specific pose descriptions
+  const verbActions: [string, string][] = [
+    ['flying', 'flying with arms spread wide'],
+    ['soaring', 'soaring through the air arms outstretched'],
+    ['swimming', 'swimming forward with legs kicking'],
+    ['running', 'running forward with legs in stride'],
+    ['walking', 'walking forward with one foot ahead'],
+    ['jumping', 'jumping up with legs off the ground'],
+    ['leaping', 'leaping through the air'],
+    ['dancing', 'dancing joyfully with arms raised'],
+    ['playing', 'bouncing playfully mid-motion'],
+    ['exploring', 'walking forward looking around curiously'],
+    ['climbing', 'climbing upward with arms reaching high'],
+    ['sleeping', 'curled up sleeping peacefully'],
+    ['eating', 'sitting down eating happily'],
+    ['reading', 'sitting and holding a book'],
+    ['laughing', 'laughing with head tilted back happily'],
+    ['waving', 'waving one arm up high'],
+    ['hugging', 'hugging with arms wrapped warmly'],
+    ['looking', 'looking upward with wide eyes in awe'],
+    ['gazing', 'gazing upward in wonder'],
+    ['floating', 'floating weightlessly with limbs spread'],
+    ['sliding', 'sliding forward playfully'],
+    ['riding', 'sitting and riding forward'],
+    ['diving', 'diving downward arms first'],
+    ['spinning', 'spinning around with arms out'],
+    ['skipping', 'skipping forward happily'],
+    ['marching', 'marching forward with big confident steps'],
+    ['sneaking', 'crouching and sneaking forward quietly'],
+    ['cheering', 'cheering with both arms raised high'],
+    ['exclaiming', 'standing with arms raised in excitement'],
+    ['leading', 'walking forward confidently arm raised'],
+    ['standing', 'standing proudly with a big smile'],
+    ['smiling', 'standing with a wide happy smile'],
+    ['landing', 'touching down with feet on the ground'],
+    ['blasting', 'bracing excitedly with arms up'],
   ];
 
-  for (const action of actions) {
-    if (text.includes(action)) {
-      return `${characterName} ${action}`;
+  for (const [verb, poseAction] of verbActions) {
+    if (text.includes(verb)) {
+      return `${characterName} ${poseAction}`;
     }
   }
 
-  return `${characterName} in the scene`;
+  // Priority 3: Emotion/state-based pose (when no action verb found)
+  if (text.includes('excit') || text.includes('thrill')) return `${characterName} jumping excitedly with arms raised`;
+  if (text.includes('wonder') || text.includes('amaz') || text.includes('marvel')) return `${characterName} gazing upward in wonder`;
+  if (text.includes('curious') || text.includes('discover')) return `${characterName} leaning forward curiously reaching out`;
+  if (text.includes('happy') || text.includes('joy')) return `${characterName} bouncing joyfully mid-jump`;
+  if (text.includes('brave') || text.includes('courage')) return `${characterName} standing tall with a determined pose`;
+  if (text.includes('friend') || text.includes('welcome')) return `${characterName} waving happily with one arm raised`;
+
+  // Priority 4: Fallback using setting context for a relevant pose
+  if (text.includes('ocean') || text.includes('water') || text.includes('sea')) return `${characterName} splashing in water playfully`;
+  if (text.includes('space') || text.includes('moon') || text.includes('star')) return `${characterName} floating weightlessly with limbs spread`;
+  if (text.includes('forest') || text.includes('jungle')) return `${characterName} walking forward looking around curiously`;
+  if (text.includes('mountain') || text.includes('hill')) return `${characterName} climbing upward with arms reaching`;
+
+  return `${characterName} standing with one arm waving happily`;
 }
 
 /**

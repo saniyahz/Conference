@@ -152,11 +152,9 @@ function extractCharacterIdentity(bible?: CharacterBible): CharacterIdentity {
     ? "two short rhino horns (not unicorn horn), no hat"
     : "no hat";
 
-  // Framing — condensed to save token budget for character identity.
-  // The long version wasted ~15 tokens on "head-to-toe visible, feet visible,
-  // character fully inside frame, centered composition, no cropping" that
-  // pushed identity features past SDXL's 77-token window.
-  const framing = "full body, centered in frame";
+  // Framing — "full body" only. Pose will be added per-page in runCandidateRound().
+  // Previous "centered in frame" produced identical static standing poses on every page.
+  const framing = "full body";
 
   const inpaintPrompt = [
     `one single ${name} the cute cartoon ${species}`,
@@ -174,6 +172,103 @@ function extractCharacterIdentity(bible?: CharacterBible): CharacterIdentity {
     mustInclude: [species, name],
     inpaintPrompt,
   };
+}
+
+// ─── ACTION → POSE MAPPING ──────────────────────────────────────────────
+
+/**
+ * Convert a scene card action (e.g. "Riri flying") into an SDXL-friendly
+ * pose descriptor (e.g. "leaping through air with arms spread").
+ *
+ * These pose descriptors REPLACE the old static "centered in frame" token
+ * in the inpaint prompt. They go right after "full body" so SDXL renders
+ * the character in a distinct pose each page instead of identical standing.
+ *
+ * RULES:
+ *   - Keep pose to 4-8 tokens (token budget is tight)
+ *   - Describe BODY POSITION, not narrative ("climbing upward" not "exploring a cave")
+ *   - Avoid scene words (moon, forest, ocean) — those are in the plate
+ */
+function actionToPose(action: string): string {
+  const lower = action.toLowerCase();
+
+  // Extract the verb from "CharacterName verbing..." pattern
+  const verbMatch = lower.match(
+    /\b(flying|soaring|swimming|running|walking|jumping|leaping|climbing|dancing|playing|exploring|sleeping|eating|reading|waving|hugging|blasting|landing|cheering|floating|gazing|discovering|looking|bouncing|riding|diving|sliding|crawling|reaching|sitting|hiding|splashing|twirling|spinning|skipping|marching|tiptoeing|sneaking|peeking|pointing|standing|exclaiming|leading)\b/
+  );
+
+  if (verbMatch) {
+    const verb = verbMatch[1];
+    const poseMap: Record<string, string> = {
+      'flying':      'soaring with arms spread wide',
+      'soaring':     'soaring with arms spread wide',
+      'swimming':    'swimming forward with legs kicking',
+      'running':     'running forward with legs in stride',
+      'walking':     'walking forward with one foot ahead',
+      'jumping':     'jumping up with legs off the ground',
+      'leaping':     'leaping through the air',
+      'climbing':    'climbing upward with arms reaching high',
+      'dancing':     'dancing joyfully with arms raised',
+      'playing':     'bouncing playfully mid-motion',
+      'exploring':   'walking forward looking around curiously',
+      'sleeping':    'curled up sleeping peacefully',
+      'eating':      'sitting down eating happily',
+      'reading':     'sitting and holding a book',
+      'waving':      'waving one arm up high',
+      'hugging':     'arms wrapped in a warm hug',
+      'blasting':    'bracing excitedly arms in the air',
+      'landing':     'touching down feet on the ground',
+      'cheering':    'both arms raised high celebrating',
+      'floating':    'floating weightlessly limbs spread',
+      'gazing':      'looking upward in wonder',
+      'discovering': 'leaning forward reaching out curiously',
+      'looking':     'looking upward with awe',
+      'bouncing':    'bouncing mid-jump',
+      'riding':      'sitting and riding forward',
+      'diving':      'diving downward arms first',
+      'sliding':     'sliding forward playfully',
+      'splashing':   'splashing in water joyfully',
+      'twirling':    'spinning around with arms out',
+      'spinning':    'spinning around with arms out',
+      'skipping':    'skipping forward happily',
+      'marching':    'marching forward with big steps',
+      'tiptoeing':   'tiptoeing carefully forward',
+      'sneaking':    'crouching and sneaking forward',
+      'peeking':     'peeking around curiously',
+      'pointing':    'pointing forward excitedly',
+      'standing':    'standing with a friendly wave',
+      'exclaiming':  'arms raised in excitement',
+      'leading':     'walking forward confidently',
+      'sitting':     'sitting down comfortably',
+      'hiding':      'crouching down hiding',
+      'crawling':    'crawling forward on all fours',
+      'reaching':    'reaching forward with one arm',
+    };
+    return poseMap[verb] || `${verb} actively`;
+  }
+
+  // Check for compound action phrases
+  if (lower.includes('blast off') || lower.includes('blasted off') || lower.includes('taking off'))
+    return 'bracing excitedly arms in the air';
+  if (lower.includes('climbed inside') || lower.includes('climbing inside'))
+    return 'stepping forward into an opening';
+  if (lower.includes('soared over') || lower.includes('flew over'))
+    return 'soaring with arms spread wide';
+  if (lower.includes('landed safely') || lower.includes('safe landing'))
+    return 'touching down feet on the ground';
+
+  // Fallback: produce a mild pose variation instead of static standing
+  // Use a rotating set based on a simple hash of the action string
+  const fallbackPoses = [
+    'standing with one arm waving',
+    'walking forward happily',
+    'looking around curiously',
+    'pointing forward excitedly',
+    'bouncing with excitement',
+  ];
+  let hash = 0;
+  for (let i = 0; i < action.length; i++) hash = ((hash << 5) - hash + action.charCodeAt(i)) | 0;
+  return fallbackPoses[Math.abs(hash) % fallbackPoses.length];
 }
 
 // ─── SCENE OBJECT EXTRACTION ────────────────────────────────────────────
@@ -485,6 +580,12 @@ async function generateOnePage(
   console.log(`\n${"=".repeat(60)}`);
   console.log(`[Page ${pageIndex + 1}] Character: ${identity.name} (${identity.species})`);
 
+  // ── 0. Extract page action for pose variation ──
+  const pageAction = pageSceneCard?.action || "";
+  if (pageAction) {
+    console.log(`[Page ${pageIndex + 1}] Action: "${pageAction}" → Pose: "${actionToPose(pageAction)}"`);
+  }
+
   // ── 1. Determine scene setting ──
   const cardSetting = pageSceneCard?.setting;
   const cardObjects = extractSceneObjects(pageSceneCard, identity);
@@ -654,7 +755,7 @@ async function generateOnePage(
   const round1 = await runCandidateRound(
     plateUrl, round1Mask, seed, CANDIDATES_PER_ROUND, pageIndex,
     scoreOpts, inpaintMustInclude, sceneSetting, identity, sceneCategory,
-    false, hasSecondaryActors, cardObjects
+    false, hasSecondaryActors, cardObjects, pageAction
   );
   overallBest = pickBest(round1, overallBest);
   if (overallBest && overallBest.score >= MIN_ROUND_ACCEPT) {
@@ -671,7 +772,7 @@ async function generateOnePage(
     const round2 = await runCandidateRound(
       plateUrl, round2Mask, seed + CANDIDATES_PER_ROUND * SEED_STRIDE, CANDIDATES_PER_ROUND, pageIndex,
       scoreOpts, inpaintMustInclude, sceneSetting, identity, sceneCategory,
-      false, hasSecondaryActors, cardObjects
+      false, hasSecondaryActors, cardObjects, pageAction
     );
     overallBest = pickBest(round2, overallBest);
     if (overallBest && overallBest.score >= MIN_ROUND_ACCEPT) {
@@ -688,7 +789,7 @@ async function generateOnePage(
     console.log(`[Page ${pageIndex + 1}] Round 3: EXTRA-LARGE mask + high strength...`);
     const round3 = await runCandidateRound(
       plateUrl, extraLargeMask, seed + CANDIDATES_PER_ROUND * SEED_STRIDE * 2, CANDIDATES_PER_ROUND, pageIndex,
-      scoreOpts, inpaintMustInclude, sceneSetting, identity, sceneCategory, true, hasSecondaryActors, cardObjects
+      scoreOpts, inpaintMustInclude, sceneSetting, identity, sceneCategory, true, hasSecondaryActors, cardObjects, pageAction
     );
     overallBest = pickBest(round3, overallBest);
     if (overallBest) {
@@ -712,7 +813,7 @@ async function generateOnePage(
         soloPlateUrl, extraLargeMask,
         seed + CANDIDATES_PER_ROUND * SEED_STRIDE * 3, CANDIDATES_PER_ROUND, pageIndex,
         scoreOpts, [...identity.mustInclude], sceneSetting, identity, sceneCategory,
-        true, false, nonAnimalObjects  // solo: only non-animal objects
+        true, false, nonAnimalObjects, pageAction  // solo: only non-animal objects
       );
       overallBest = pickBest(soloRound, overallBest);
       if (overallBest && overallBest.score >= MIN_ROUND_ACCEPT) {
@@ -732,9 +833,11 @@ async function generateOnePage(
   // generate a full scene with txt2img (character + objects + setting in one prompt).
   // This sacrifices identity consistency but guarantees SOMETHING on the page.
   console.log(`[Page ${pageIndex + 1}] TXT2IMG FALLBACK: generating full scene...`);
+  const fallbackPose = pageAction ? actionToPose(pageAction) : "standing happily";
   const txt2imgPrompt = [
     `one single ${identity.name} the cute cartoon ${identity.species}`,
     identity.inpaintPrompt.split(",").slice(1, 4).join(",").trim(),
+    `full body, ${fallbackPose}`,
     cardObjects.length > 0 ? cardObjects.join(", ") : "",
     sceneSetting,
     "2D flat color children's picture book illustration, bold outlines, simple shapes, vibrant colors, alone, no text",
@@ -794,25 +897,37 @@ async function runCandidateRound(
   sceneCategory: string = "",
   forceHighStrength: boolean = false,
   isMultiChar: boolean = false,
-  sceneObjects: string[] = []
+  sceneObjects: string[] = [],
+  pageAction: string = ""
 ): Promise<CandidateResult[]> {
   // FIXED strength for consistency: same character appearance every page.
   const strength = forceHighStrength ? ROUND3_STRENGTH : INPAINT_STRENGTH;
 
-  // IDENTITY-LOCKED inpaint prompt + SHORT scene context suffix.
+  // IDENTITY-LOCKED inpaint prompt + POSE + SHORT scene context suffix.
   //
   // The mask covers 83% of the frame (ellipse: 17%-100% height, 10%-90% width).
   // Only the top ~17% and narrow side strips preserve the plate. Inside the
   // mask, SDXL regenerates ENTIRELY from the prompt. Without scene context,
   // the character renders on a mismatched generic background, creating a
-  // jarring seam with the plate — "half showing" images where the top is
-  // forest/ocean/space but the bottom is a random green field.
+  // jarring seam with the plate.
   //
-  // FIX: Character identity in tokens 1-40 (LOCKED, same every page, highest
-  // SDXL attention). Short scene suffix in tokens 41-55 (varies per page, LOW
-  // attention — provides color/lighting coherence but does NOT affect character
-  // rendering). Total ~55 tokens, well within SDXL's 77-token window.
+  // STRUCTURE (within SDXL's 77-token window):
+  //   Tokens 1-35:  Character identity (LOCKED, same every page)
+  //   Tokens 35-42: Pose/action (VARIES per page — prevents static standing)
+  //   Tokens 42-55: Scene suffix (VARIES per page — color/lighting coherence)
   let compositePrompt = identity.inpaintPrompt;
+
+  // INJECT POSE: Replace "full body" with "full body, [pose]" to give each
+  // page a distinct character pose matching the story action.
+  // Without this, every page renders the same standing-in-center pose.
+  if (pageAction) {
+    const pose = actionToPose(pageAction);
+    compositePrompt = compositePrompt.replace(
+      "full body,",
+      `full body, ${pose},`
+    );
+    console.log(`[Page ${pageIndex + 1}] Pose injection: "${pose}" (from action: "${pageAction}")`);
+  }
 
   // Scene suffix: max 2 objects + short setting (keeps tokens low)
   if (sceneObjects.length > 0) {

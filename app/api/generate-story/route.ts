@@ -266,8 +266,17 @@ CRITICAL: Every page must end with a COMPLETE sentence. Never cut off mid-senten
     // ==========================================
     // STEP 4: Render prompts using universal template
     // ==========================================
-    // CRITICAL: Use SAME seed for ALL pages to maintain character identity
-    // Different seeds = different character interpretations = drift
+    // SEED STRATEGY: Per-page seed variation from a shared base.
+    //
+    // Previously used the SAME seed for ALL pages, which combined with the
+    // static inpaint prompt produced identical standing poses on every page.
+    //
+    // Now with pose variation in the inpaint prompt, we use small per-page
+    // offsets (baseSeed + index * 111) to give compositional diversity:
+    //   - Same identity prompt (tokens 1-35) → consistent character look
+    //   - Per-page pose description → different body positions
+    //   - Per-page seed offset → different compositional arrangements
+    //   - CLIP anchor scoring → enforces visual similarity across pages
     const baseSeed = Math.floor(Math.random() * 1000000)
     const imagePrompts: string[] = []
     const negativePrompts: string[] = []
@@ -275,7 +284,7 @@ CRITICAL: Every page must end with a COMPLETE sentence. Never cut off mid-senten
 
     const isAnimalStory = characterBible.character_type === 'animal'
 
-    console.log(`\n[SEED STRATEGY] Using SAME seed ${baseSeed} for ALL pages (reduces identity drift)`)
+    console.log(`\n[SEED STRATEGY] Base seed ${baseSeed} with per-page variation (+index*111) for pose diversity`)
 
     sceneCards.forEach((card, index) => {
       // Pass page text so renderPrompt can detect animals from story
@@ -283,8 +292,9 @@ CRITICAL: Every page must end with a COMPLETE sentence. Never cut off mid-senten
       const prompt = renderPrompt(characterBible, card, pageText)
       // Pass species to negative prompt so it can block wrong animals
       const negativePrompt = renderNegativePrompt(card, isAnimalStory, characterBible.species)
-      // SAME seed for all pages - critical for character consistency
-      const seed = baseSeed
+      // Per-page seed: base + small offset for compositional variety
+      // Identity consistency is maintained by the locked inpaint prompt + CLIP scoring
+      const seed = baseSeed + index * 111
 
       imagePrompts.push(prompt)
       negativePrompts.push(negativePrompt)
