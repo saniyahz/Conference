@@ -84,6 +84,8 @@ const WRONG_ANIMALS = [
   // BLIP also misidentifies cartoon rhinos as these — must reject
   "kangaroo", "donkey", "hamster", "squirrel", "mouse", "rat",
   "moose", "buffalo", "otter", "beaver", "panda",
+  // SDXL commonly substitutes these for rhino (stocky body shape confusion)
+  "bull", "calf", "ox", "bison", "dinosaur", "dragon",
 ];
 
 // Only reject ACTUAL human terms. Do NOT include space-themed terms
@@ -429,17 +431,21 @@ export function acceptCandidate(
   }
   // DINO override for Rule 2 requires HIGH confidence to override BLIP.
   // When BLIP says "giraffe" but DINO says "rhinoceros", we only override if:
-  //   1. DINO confidence >= 0.65 (strong detection, not marginal)
+  //   1. DINO confidence >= 0.75 (strong detection, not marginal)
   //   2. CLIP doesn't actively reject (similarity >= 0.60 if available)
-  // Raised from 0.55 → 0.65 to reduce accepting images where DINO is
-  // marginally detecting a rhinoceros but the character looks wrong.
+  // Raised from 0.65 → 0.75: at 0.65 DINO was overriding BLIP for images
+  // that clearly looked like cows/zebras to humans. DINO detects "something
+  // vaguely quadruped-shaped" at 0.65 but the animal is visually wrong.
+  // At 0.75+ the detection is strong enough to trust over BLIP.
   const dinoConfirmsRhino = !!(detectionResult?.detected
-    && detectionResult.confidence >= 0.65);
+    && detectionResult.confidence >= 0.75);
   const wrongAnimal = WRONG_ANIMALS.find((a) => c.includes(a) && !allowedSet.has(a));
   if (wrongAnimal) {
     if (dinoConfirmsRhino && !clipRejectsRiri) {
       // DINO strongly confirms rhinoceros AND CLIP doesn't reject — BLIP is misidentifying.
-      console.log(`[Rule 2] BLIP says "${wrongAnimal}" but DINO confirms rhinoceros (conf=${detectionResult!.confidence.toFixed(2)}, bbox=${(detectionResult!.bestBboxArea * 100).toFixed(1)}%, CLIP=${clipAvailable ? clipResult!.similarity.toFixed(3) : "off"}) — OVERRIDING BLIP`);
+      // NOTE: These images still pass but get a score penalty in scoreCaption()
+      // so images where BLIP actually says "rhino" are preferred.
+      console.log(`[Rule 2] BLIP says "${wrongAnimal}" but DINO confirms rhinoceros (conf=${detectionResult!.confidence.toFixed(2)}, bbox=${(detectionResult!.bestBboxArea * 100).toFixed(1)}%, CLIP=${clipAvailable ? clipResult!.similarity.toFixed(3) : "off"}) — OVERRIDING BLIP (with score penalty)`);
     } else if (dinoConfirmsRhino && clipRejectsRiri) {
       // DINO says rhino but CLIP says it doesn't look like the reference.
       // The image probably IS a wrong animal — DINO is fooled but CLIP isn't.

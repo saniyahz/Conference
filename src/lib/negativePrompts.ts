@@ -53,31 +53,28 @@ export function buildFramingNegative(): string {
  * Character-safety negatives — prevent unwanted humans, wrong animals,
  * and duplicate rhinos. These go on the CHARACTER INPAINT pass.
  *
- * The wrong-animal list is critical: without it, SDXL frequently
- * substitutes elephant/cat/bear/lion inside the mask region instead
- * of the prompted rhinoceros.
+ * NOTE: Species-specific anti-drift animals (cow, bull, buffalo, etc.)
+ * and near-species confusions (elephant, hippo) are now in
+ * buildHardBanNegative(species) which is PREPENDED. This list contains
+ * only the REMAINING wrong animals to avoid wasting SDXL's ~77-token budget
+ * on duplicates. The hard ban terms get tokens 1-30 (highest attention);
+ * these terms get tokens 31-60 (still within the window).
  */
 export function buildCharacterSafetyNegative(): string {
   return [
     // Block humans — basic terms only.
     // Do NOT include "child" (conflicts with "children's picture book" in prompt).
-    // Do NOT include space-themed terms (astronaut/pilot/helmet/cockpit) —
-    // those are legitimate for space-themed story pages.
     "human", "boy", "girl", "person", "man", "woman",
-    "people", "realistic human", "photo of person",
-    // Block wrong animals (common SDXL substitutions for rhino).
-    // These are removed by sanitizeNegatives() for multi-char pages
-    // that need specific secondary actors (lions, dolphins, etc).
-    "elephant", "cat", "dog", "bear", "lion", "tiger", "rabbit",
-    "monkey", "horse", "cow", "giraffe", "zebra", "hippo",
-    "hippopotamus", "camel", "deer", "wolf", "fox", "pig",
+    "people", "realistic human",
+    // Block wrong animals NOT already in hard ban.
+    // elephant, hippo, cow, bull, buffalo, bison, zebra, dinosaur etc.
+    // are covered by species-specific anti-drift in buildHardBanNegative().
+    "cat", "dog", "bear", "lion", "tiger", "rabbit",
+    "monkey", "horse", "giraffe", "camel", "deer", "wolf", "fox", "pig",
     "dolphin", "whale", "bird", "penguin", "frog", "turtle",
     // Block duplicate rhinos
-    "two rhinoceroses", "multiple rhinos", "extra rhinoceros",
-    "duplicate rhino",
-    // NOTE: Accessories (hat, unicorn horn, cape, etc.) moved to buildHardBanNegative()
-    // which is appended AFTER sanitizeNegatives(). The sanitizer was incorrectly
-    // stripping "hat" because the positive prompt contains "no hat".
+    "two rhinoceroses", "extra rhinoceros",
+    // NOTE: Accessories (hat, unicorn horn, cape, etc.) are in buildHardBanNegative()
   ].join(", ");
 }
 
@@ -123,29 +120,58 @@ export function buildInpaintCharacterNegative(): string {
  * The sanitizer incorrectly removes "hat", "unicorn horn", "text" because
  * the positive prompt contains "no hat" / "not unicorn horn" / "no text"
  * and combined.includes("hat") matches the substring inside "no hat".
+ *
+ * Species-aware: when species is provided, species-specific anti-drift
+ * animals are placed FIRST (tokens 1-10) for maximum SDXL attention.
+ * Without this, SDXL frequently substitutes cow/bull/buffalo for rhinoceros.
  */
-export function buildHardBanNegative(): string {
-  return [
-    // Near-species confusions — SDXL frequently snaps to these instead of rhinoceros.
-    // MUST be first in the negative (highest SDXL attention = first tokens).
-    "elephant", "baby elephant", "hippo", "hippopotamus",
-    // Accessories — only SPECIFIC bad hats. Generic "hat" removed because
-    // the character wears a "shiny silver helmet" and SDXL treats "hat" in
-    // negative as suppressing ALL headwear including helmets.
-    "party hat", "top hat", "birthday hat", "santa hat", "wizard hat",
-    "crown", "cape", "costume",
-    // Clothing — SDXL invents outfits (orange jacket, scarf, dress)
-    "clothing", "jacket", "shirt", "dress", "outfit", "scarf",
-    // Horn drift — "unicorn horn" stripped because positive says "not unicorn horn"
-    "unicorn horn", "extra horn", "long horn",
-    // Duplicate rhinos — must be in hard bans (not past 77-token window)
-    "multiple rhinos", "many animals", "duplicate",
-    // Crop — always enforced
+export function buildHardBanNegative(species?: string): string {
+  const terms: string[] = [];
+
+  // SPECIES-SPECIFIC anti-drift — FIRST POSITION (highest SDXL attention).
+  // These are the animals SDXL most commonly substitutes for the target species.
+  // Placing them at tokens 1-10 ensures maximum negative effect.
+  const antiDrift: Record<string, string[]> = {
+    'rhinoceros': ['cow', 'bull', 'calf', 'ox', 'buffalo', 'bison', 'goat', 'antelope', 'dinosaur', 'zebra'],
+    'rhino': ['cow', 'bull', 'calf', 'ox', 'buffalo', 'bison', 'goat', 'antelope', 'dinosaur', 'zebra'],
+    'elephant': ['hippo', 'rhinoceros', 'mammoth', 'pig', 'cow'],
+    'dog': ['wolf', 'fox', 'coyote', 'bear'],
+    'puppy': ['wolf', 'fox', 'coyote', 'bear', 'kitten'],
+    'cat': ['lion', 'tiger', 'leopard', 'fox'],
+    'kitten': ['lion', 'tiger', 'puppy', 'fox'],
+    'rabbit': ['cat', 'dog', 'mouse', 'hamster'],
+    'bunny': ['cat', 'dog', 'mouse', 'hamster'],
+    'lion': ['dog', 'cat', 'wolf', 'bear'],
+    'bear': ['dog', 'wolf', 'gorilla'],
+  };
+  const speciesKey = species?.toLowerCase() || '';
+  const driftTerms = antiDrift[speciesKey] || [];
+  terms.push(...driftTerms);
+  console.log(`[HardBan] Species "${species}" anti-drift (first tokens): [${driftTerms.join(", ")}]`);
+
+  // Near-species confusions (skip if already covered by anti-drift above)
+  for (const t of ["elephant", "baby elephant", "hippo", "hippopotamus"]) {
+    if (!terms.includes(t)) terms.push(t);
+  }
+  // Accessories — condensed to save token budget
+  terms.push(
+    "party hat", "top hat", "birthday hat", "crown", "cape", "costume",
+  );
+  // Clothing — SDXL invents outfits (orange jacket, scarf, dress)
+  terms.push("clothing", "jacket", "dress", "scarf");
+  // Horn drift
+  terms.push("unicorn horn", "extra horn", "long horn");
+  // Duplicate rhinos
+  terms.push("multiple rhinos", "duplicate");
+  // Crop — always enforced
+  terms.push(
     "cropped", "cut off", "out of frame", "close-up",
     "partial body", "missing legs", "missing feet",
-    // Text — "text" stripped because positive says "no text"
-    "text", "watermark",
-  ].join(", ");
+  );
+  // Text
+  terms.push("text", "watermark");
+
+  return terms.join(", ");
 }
 
 /**

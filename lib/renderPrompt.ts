@@ -523,7 +523,7 @@ export function renderNegativePrompt(card: PageSceneCard, isAnimal?: boolean, sp
   }
 
   const negative = base.join(', ');
-  console.log(`[LEGACY NEGATIVE — NOT USED by image pipeline. Actual inpaint negative logged as "[Inpaint N] NEGATIVE:"]`);
+  console.log(`[LEGACY NEGATIVE — species anti-drift now handled by buildHardBanNegative(species) in image pipeline]`);
   return negative;
 }
 

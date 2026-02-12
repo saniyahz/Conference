@@ -802,7 +802,8 @@ async function runCandidateRound(
 
     const url = await generateInpaintCharacter(
       replicate, sceneAwarePrompt, plateUrl, maskDataUrl,
-      seed, pageIndex, settingContext, mustInclude, undefined, strength
+      seed, pageIndex, settingContext, mustInclude, undefined, strength,
+      identity.species
     );
 
     if (!url) {
