@@ -161,8 +161,12 @@ export function buildHardBanNegative(species?: string): string {
   terms.push("clothing", "jacket", "dress", "scarf");
   // Horn drift
   terms.push("unicorn horn", "extra horn", "long horn");
-  // Duplicate rhinos
-  terms.push("multiple rhinos", "duplicate");
+  // Duplicate characters — SDXL frequently generates 2-5 copies of the main animal
+  terms.push(
+    "multiple rhinos", "multiple rhinoceros", "two rhinos", "three rhinos",
+    "group of animals", "herd", "pack", "crowd of animals",
+    "multiple animals", "two animals", "duplicate", "extra animal",
+  );
   // Crop — always enforced
   terms.push(
     "cropped", "cut off", "out of frame", "close-up",
@@ -195,10 +199,20 @@ export function buildPlateNegative(): string {
  * "animal" is NOT blocked — secondary actors ARE animals.
  */
 export function buildMultiCharPlateNegative(mainSpecies: string): string {
+  // Block main character species AGGRESSIVELY from plate.
+  // SDXL generates gray stocky animals that look like rhinos even when told
+  // "no rhinoceros" — need multiple synonyms and visual descriptions too.
+  const speciesSynonyms: Record<string, string[]> = {
+    'rhinoceros': ['rhinoceros', 'rhino', 'gray animal with horn', 'horned animal', 'gray quadruped'],
+    'rhino': ['rhinoceros', 'rhino', 'gray animal with horn', 'horned animal', 'gray quadruped'],
+    'elephant': ['elephant', 'gray animal with trunk', 'large gray animal'],
+    'lion': ['lion', 'mane animal', 'large cat'],
+  };
+  const synonyms = speciesSynonyms[mainSpecies.toLowerCase()] || [mainSpecies];
   return [
     buildQualityOnlyNegative(),
     buildNoTextNegative(),
-    mainSpecies,           // Block main character species from plate
+    ...synonyms,           // Block main character with multiple synonyms
     "person",
     "human",
   ].join(", ");

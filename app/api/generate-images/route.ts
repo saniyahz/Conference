@@ -130,18 +130,20 @@ function extractCharacterIdentity(bible?: CharacterBible): CharacterIdentity {
     .join(", ");
 
   // Species-specific distinguishing features — placed at tokens 7-15 for
-  // maximum SDXL attention. These are the visual features that make each
-  // species unmistakable, preventing SDXL from drifting to similar animals.
+  // maximum SDXL attention. These describe a CUTE CARTOON version of each
+  // animal (not realistic!). Using "cute baby", "small round", "chubby"
+  // keeps SDXL in children's-book territory. Previous "armored", "stocky
+  // barrel-shaped" pushed SDXL toward realistic/aggressive renderings.
   const speciesVisuals: Record<string, string> = {
-    'rhinoceros': 'thick gray armored skin, prominent horn on nose, stocky barrel-shaped body, short thick legs, small round ears',
-    'rhino': 'thick gray armored skin, prominent horn on nose, stocky barrel-shaped body, short thick legs, small round ears',
-    'elephant': 'large floppy ears, long trunk, gray wrinkled skin, thick legs, tusks',
-    'giraffe': 'very long neck, spotted pattern, tall legs, small horns',
-    'lion': 'golden mane, tawny fur, muscular body, tufted tail',
-    'tiger': 'orange fur with black stripes, muscular body, white belly',
-    'bear': 'round ears, thick fur, stocky body, flat face, large paws',
-    'rabbit': 'long upright ears, fluffy tail, soft fur, twitching nose',
-    'penguin': 'black and white body, orange beak, flippers, waddle pose',
+    'rhinoceros': 'small cute baby rhinoceros, smooth light gray skin, small round horn on nose, round chubby body, short stubby legs, tiny round ears',
+    'rhino': 'small cute baby rhinoceros, smooth light gray skin, small round horn on nose, round chubby body, short stubby legs, tiny round ears',
+    'elephant': 'small cute baby elephant, large floppy ears, long trunk, smooth gray skin, round chubby body',
+    'giraffe': 'small cute baby giraffe, very long neck, spotted pattern, tall thin legs, small horns',
+    'lion': 'small cute baby lion, golden fluffy mane, round face, tawny fur, tufted tail',
+    'tiger': 'small cute baby tiger, orange fur with black stripes, round face, white belly',
+    'bear': 'small cute baby bear, round ears, fluffy fur, chubby body, round face, large paws',
+    'rabbit': 'small cute baby rabbit, long upright ears, fluffy round tail, soft fur, pink nose',
+    'penguin': 'small cute baby penguin, black and white body, orange beak, tiny flippers',
   };
   const speciesLock = speciesVisuals[species.toLowerCase()] || '';
 
@@ -157,13 +159,13 @@ function extractCharacterIdentity(bible?: CharacterBible): CharacterIdentity {
   const framing = "full body, centered in frame";
 
   const inpaintPrompt = [
-    `${name} the cute cartoon ${species}`,
+    `one single ${name} the cute cartoon ${species}`,
     speciesLock,                // Species-distinguishing features (tokens 7-20)
     fpDetails || `a ${species}`,  // Visual fingerprint details (tokens 20-30)
     hornNote,
     framing,
-    "children's picture book illustration, vibrant colors, soft shading",
-    `only one ${species}, no text`,
+    "2D flat color children's picture book illustration, bold outlines, simple shapes, vibrant colors, soft warm lighting",
+    `alone, only one ${species}, no other animals, no text`,
   ].filter(Boolean).join(", ");
 
   return {
@@ -433,7 +435,7 @@ function rewriteRocketPlatePrompt(
   ];
   if (otherObjects.length > 0) parts.push(otherObjects.join(", "));
   parts.push(styleHints);
-  parts.push("simple children's illustration, flat colors, bold outline, high clarity, crisp outlines, well-defined shapes, vivid saturated colors, well-lit, bright");
+  parts.push("2D flat color children's picture book illustration, bold outlines, simple shapes, high clarity, well-defined shapes, vivid saturated colors, well-lit, bright");
   parts.push("no characters, no animals, no people, no text, no black and white, no grayscale, no monochrome");
   return parts.join(", ");
 }
@@ -458,7 +460,7 @@ function buildPlatePrompt(
   const parts = [setting];
   if (sceneObjects.length > 0) parts.push(sceneObjects.join(", "));
   parts.push(styleHints);
-  parts.push("simple children's illustration, flat colors, bold outline, high clarity, crisp outlines, well-defined shapes, vivid saturated colors, well-lit, bright");
+  parts.push("2D flat color children's picture book illustration, bold outlines, simple shapes, high clarity, well-defined shapes, vivid saturated colors, well-lit, bright");
   if (hasSecondaryActors) {
     // Multi-char: allow secondary actors (dolphins, etc.), block only main character + humans
     parts.push(`no ${mainSpecies}, no people, no text, no black and white, no grayscale, no monochrome`);
@@ -731,11 +733,11 @@ async function generateOnePage(
   // This sacrifices identity consistency but guarantees SOMETHING on the page.
   console.log(`[Page ${pageIndex + 1}] TXT2IMG FALLBACK: generating full scene...`);
   const txt2imgPrompt = [
-    `${identity.name} the cute cartoon ${identity.species}`,
+    `one single ${identity.name} the cute cartoon ${identity.species}`,
     identity.inpaintPrompt.split(",").slice(1, 4).join(",").trim(),
     cardObjects.length > 0 ? cardObjects.join(", ") : "",
     sceneSetting,
-    "children's picture book illustration, vibrant colors, soft shading, no text",
+    "2D flat color children's picture book illustration, bold outlines, simple shapes, vibrant colors, alone, no text",
   ].filter(Boolean).join(", ");
   console.log(`[Page ${pageIndex + 1}] Txt2img prompt: "${txt2imgPrompt.substring(0, 120)}..."`);
 
@@ -904,11 +906,14 @@ export async function POST(request: NextRequest) {
     let clipAnchorEmbedding: number[] = [];
     try {
       console.log(`\n[CLIP] Generating character reference image for anchor embedding...`);
+      // Anchor prompt uses the SAME identity prompt (tokens 1-30) to ensure
+      // the reference image matches what the inpaint prompt generates.
       const refPrompt = [
-        `${identity.name} the cute cartoon ${identity.species}, full body, standing`,
+        `one single ${identity.name} the cute cartoon ${identity.species}, full body, standing`,
         identity.inpaintPrompt.split(",").slice(1, 4).join(",").trim(),
-        "simple solid white background, centered in frame, children's picture book illustration",
-        "vibrant colors, bold outline, no text, no other characters, no scene, no props",
+        "simple solid white background, centered in frame",
+        "2D flat color children's picture book illustration, bold outlines, simple shapes",
+        "vibrant colors, no text, no other characters, no scene, no props, alone",
       ].filter(Boolean).join(", ");
       const refUrl = await generatePlate(replicate, refPrompt, storySeed + 99999, 99);
       if (refUrl) {

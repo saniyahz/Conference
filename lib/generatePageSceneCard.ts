@@ -58,12 +58,16 @@ function extractSetting(text: string): string {
   // PRIORITY 1: Look for explicit location phrases "in the X", "through the X", "at the X"
   const locationPhrases = [
     // Space/Moon - Priority (check these first for space adventures)
+    // BROAD matching — catch "reached the moon", "flew to the moon", "on the moon", "moon surface", etc.
     { pattern: /(?:soared|flew|fly|flying)\s+(?:over|across)\s+(?:the\s+)?crater/i, setting: 'Rocket ship flying over moon crater in space' },
     { pattern: /(?:landed|landing)\s+(?:on|near|by)\s+(?:the\s+)?(?:other\s+side|crater)/i, setting: 'Moon surface near crater with rocket ship' },
     { pattern: /(?:blasted\s+off|blast\s+off|took\s+off|launched)/i, setting: 'Rocket ship blasting off into space' },
     { pattern: /crater/i, setting: 'Moon surface with craters and starry sky' },
     { pattern: /(?:in|through|into)\s+(?:outer\s+)?space/i, setting: 'Outer space with stars and planets' },
-    { pattern: /(?:on|landed\s+on)\s+(?:the\s+)?(?:moon)/i, setting: 'Moon surface with craters' },
+    // Broad moon matching — "reached the moon", "flew to the moon", "arrived at the moon",
+    // "on the moon", "landed on the moon", "moon surface", "moon rabbits"
+    { pattern: /(?:reached|arrived\s+at|got\s+to|flew\s+to|traveled\s+to|journeyed\s+to|on|landed\s+on)\s+(?:the\s+)?moon/i, setting: 'Moon surface with craters and starry sky' },
+    { pattern: /moon\s+(?:surface|rabbit|bunny|rock|dust|crater|landscape)/i, setting: 'Moon surface with craters and starry sky' },
     { pattern: /(?:on|landed\s+on)\s+(?:the\s+)?(?:mars|planet)/i, setting: 'Alien planet surface' },
 
     // City/Town
@@ -84,9 +88,11 @@ function extractSetting(text: string): string {
     { pattern: /(?:on|at)\s+(?:the\s+)?(?:mountain|hill|cliff)/i, setting: 'Mountain landscape' },
     { pattern: /(?:at|on)\s+(?:the\s+)?(?:beach|shore)/i, setting: 'Beach with sand and waves' },
 
-    // Water
+    // Water — broad matching for splash, ocean, descending into water
+    { pattern: /splash/i, setting: 'Ocean with big waves and water splash' },
+    { pattern: /(?:toward|into|in)\s+(?:the\s+)?(?:ocean|sea|water)/i, setting: 'Ocean with big waves' },
     { pattern: /(?:under|beneath)\s+(?:the\s+)?(?:water|waves|sea|ocean)/i, setting: 'Underwater ocean scene' },
-    { pattern: /(?:in|into)\s+(?:the\s+)?(?:ocean|sea|lake|river)/i, setting: 'By the water' },
+    { pattern: /(?:in|into)\s+(?:the\s+)?(?:lake|river)/i, setting: 'By the water' },
 
     // Sky
     { pattern: /(?:in|through|across)\s+(?:the\s+)?(?:sky|clouds)/i, setting: 'High in the sky with clouds' },
@@ -100,18 +106,29 @@ function extractSetting(text: string): string {
     }
   }
 
-  // PRIORITY 2: Keyword-based fallback (but with lower priority)
+  // PRIORITY 2: Keyword-based fallback (broader than explicit patterns).
+  // ORDER MATTERS — more specific keywords first to avoid false matches.
   const keywordPatterns = [
-    { keywords: ['city', 'street', 'town', 'village'], setting: 'City or town scene' },
+    // Space/Moon — BEFORE generic nature keywords (moon > night)
+    { keywords: ['moon'], setting: 'Moon surface with craters and starry sky' },
+    { keywords: ['outer space', 'cosmos', 'galaxy', 'stars and planets'], setting: 'Outer space with stars' },
+    { keywords: ['rocket', 'spaceship'], setting: 'Rocket ship scene with bright sky' },
+    // Water — specific before generic
     { keywords: ['underwater', 'ocean floor', 'coral reef'], setting: 'Underwater ocean scene' },
-    { keywords: ['outer space', 'cosmos', 'galaxy'], setting: 'Outer space with stars' },
+    { keywords: ['ocean', 'sea', 'waves'], setting: 'Ocean with waves' },
+    { keywords: ['dolphin', 'dolphins'], setting: 'Ocean with waves and dolphins' },
+    { keywords: ['beach', 'shore'], setting: 'Beach with sand and waves' },
+    { keywords: ['lake', 'pond', 'river', 'stream'], setting: 'By the water' },
+    // Land
+    { keywords: ['city', 'street', 'town', 'village'], setting: 'City or town scene' },
     { keywords: ['forest', 'woods', 'trees'], setting: 'Forest scene' },
     { keywords: ['meadow', 'garden', 'flowers'], setting: 'Garden or meadow' },
     { keywords: ['desert', 'sand'], setting: 'Desert scene' },
     { keywords: ['mountain', 'cliff'], setting: 'Mountain scene' },
-    { keywords: ['beach', 'shore', 'ocean'], setting: 'Beach scene' },
+    // Indoor
     { keywords: ['home', 'house', 'room'], setting: 'Indoor room' },
     { keywords: ['castle', 'palace'], setting: 'Castle scene' },
+    // Sky
     { keywords: ['sky', 'clouds', 'flying'], setting: 'Sky scene' },
   ];
 
