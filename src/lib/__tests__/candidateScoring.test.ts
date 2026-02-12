@@ -3,7 +3,7 @@ import { acceptCandidate, scoreCaption, ClipResult, DetectionResult } from '../c
 
 // Helper to make a ClipResult
 function clip(similarity: number): ClipResult {
-  return { similarity, scoreContribution: similarity >= 0.78 ? 2 : similarity >= 0.70 ? 1 : 0 };
+  return { similarity, scoreContribution: similarity >= 0.82 ? 6 : similarity >= 0.78 ? 4 : similarity >= 0.72 ? 2 : similarity >= 0.58 ? -1 : -4, reason: `CLIP: sim=${similarity}` };
 }
 
 // Helper to make a DetectionResult
@@ -143,10 +143,10 @@ describe('acceptCandidate - Rule 3: Character must be confirmed', () => {
     expect(result.accepted).toBe(true);
   });
 
-  it('accepts when CLIP strongly confirms (>= 0.78)', () => {
+  it('accepts when CLIP strongly confirms (>= 0.80)', () => {
     const result = acceptCandidate(
       'a cute cartoon character in a landscape',
-      clip(0.80), // CLIP >= 0.78
+      clip(0.82), // CLIP >= 0.80
       dino(0.30), // DINO too low
     );
     expect(result.accepted).toBe(true);

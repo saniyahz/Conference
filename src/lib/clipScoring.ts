@@ -14,10 +14,10 @@ import Replicate from "replicate";
  *
  * Score contribution:
  *   similarity >= 0.82 → +6  (very close to anchor — strong identity lock)
- *   similarity >= 0.75 → +4  (good match)
- *   similarity >= 0.68 → +2  (acceptable match)
- *   similarity  0.55-0.68 → -1  (weak match — visual drift)
- *   similarity  < 0.55 → -4  (doesn't look like Riri at all)
+ *   similarity >= 0.78 → +4  (good match — raised from 0.75)
+ *   similarity >= 0.72 → +2  (acceptable match — raised from 0.68)
+ *   similarity  0.58-0.72 → -1  (weak match — visual drift)
+ *   similarity  < 0.58 → -4  (doesn't look like Riri at all)
  *
  * Rescue: if BLIP rejected the candidate (score < 0) but CLIP similarity
  * to the anchor is >= 0.80, the candidate can be "rescued" — BLIP was
@@ -179,18 +179,18 @@ export async function scoreClipSimilarity(
   if (similarity >= 0.82) {
     scoreContribution = 6;
     reason = `CLIP: +6 strong identity lock (${similarity.toFixed(3)} >= 0.82)`;
-  } else if (similarity >= 0.75) {
+  } else if (similarity >= 0.78) {
     scoreContribution = 4;
-    reason = `CLIP: +4 good similarity (${similarity.toFixed(3)} >= 0.75)`;
-  } else if (similarity >= 0.68) {
+    reason = `CLIP: +4 good similarity (${similarity.toFixed(3)} >= 0.78)`;
+  } else if (similarity >= 0.72) {
     scoreContribution = 2;
-    reason = `CLIP: +2 acceptable similarity (${similarity.toFixed(3)} >= 0.68)`;
-  } else if (similarity >= 0.55) {
+    reason = `CLIP: +2 acceptable similarity (${similarity.toFixed(3)} >= 0.72)`;
+  } else if (similarity >= 0.58) {
     scoreContribution = -1;
-    reason = `CLIP: -1 weak similarity (${similarity.toFixed(3)} < 0.68)`;
+    reason = `CLIP: -1 weak similarity (${similarity.toFixed(3)} < 0.72)`;
   } else {
     scoreContribution = -4;
-    reason = `CLIP: -4 LOW similarity (${similarity.toFixed(3)} < 0.55)`;
+    reason = `CLIP: -4 LOW similarity (${similarity.toFixed(3)} < 0.58)`;
   }
 
   console.log(`[CLIP] Similarity: ${similarity.toFixed(3)} → ${reason}`);
@@ -253,18 +253,18 @@ export async function scoreClipWithCachedAnchor(
   if (similarity >= 0.82) {
     scoreContribution = 6;
     reason = `CLIP: +6 strong identity lock (${similarity.toFixed(3)} >= 0.82)`;
-  } else if (similarity >= 0.75) {
+  } else if (similarity >= 0.78) {
     scoreContribution = 4;
-    reason = `CLIP: +4 good similarity (${similarity.toFixed(3)} >= 0.75)`;
-  } else if (similarity >= 0.68) {
+    reason = `CLIP: +4 good similarity (${similarity.toFixed(3)} >= 0.78)`;
+  } else if (similarity >= 0.72) {
     scoreContribution = 2;
-    reason = `CLIP: +2 acceptable similarity (${similarity.toFixed(3)} >= 0.68)`;
-  } else if (similarity >= 0.55) {
+    reason = `CLIP: +2 acceptable similarity (${similarity.toFixed(3)} >= 0.72)`;
+  } else if (similarity >= 0.58) {
     scoreContribution = -1;
-    reason = `CLIP: -1 weak similarity (${similarity.toFixed(3)} < 0.68)`;
+    reason = `CLIP: -1 weak similarity (${similarity.toFixed(3)} < 0.72)`;
   } else {
     scoreContribution = -4;
-    reason = `CLIP: -4 LOW similarity (${similarity.toFixed(3)} < 0.55)`;
+    reason = `CLIP: -4 LOW similarity (${similarity.toFixed(3)} < 0.58)`;
   }
 
   console.log(`[CLIP] Similarity: ${similarity.toFixed(3)} → ${reason}`);

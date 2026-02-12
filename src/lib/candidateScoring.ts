@@ -367,13 +367,12 @@ export function acceptCandidate(
   const blipHasHippo = /\bhippos?\b|\bhippopotamus(es)?\b/.test(c);
   const blipHasElephant = /\belephants?\b/.test(c);
   const dinoHasRhino = !!(detectionResult?.detected && detectionResult.confidence >= 0.50);
-  const clipConfirmsRiri = !!(clipResult && clipResult.similarity >= 0.78);
+  const clipConfirmsRiri = !!(clipResult && clipResult.similarity >= 0.80);
   const clipAvailable = !!(clipResult && clipResult.similarity > 0);
-  // Raised from 0.50 → 0.60: if CLIP says the image looks < 60% like the
-  // reference, the character is visually too different to accept (unless BLIP
-  // explicitly says "rhino"). This catches DINO false-overrides where the image
-  // has a vaguely rhino-shaped blob but doesn't actually look like Riri.
-  const clipRejectsRiri = clipAvailable && clipResult!.similarity < 0.60;
+  // Raised from 0.60 → 0.62: with improved anchor generation (full identity
+  // prompt, averaged centroid), CLIP scores are more accurate. Raise the
+  // floor to reject images that look noticeably different from the reference.
+  const clipRejectsRiri = clipAvailable && clipResult!.similarity < 0.62;
 
   // Rhino confirmation: BLIP says "rhino", DINO detects it, OR CLIP strongly
   // matches the anchor image. CLIP >= 0.78 means the candidate looks very similar
@@ -456,13 +455,13 @@ export function acceptCandidate(
   // When CLIP is available, reject candidates with low similarity to the
   // anchor image. This catches cases where the image technically has "a rhinoceros"
   // (per BLIP or DINO) but it looks visually different from the reference Riri.
-  // Threshold raised to 0.60 — character must look reasonably like the anchor.
+  // Threshold raised to 0.62 — character must look reasonably like the anchor.
   if (clipRejectsRiri && !blipHasRhino) {
     // If BLIP explicitly says "rhino", trust it over CLIP (CLIP can be noisy on cartoons).
-    // But if BLIP doesn't say rhino, CLIP similarity < 0.60 means it's a different character.
+    // But if BLIP doesn't say rhino, CLIP similarity < 0.62 means it's a different character.
     return {
       accepted: false,
-      rejectReason: `RULE 3b: CLIP IDENTITY MISMATCH (similarity=${clipResult!.similarity.toFixed(3)} < 0.60, doesn't resemble reference)`,
+      rejectReason: `RULE 3b: CLIP IDENTITY MISMATCH (similarity=${clipResult!.similarity.toFixed(3)} < 0.62, doesn't resemble reference)`,
     };
   }
 
@@ -478,7 +477,7 @@ export function acceptCandidate(
     // No DINO and no BLIP rhino — can't verify anything about size.
     // (If BLIP confirmed rhino, trust it — we already passed Rule 3.)
     const hasCompositionCue = /\bstanding\b|\bfull body\b|\bwhole body\b|\bcentered\b|\bforeground\b/.test(c);
-    const clipIsStrong = !!(clipResult && clipResult.similarity >= 0.78);
+    const clipIsStrong = !!(clipResult && clipResult.similarity >= 0.80);
     if (!hasCompositionCue && !clipIsStrong) {
       return {
         accepted: false,

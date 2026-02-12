@@ -8,13 +8,15 @@ import {
 } from '../negativePrompts';
 
 describe('buildHardBanNegative', () => {
-  it('includes cow/bull/buffalo anti-drift for rhinoceros', () => {
+  it('includes cat/elephant/hippo/cow/bull anti-drift for rhinoceros', () => {
     const neg = buildHardBanNegative('rhinoceros');
+    expect(neg).toContain('cat');
+    expect(neg).toContain('elephant');
+    expect(neg).toContain('hippo');
     expect(neg).toContain('cow');
     expect(neg).toContain('bull');
     expect(neg).toContain('buffalo');
     expect(neg).toContain('bison');
-    expect(neg).toContain('zebra');
     expect(neg).toContain('dinosaur');
   });
 
@@ -65,10 +67,10 @@ describe('buildHardBanNegative', () => {
   it('anti-drift terms come FIRST in the negative (tokens 1-10)', () => {
     const neg = buildHardBanNegative('rhinoceros');
     const terms = neg.split(', ');
-    // First few terms should be anti-drift animals
-    expect(terms[0]).toBe('cow');
-    expect(terms[1]).toBe('bull');
-    expect(terms[2]).toBe('calf');
+    // First few terms should be the most common misidentifications
+    expect(terms[0]).toBe('cat');
+    expect(terms[1]).toBe('elephant');
+    expect(terms[2]).toBe('hippo');
   });
 
   it('returns reasonable terms when species is unknown', () => {

@@ -28,7 +28,7 @@ import { generatePlate, generateInpaintCharacter } from "@/src/lib/imageGenerati
 import { makeRiriZoneMaskDataUrl, makeRiriZoneLargeMaskDataUrl, makeRiriZoneExtraLargeMaskDataUrl } from "@/src/lib/maskGenerator";
 import { resolveSceneSetting, enforceMustInclude, classifyScene } from "@/src/lib/sceneSettings";
 import { scoreCandidate, CandidateResult, ScoreOptions, getSettingKeywords, deriveSettingKeywordsFromText } from "@/src/lib/candidateScoring";
-import { cacheAnchorEmbedding } from "@/src/lib/clipScoring";
+import { cacheAnchorEmbedding, getClipEmbedding } from "@/src/lib/clipScoring";
 import { buildMultiCharPlateNegative } from "@/src/lib/negativePrompts";
 
 const replicate = new Replicate({
@@ -135,8 +135,8 @@ function extractCharacterIdentity(bible?: CharacterBible): CharacterIdentity {
   // keeps SDXL in children's-book territory. Previous "armored", "stocky
   // barrel-shaped" pushed SDXL toward realistic/aggressive renderings.
   const speciesVisuals: Record<string, string> = {
-    'rhinoceros': 'small cute baby rhinoceros, smooth light gray skin, small round horn on nose, round chubby body, short stubby legs, tiny round ears',
-    'rhino': 'small cute baby rhinoceros, smooth light gray skin, small round horn on nose, round chubby body, short stubby legs, tiny round ears',
+    'rhinoceros': 'small cute rhinoceros, smooth gray skin, prominent round horn on wide flat nose, round chubby body, short thick legs',
+    'rhino': 'small cute rhinoceros, smooth gray skin, prominent round horn on wide flat nose, round chubby body, short thick legs',
     'elephant': 'small cute baby elephant, large floppy ears, long trunk, smooth gray skin, round chubby body',
     'giraffe': 'small cute baby giraffe, very long neck, spotted pattern, tall thin legs, small horns',
     'lion': 'small cute baby lion, golden fluffy mane, round face, tawny fur, tufted tail',
@@ -900,28 +900,49 @@ export async function POST(request: NextRequest) {
     const imageUrls: string[] = [];
     const usedSeeds: number[] = [];
 
-    // ── CLIP ANCHOR: Generate reference image for identity consistency ──
-    // Create a clean reference of the character (no complex scene) and cache
-    // its CLIP embedding. All subsequent pages compare against this anchor.
+    // ── CLIP ANCHOR: Generate reference images for identity consistency ──
+    // Create 2 clean reference images and AVERAGE their CLIP embeddings.
+    // Using 2 variants (white bg + neutral bg) creates a centroid that
+    // accounts for background variation — CLIP embeds the WHOLE image,
+    // so a white-only anchor scores lower against pages with complex scenes.
+    // Averaging reduces background bias and gives a more robust reference.
     let clipAnchorEmbedding: number[] = [];
     try {
-      console.log(`\n[CLIP] Generating character reference image for anchor embedding...`);
-      // Anchor prompt uses the SAME identity prompt (tokens 1-30) to ensure
-      // the reference image matches what the inpaint prompt generates.
-      const refPrompt = [
-        `one single ${identity.name} the cute cartoon ${identity.species}, full body, standing`,
-        identity.inpaintPrompt.split(",").slice(1, 4).join(",").trim(),
-        "simple solid white background, centered in frame",
-        "2D flat color children's picture book illustration, bold outlines, simple shapes",
-        "vibrant colors, no text, no other characters, no scene, no props, alone",
-      ].filter(Boolean).join(", ");
-      const refUrl = await generatePlate(replicate, refPrompt, storySeed + 99999, 99);
-      if (refUrl) {
-        clipAnchorEmbedding = await cacheAnchorEmbedding(replicate, refUrl);
-        if (clipAnchorEmbedding.length > 0) {
-          console.log(`[CLIP] Anchor embedding ready (${clipAnchorEmbedding.length} dims) — identity scoring enabled`);
+      console.log(`\n[CLIP] Generating character reference images for anchor embedding...`);
+      // Use the FULL identity inpaint prompt (same tokens 1-40 as actual inpainting)
+      // instead of a sliced subset. This ensures the anchor closely matches
+      // what SDXL produces during inpainting.
+      const refPromptWhite = identity.inpaintPrompt + ", simple solid white background, centered in frame, no scene, no props";
+      const refPromptNeutral = identity.inpaintPrompt + ", simple bright green grass and blue sky background, centered in frame, no props";
+
+      // Use the SAME base seed as pages (not seed+99999) so the anchor
+      // rendering matches what the page inpaints produce.
+      const [refUrlWhite, refUrlNeutral] = await Promise.all([
+        generatePlate(replicate, refPromptWhite, storySeed, 99),
+        generatePlate(replicate, refPromptNeutral, storySeed + 1, 98),
+      ]);
+
+      console.log(`[CLIP] Anchor white: ${refUrlWhite ? "OK" : "FAILED"}, neutral: ${refUrlNeutral ? "OK" : "FAILED"}`);
+
+      // Get CLIP embeddings for each anchor and average them
+      const anchorUrls = [refUrlWhite, refUrlNeutral].filter(Boolean) as string[];
+      if (anchorUrls.length > 0) {
+        const embeddings = await Promise.all(
+          anchorUrls.map(url => getClipEmbedding(replicate, url))
+        );
+        const validEmb = embeddings.filter(e => e.length > 0);
+
+        if (validEmb.length > 0) {
+          // Average all valid embeddings to create a scene-agnostic centroid
+          const dim = validEmb[0].length;
+          clipAnchorEmbedding = new Array(dim).fill(0);
+          for (const emb of validEmb) {
+            for (let d = 0; d < dim; d++) clipAnchorEmbedding[d] += emb[d];
+          }
+          for (let d = 0; d < dim; d++) clipAnchorEmbedding[d] /= validEmb.length;
+          console.log(`[CLIP] Anchor centroid ready (${dim} dims, averaged ${validEmb.length} embeddings) — identity scoring enabled`);
         } else {
-          console.warn(`[CLIP] Anchor embedding failed — identity scoring disabled`);
+          console.warn(`[CLIP] All anchor embeddings failed — identity scoring disabled`);
         }
       }
     } catch (e) {

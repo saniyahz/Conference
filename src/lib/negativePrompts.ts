@@ -132,8 +132,8 @@ export function buildHardBanNegative(species?: string): string {
   // These are the animals SDXL most commonly substitutes for the target species.
   // Placing them at tokens 1-10 ensures maximum negative effect.
   const antiDrift: Record<string, string[]> = {
-    'rhinoceros': ['cow', 'bull', 'calf', 'ox', 'buffalo', 'bison', 'goat', 'antelope', 'dinosaur', 'zebra'],
-    'rhino': ['cow', 'bull', 'calf', 'ox', 'buffalo', 'bison', 'goat', 'antelope', 'dinosaur', 'zebra'],
+    'rhinoceros': ['cat', 'elephant', 'hippo', 'cow', 'bull', 'calf', 'ox', 'buffalo', 'bison', 'dinosaur'],
+    'rhino': ['cat', 'elephant', 'hippo', 'cow', 'bull', 'calf', 'ox', 'buffalo', 'bison', 'dinosaur'],
     'elephant': ['hippo', 'rhinoceros', 'mammoth', 'pig', 'cow'],
     'dog': ['wolf', 'fox', 'coyote', 'bear'],
     'puppy': ['wolf', 'fox', 'coyote', 'bear', 'kitten'],
