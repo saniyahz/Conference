@@ -797,16 +797,37 @@ async function runCandidateRound(
   // FIXED strength for consistency: same character appearance every page.
   const strength = forceHighStrength ? ROUND3_STRENGTH : INPAINT_STRENGTH;
 
-  // IDENTITY-LOCKED inpaint prompt: character appearance ONLY, no scene words.
-  // The inpaint prompt MUST be IDENTICAL on every page for character consistency.
-  // Scene objects (rockets, dolphins, etc.) are in the PLATE — they survive
-  // inpainting because the mask only covers the character zone (center/bottom).
-  // Adding scene words here caused two problems:
-  //   1. Different prompts per page → character appearance drifts
-  //   2. Scene tokens consume SDXL's ~77-token budget, pushing character
-  //      identity features past the attention window
-  const lockedPrompt = identity.inpaintPrompt;
-  console.log(`[Page ${pageIndex + 1}] Identity-locked inpaint: "${lockedPrompt.substring(0, 140)}..."`);
+  // IDENTITY-LOCKED inpaint prompt + SHORT scene context suffix.
+  //
+  // The mask covers 83% of the frame (ellipse: 17%-100% height, 10%-90% width).
+  // Only the top ~17% and narrow side strips preserve the plate. Inside the
+  // mask, SDXL regenerates ENTIRELY from the prompt. Without scene context,
+  // the character renders on a mismatched generic background, creating a
+  // jarring seam with the plate — "half showing" images where the top is
+  // forest/ocean/space but the bottom is a random green field.
+  //
+  // FIX: Character identity in tokens 1-40 (LOCKED, same every page, highest
+  // SDXL attention). Short scene suffix in tokens 41-55 (varies per page, LOW
+  // attention — provides color/lighting coherence but does NOT affect character
+  // rendering). Total ~55 tokens, well within SDXL's 77-token window.
+  let compositePrompt = identity.inpaintPrompt;
+
+  // Scene suffix: max 2 objects + short setting (keeps tokens low)
+  if (sceneObjects.length > 0) {
+    const identityLower = new Set(identity.mustInclude.map(s => s.toLowerCase()));
+    const objectsForPrompt = sceneObjects
+      .filter(obj => !identityLower.has(obj.toLowerCase()))
+      .slice(0, 2);  // Max 2 objects to save token budget
+    if (objectsForPrompt.length > 0) {
+      compositePrompt += `, ${objectsForPrompt.join(" and ")} in background`;
+    }
+  }
+  // Short setting for color/lighting coherence between mask and plate
+  if (settingContext && settingContext !== "colorful storybook landscape with bright green grass and blue sky") {
+    const shortSetting = settingContext.split(",")[0].trim().substring(0, 25);
+    compositePrompt += `, ${shortSetting}`;
+  }
+  console.log(`[Page ${pageIndex + 1}] Composite inpaint: "${compositePrompt.substring(0, 160)}..."`);
 
   // SERIALIZE candidates (one at a time) to avoid Replicate 429 rate limiting.
   // Low-credit accounts get burst=1 — parallel requests all get throttled.
@@ -818,7 +839,7 @@ async function runCandidateRound(
     console.log(`[Page ${pageIndex + 1}] Candidate ${i + 1}/${count} seed=${seed} [INPAINT strength=${strength}]`);
 
     const url = await generateInpaintCharacter(
-      replicate, lockedPrompt, plateUrl, maskDataUrl,
+      replicate, compositePrompt, plateUrl, maskDataUrl,
       seed, pageIndex, settingContext, mustInclude, undefined, strength,
       identity.species
     );
