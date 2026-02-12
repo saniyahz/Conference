@@ -41,9 +41,13 @@ const CANDIDATES_PER_ROUND = 3;
 const SEED_STRIDE = 29;
 // Minimum score to accept from rounds 1-2. If the best accepted candidate
 // scores below this, continue to the next round for better options.
-// Without this, score=2-4 images (BLIP can't even identify the animal)
-// get returned from round 1, causing visible character inconsistency.
-const MIN_ROUND_ACCEPT = 6;
+// Raised from 6 → 8: With the DINO override removed from Rule 2,
+// accepted images are now BLIP-confirmed rhinos (base score 6) or
+// DINO-only ambiguous images (base score 3). Setting threshold to 8
+// ensures we keep trying until we find an image where BLIP actually says
+// "rhino" plus some quality bonuses (cartoon +1, full body +2 = 9+).
+// DINO-only images (score 3-7) won't trigger early exit.
+const MIN_ROUND_ACCEPT = 8;
 // Bounded page concurrency. With sequential candidates + early-accept,
 // each page has ~1-2 active Replicate calls at a time. Running 2 pages
 // concurrently means ~2-4 simultaneous requests — well within rate limits.
@@ -113,29 +117,54 @@ function extractCharacterIdentity(bible?: CharacterBible): CharacterIdentity {
   // Build IDENTITY-FOCUSED inpaint prompt — character appearance ONLY.
   // NO scene words (moon, forest, beach) — scene belongs in the plate only.
   // This is the key to identity lock: same prompt tokens every page → same character.
+  //
+  // CRITICAL: Front-load species-DISTINGUISHING features in tokens 1-15.
+  // "cute cartoon rhinoceros" is too vague — SDXL's training data has far more
+  // "cute cartoon cow" examples, so it drifts to cow/bull without explicit guidance.
+  // Species-specific visual features tell SDXL HOW this animal differs from
+  // similar-shaped animals (cow, bull, buffalo, hippo).
   const fpDetails = (bible.visual_fingerprint || [])
     .map(s => s.trim())
     .filter(s => s.length > 0)
     .slice(0, 4)
     .join(", ");
 
-  // Framing language — forces SDXL to show full body with margins (prevents zoom/crop)
-  // Keep this EARLY in the prompt so SDXL gives it strongest attention.
-  const framing = "wide shot, full body head-to-toe visible, feet visible, character fully inside frame, centered composition, no cropping";
+  // Species-specific distinguishing features — placed at tokens 7-15 for
+  // maximum SDXL attention. These are the visual features that make each
+  // species unmistakable, preventing SDXL from drifting to similar animals.
+  const speciesVisuals: Record<string, string> = {
+    'rhinoceros': 'thick gray armored skin, prominent horn on nose, stocky barrel-shaped body, short thick legs, small round ears',
+    'rhino': 'thick gray armored skin, prominent horn on nose, stocky barrel-shaped body, short thick legs, small round ears',
+    'elephant': 'large floppy ears, long trunk, gray wrinkled skin, thick legs, tusks',
+    'giraffe': 'very long neck, spotted pattern, tall legs, small horns',
+    'lion': 'golden mane, tawny fur, muscular body, tufted tail',
+    'tiger': 'orange fur with black stripes, muscular body, white belly',
+    'bear': 'round ears, thick fur, stocky body, flat face, large paws',
+    'rabbit': 'long upright ears, fluffy tail, soft fur, twitching nose',
+    'penguin': 'black and white body, orange beak, flippers, waddle pose',
+  };
+  const speciesLock = speciesVisuals[species.toLowerCase()] || '';
 
   // Horn clarification — prevents unicorn horn / party hat drift
   const hornNote = species === "rhinoceros" || species === "rhino"
     ? "two short rhino horns (not unicorn horn), no hat"
     : "no hat";
 
+  // Framing — condensed to save token budget for character identity.
+  // The long version wasted ~15 tokens on "head-to-toe visible, feet visible,
+  // character fully inside frame, centered composition, no cropping" that
+  // pushed identity features past SDXL's 77-token window.
+  const framing = "full body, centered in frame";
+
   const inpaintPrompt = [
     `${name} the cute cartoon ${species}`,
-    fpDetails || `a ${species}`,
+    speciesLock,                // Species-distinguishing features (tokens 7-20)
+    fpDetails || `a ${species}`,  // Visual fingerprint details (tokens 20-30)
     hornNote,
     framing,
     "children's picture book illustration, vibrant colors, soft shading",
     `only one ${species}, no text`,
-  ].join(", ");
+  ].filter(Boolean).join(", ");
 
   return {
     name,
@@ -768,28 +797,16 @@ async function runCandidateRound(
   // FIXED strength for consistency: same character appearance every page.
   const strength = forceHighStrength ? ROUND3_STRENGTH : INPAINT_STRENGTH;
 
-  // Build SCENE-AWARE inpaint prompt: character identity + scene objects + setting.
-  // The identity-only prompt causes SDXL to ignore scene objects in the plate,
-  // producing images where the character is correct but rockets/dolphins/etc. vanish.
-  // Adding scene objects and a short setting hint keeps both character AND scene.
-  let sceneAwarePrompt = identity.inpaintPrompt;
-  if (sceneObjects.length > 0) {
-    // Filter out items that are character-identity (already in prompt)
-    const identityLower = new Set(identity.mustInclude.map(s => s.toLowerCase()));
-    const objectsForPrompt = sceneObjects
-      .filter(obj => !identityLower.has(obj.toLowerCase()))
-      .slice(0, 3);  // Max 3 objects to stay within ~77 token limit
-    if (objectsForPrompt.length > 0) {
-      sceneAwarePrompt += `, ${objectsForPrompt.join(" and ")} visible in scene`;
-    }
-  }
-  // Add short setting context
-  if (settingContext && settingContext !== "colorful storybook landscape with bright green grass and blue sky") {
-    // Shorten setting to key words only
-    const shortSetting = settingContext.split(",")[0].trim().substring(0, 40);
-    sceneAwarePrompt += `, ${shortSetting}`;
-  }
-  console.log(`[Page ${pageIndex + 1}] Scene-aware inpaint: "${sceneAwarePrompt.substring(0, 140)}..."`);
+  // IDENTITY-LOCKED inpaint prompt: character appearance ONLY, no scene words.
+  // The inpaint prompt MUST be IDENTICAL on every page for character consistency.
+  // Scene objects (rockets, dolphins, etc.) are in the PLATE — they survive
+  // inpainting because the mask only covers the character zone (center/bottom).
+  // Adding scene words here caused two problems:
+  //   1. Different prompts per page → character appearance drifts
+  //   2. Scene tokens consume SDXL's ~77-token budget, pushing character
+  //      identity features past the attention window
+  const lockedPrompt = identity.inpaintPrompt;
+  console.log(`[Page ${pageIndex + 1}] Identity-locked inpaint: "${lockedPrompt.substring(0, 140)}..."`);
 
   // SERIALIZE candidates (one at a time) to avoid Replicate 429 rate limiting.
   // Low-credit accounts get burst=1 — parallel requests all get throttled.
@@ -801,7 +818,7 @@ async function runCandidateRound(
     console.log(`[Page ${pageIndex + 1}] Candidate ${i + 1}/${count} seed=${seed} [INPAINT strength=${strength}]`);
 
     const url = await generateInpaintCharacter(
-      replicate, sceneAwarePrompt, plateUrl, maskDataUrl,
+      replicate, lockedPrompt, plateUrl, maskDataUrl,
       seed, pageIndex, settingContext, mustInclude, undefined, strength,
       identity.species
     );

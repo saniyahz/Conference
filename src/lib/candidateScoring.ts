@@ -413,15 +413,17 @@ export function acceptCandidate(
     return { accepted: false, rejectReason: `RULE 1d: CROPPED/CLOSE-UP detected ("${cropMatch}")` };
   }
 
-  // ── RULE 2: Wrong animal gate ──
-  // Wrong animal in caption = reject, UNLESS:
-  //   a) The animal is an expected secondary actor (lions, dolphins, rabbits), OR
-  //   b) GroundingDINO detects rhinoceros (conf >= 0.45).
-  //      BLIP frequently misidentifies cartoon rhinoceros as "giraffe", "cow",
-  //      "cat", "donkey", "pig", "bear", "fish", etc. (~70% of the time).
-  //      When DINO says "rhinoceros detected", the wrong animal label is just
-  //      BLIP being wrong — not a second animal in the image. No bbox requirement
-  //      here; size is handled separately by Rule 4.
+  // ── RULE 2: Wrong animal gate — STRICT, NO OVERRIDE ──
+  // If BLIP identifies a wrong animal in the caption, ALWAYS reject.
+  // Previously DINO was used to override BLIP ("BLIP says cow but DINO says rhino"),
+  // but this produced images that looked like cows/zebras/dinosaurs to humans.
+  // DINO detects "large quadruped shape" and maps it to "rhinoceros" because
+  // that's the query — a cow IS a large quadruped, so DINO gives decent
+  // confidence even on cow images. BLIP's species identification, while
+  // imperfect, is a much better signal: if it says "cow", the image looks
+  // like a cow. The retry mechanism (9+ candidates per page) ensures we
+  // eventually find images where BLIP correctly identifies rhinoceros.
+  // DINO is still used for Rule 3 (character present) and Rule 4 (size).
   const allowedList = (opts?.allowedAnimals ?? []).map(a => a.toLowerCase());
   const allowedSet = new Set(allowedList);
   // Expand allowed animals to include singular/plural variants
@@ -429,36 +431,12 @@ export function acceptCandidate(
     if (a.endsWith("s")) allowedSet.add(a.slice(0, -1));  // "lions" → "lion"
     else allowedSet.add(a + "s");  // "lion" → "lions"
   }
-  // DINO override for Rule 2 requires HIGH confidence to override BLIP.
-  // When BLIP says "giraffe" but DINO says "rhinoceros", we only override if:
-  //   1. DINO confidence >= 0.75 (strong detection, not marginal)
-  //   2. CLIP doesn't actively reject (similarity >= 0.60 if available)
-  // Raised from 0.65 → 0.75: at 0.65 DINO was overriding BLIP for images
-  // that clearly looked like cows/zebras to humans. DINO detects "something
-  // vaguely quadruped-shaped" at 0.65 but the animal is visually wrong.
-  // At 0.75+ the detection is strong enough to trust over BLIP.
-  const dinoConfirmsRhino = !!(detectionResult?.detected
-    && detectionResult.confidence >= 0.75);
   const wrongAnimal = WRONG_ANIMALS.find((a) => c.includes(a) && !allowedSet.has(a));
   if (wrongAnimal) {
-    if (dinoConfirmsRhino && !clipRejectsRiri) {
-      // DINO strongly confirms rhinoceros AND CLIP doesn't reject — BLIP is misidentifying.
-      // NOTE: These images still pass but get a score penalty in scoreCaption()
-      // so images where BLIP actually says "rhino" are preferred.
-      console.log(`[Rule 2] BLIP says "${wrongAnimal}" but DINO confirms rhinoceros (conf=${detectionResult!.confidence.toFixed(2)}, bbox=${(detectionResult!.bestBboxArea * 100).toFixed(1)}%, CLIP=${clipAvailable ? clipResult!.similarity.toFixed(3) : "off"}) — OVERRIDING BLIP (with score penalty)`);
-    } else if (dinoConfirmsRhino && clipRejectsRiri) {
-      // DINO says rhino but CLIP says it doesn't look like the reference.
-      // The image probably IS a wrong animal — DINO is fooled but CLIP isn't.
-      return {
-        accepted: false,
-        rejectReason: `RULE 2: WRONG ANIMAL "${wrongAnimal}" — DINO says rhino (conf=${detectionResult!.confidence.toFixed(2)}) but CLIP rejects (sim=${clipResult!.similarity.toFixed(3)} < 0.50)`,
-      };
-    } else {
-      return {
-        accepted: false,
-        rejectReason: `RULE 2: WRONG ANIMAL "${wrongAnimal}" detected in caption (DINO conf=${detectionResult?.confidence?.toFixed(2) ?? "off"} < 0.55)`,
-      };
-    }
+    return {
+      accepted: false,
+      rejectReason: `RULE 2: WRONG ANIMAL "${wrongAnimal}" detected in caption`,
+    };
   }
 
   // ── RULE 3: Rhinoceros confirmed by at least one signal ──
