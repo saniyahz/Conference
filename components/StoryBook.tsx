@@ -1,6 +1,6 @@
 'use client'
 
-import { useState, useEffect, useRef } from 'react'
+import { useState, useEffect, useRef, useCallback } from 'react'
 import { useRouter } from 'next/navigation'
 import { ChevronLeft, ChevronRight, Download, RotateCcw, Loader2, Volume2, VolumeX, PlayCircle, PauseCircle } from 'lucide-react'
 import { Story } from '@/app/page'
@@ -27,6 +27,8 @@ export default function StoryBook({ story, onReset }: StoryBookProps) {
   const [isGeneratingVoice, setIsGeneratingVoice] = useState(false)
   const [selectedVoice, setSelectedVoice] = useState(VOICE_OPTIONS[0])
   const [autoPlayMode, setAutoPlayMode] = useState(false)
+  const [failedImages, setFailedImages] = useState<Set<number>>(new Set())
+  const imageRetryCount = useRef<Map<number, number>>(new Map())
   const audioRef = useRef<HTMLAudioElement | null>(null)
   const autoPlayRef = useRef(false)
   const currentPageRef = useRef(0)
@@ -68,6 +70,18 @@ export default function StoryBook({ story, onReset }: StoryBookProps) {
       setAutoPlayMode(false)
     }
   }, [])
+
+  // Pre-load ALL images when story loads (staggered to avoid CDN throttling)
+  useEffect(() => {
+    story.pages.forEach((page, i) => {
+      if (page.imageUrl) {
+        setTimeout(() => {
+          const img = new Image()
+          img.src = page.imageUrl!
+        }, i * 300)
+      }
+    })
+  }, [story.pages])
 
   // Pre-load ALL audio pages when story loads
   useEffect(() => {
@@ -377,20 +391,55 @@ export default function StoryBook({ story, onReset }: StoryBookProps) {
         <div className="grid md:grid-cols-2 h-full">
           {/* Left Side - Image */}
           <div className="relative min-h-[400px] md:min-h-[600px] bg-gradient-to-br from-teal-50 to-green-50">
-            {story.pages[currentPage].imageUrl ? (
+            {story.pages[currentPage].imageUrl && !failedImages.has(currentPage) ? (
               <img
-                key={currentPage}
+                key={`page-${currentPage}-${imageRetryCount.current.get(currentPage) || 0}`}
                 src={story.pages[currentPage].imageUrl}
                 alt={`Page ${currentPage + 1} illustration`}
                 className="absolute inset-0 w-full h-full object-cover"
+                onLoad={() => {
+                  // Clear any previous failure state on successful load
+                  if (failedImages.has(currentPage)) {
+                    setFailedImages(prev => {
+                      const next = new Set(prev)
+                      next.delete(currentPage)
+                      return next
+                    })
+                  }
+                }}
                 onError={(e) => {
-                  console.error(`[StoryBook] Image failed to load for page ${currentPage + 1}:`, story.pages[currentPage].imageUrl)
-                  e.currentTarget.style.display = 'none'
+                  const retries = imageRetryCount.current.get(currentPage) || 0
+                  if (retries < 2) {
+                    // Retry up to 2 times with cache-busting delay
+                    console.warn(`[StoryBook] Image retry ${retries + 1}/2 for page ${currentPage + 1}`)
+                    imageRetryCount.current.set(currentPage, retries + 1)
+                    setTimeout(() => {
+                      // Force re-render by toggling failed state briefly
+                      setFailedImages(prev => {
+                        const next = new Set(prev)
+                        next.add(currentPage)
+                        return next
+                      })
+                      setTimeout(() => {
+                        setFailedImages(prev => {
+                          const next = new Set(prev)
+                          next.delete(currentPage)
+                          return next
+                        })
+                      }, 100)
+                    }, 1000 * (retries + 1))
+                  } else {
+                    // Max retries reached — show fallback
+                    console.error(`[StoryBook] Image failed to load for page ${currentPage + 1} after ${retries} retries:`, story.pages[currentPage].imageUrl)
+                    setFailedImages(prev => new Set(prev).add(currentPage))
+                  }
                 }}
               />
             ) : (
               <div className="flex items-center justify-center h-full">
-                <p className="text-gray-400 italic">No illustration available</p>
+                <p className="text-gray-400 italic">
+                  {story.pages[currentPage].imageUrl ? 'Image loading failed' : 'No illustration available'}
+                </p>
               </div>
             )}
           </div>

@@ -303,7 +303,7 @@ export async function generateInpaintCharacter(
       console.log(
         `[Inpaint ${pageIndex}] Attempt ${attempt}/${maxRetries} ` +
         `(MODE: INPAINT, mask: ${maskDataUrl.length} bytes, ` +
-        `strength: ${promptStrength}, steps: 40, guidance: 7, seed: ${seed}` +
+        `strength: ${promptStrength}, steps: ${input.num_inference_steps}, guidance: ${input.guidance_scale}, seed: ${seed}` +
         `${lora ? `, LoRA: ${lora.version.substring(0, 12)}..., trigger: ${lora.triggerWord}` : ""})`
       );
       console.log(
