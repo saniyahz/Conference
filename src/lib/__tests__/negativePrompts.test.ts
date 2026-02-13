@@ -8,16 +8,16 @@ import {
 } from '../negativePrompts';
 
 describe('buildHardBanNegative', () => {
-  it('includes cat/elephant/hippo/cow/bull anti-drift for rhinoceros', () => {
+  it('includes top anti-drift animals for rhinoceros', () => {
     const neg = buildHardBanNegative('rhinoceros');
-    expect(neg).toContain('cat');
-    expect(neg).toContain('elephant');
-    expect(neg).toContain('hippo');
     expect(neg).toContain('cow');
     expect(neg).toContain('bull');
+    expect(neg).toContain('hippo');
+    expect(neg).toContain('elephant');
     expect(neg).toContain('buffalo');
-    expect(neg).toContain('bison');
     expect(neg).toContain('dinosaur');
+    expect(neg).toContain('cat');
+    expect(neg).toContain('dog');
   });
 
   it('includes cow/bull anti-drift for "rhino" (alias)', () => {
@@ -30,16 +30,15 @@ describe('buildHardBanNegative', () => {
     const neg = buildHardBanNegative('elephant');
     expect(neg).toContain('hippo');
     expect(neg).toContain('rhinoceros');
-    expect(neg).toContain('mammoth');
+    expect(neg).toContain('cow');
   });
 
   it('includes duplicate blocking terms', () => {
     const neg = buildHardBanNegative('rhinoceros');
-    expect(neg).toContain('multiple rhinos');
     expect(neg).toContain('multiple animals');
     expect(neg).toContain('two animals');
-    expect(neg).toContain('group of animals');
     expect(neg).toContain('herd');
+    expect(neg).toContain('duplicate');
   });
 
   it('includes crop prevention terms', () => {
@@ -50,10 +49,11 @@ describe('buildHardBanNegative', () => {
     expect(neg).toContain('partial body');
   });
 
-  it('includes accessory blocking', () => {
+  it('includes accessory blocking (condensed)', () => {
     const neg = buildHardBanNegative('rhinoceros');
-    expect(neg).toContain('party hat');
-    expect(neg).toContain('top hat');
+    // Simplified to just "hat" (covers party hat, top hat, birthday hat)
+    expect(neg).toContain('hat');
+    expect(neg).toContain('crown');
     expect(neg).toContain('clothing');
     expect(neg).toContain('jacket');
   });
@@ -61,15 +61,15 @@ describe('buildHardBanNegative', () => {
   it('includes horn drift prevention', () => {
     const neg = buildHardBanNegative('rhinoceros');
     expect(neg).toContain('unicorn horn');
-    expect(neg).toContain('long horn');
   });
 
   it('anti-drift terms come FIRST in the negative (tokens 1-10)', () => {
     const neg = buildHardBanNegative('rhinoceros');
     const terms = neg.split(', ');
     // First few terms should be the most common misidentifications
-    expect(terms[0]).toBe('cat');
-    expect(terms[1]).toBe('elephant');
+    // Ordered by confusion frequency: cow > bull > hippo
+    expect(terms[0]).toBe('cow');
+    expect(terms[1]).toBe('bull');
     expect(terms[2]).toBe('hippo');
   });
 
@@ -79,6 +79,13 @@ describe('buildHardBanNegative', () => {
     expect(neg).toContain('cropped');
     expect(neg).toContain('text');
     expect(neg).toContain('multiple animals');
+  });
+
+  it('total token count stays under 35 terms', () => {
+    const neg = buildHardBanNegative('rhinoceros');
+    const terms = neg.split(', ');
+    // Hard ban should be compact — leaves room for character safety + quality
+    expect(terms.length).toBeLessThanOrEqual(35);
   });
 });
 
@@ -122,17 +129,21 @@ describe('buildPlateNegative (solo pages)', () => {
 });
 
 describe('buildInpaintCharacterNegative', () => {
-  it('blocks wrong animals', () => {
+  it('blocks wrong animals NOT already in hard ban', () => {
     const neg = buildInpaintCharacterNegative();
-    expect(neg).toContain('cat');
-    expect(neg).toContain('dog');
+    // cat/dog/elephant are in hard ban — character safety has different animals
     expect(neg).toContain('horse');
+    expect(neg).toContain('monkey');
     expect(neg).toContain('giraffe');
+    expect(neg).toContain('wolf');
+    expect(neg).toContain('pig');
+    expect(neg).toContain('deer');
   });
 
   it('blocks humans', () => {
     const neg = buildInpaintCharacterNegative();
     expect(neg).toContain('human');
+    expect(neg).toContain('person');
     expect(neg).toContain('boy');
     expect(neg).toContain('girl');
   });
@@ -142,6 +153,13 @@ describe('buildInpaintCharacterNegative', () => {
     expect(neg).toContain('blurry');
     expect(neg).toContain('deformed');
     expect(neg).toContain('black and white');
+  });
+
+  it('is compact (under 25 terms)', () => {
+    const neg = buildInpaintCharacterNegative();
+    const terms = neg.split(', ');
+    // Must be short — lands at tokens 30-50 of the combined negative
+    expect(terms.length).toBeLessThanOrEqual(25);
   });
 });
 

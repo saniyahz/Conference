@@ -79,12 +79,7 @@ function extractCharacterIdentity(bible?: CharacterBible): CharacterIdentity {
       name: "Character",
       species: "animal",
       mustInclude: ["animal"],
-      inpaintPrompt: [
-        "cute cartoon animal character, full body, standing",
-        "centered foreground",
-        "simple children's illustration, flat colors, bold outline",
-        "match background lighting, no text",
-      ].join(", "),
+      inpaintPrompt: "cartoon animal character, full body, children's picture book illustration, bold outlines, vibrant colors",
     };
   }
 
@@ -118,52 +113,72 @@ function extractCharacterIdentity(bible?: CharacterBible): CharacterIdentity {
   // NO scene words (moon, forest, beach) — scene belongs in the plate only.
   // This is the key to identity lock: same prompt tokens every page → same character.
   //
-  // CRITICAL: Front-load species-DISTINGUISHING features in tokens 1-15.
-  // "cute cartoon rhinoceros" is too vague — SDXL's training data has far more
-  // "cute cartoon cow" examples, so it drifts to cow/bull without explicit guidance.
-  // Species-specific visual features tell SDXL HOW this animal differs from
-  // similar-shaped animals (cow, bull, buffalo, hippo).
+  // CRITICAL DESIGN RULES (learned from distortion bugs):
+  //   1. Keep prompt UNDER 50 tokens — SDXL silently ignores tokens past ~77.
+  //      Character identity tokens MUST be in positions 1-30 for maximum weight.
+  //   2. NO negative-in-positive — "no hat", "not unicorn horn", "no text" etc.
+  //      CONFUSE SDXL (it sees "hat", "unicorn horn", "text" as positive signals).
+  //      All exclusions belong in the NEGATIVE prompt only.
+  //   3. NO "small" / "baby" / "tiny" — these push SDXL toward chibi/toy
+  //      renderings that don't look like the actual animal species.
+  //   4. Deduplicate — speciesVisuals and visual_fingerprint often overlap.
+  //      Use ONLY the species-specific visual block (more precise) plus
+  //      non-overlapping fingerprint details (eye color, etc.).
+  //
+  // TOKEN BUDGET (~45 tokens):
+  //   Tokens 1-6:   Character opener (species name, cartoon)
+  //   Tokens 7-22:  Species-specific anatomy (distinguishing features)
+  //   Tokens 22-28: Non-overlapping visual fingerprint (eye color, etc.)
+  //   Tokens 28-30: Framing ("full body")
+  //   Tokens 30-38: Pose (injected per-page in runCandidateRound)
+  //   Tokens 38-45: Art style (short)
+
+  // Species-specific distinguishing anatomy — tokens 7-22.
+  // These MUST describe the actual species shape clearly enough that SDXL
+  // renders the correct animal (not a cow/hippo/elephant substitute).
+  // Avoid "small", "cute", "baby" — those produce chibi/toy shapes.
+  const speciesVisuals: Record<string, string> = {
+    'rhinoceros': 'gray rhinoceros, thick gray skin, wide flat nose with rounded horn, stocky round body, four short thick legs',
+    'rhino': 'gray rhinoceros, thick gray skin, wide flat nose with rounded horn, stocky round body, four short thick legs',
+    'elephant': 'gray elephant, large floppy ears, long curving trunk, round gray body, four thick legs',
+    'giraffe': 'tall giraffe, very long neck, brown spotted pattern, four long thin legs, small ossicones',
+    'lion': 'golden lion, big fluffy mane around face, tawny fur, muscular body, tufted tail',
+    'tiger': 'orange tiger, black stripes on orange fur, round face, white belly, long striped tail',
+    'bear': 'brown bear, round ears, thick fluffy fur, large round body, big paws',
+    'rabbit': 'white rabbit, two long upright ears, round fluffy tail, soft fur, pink nose',
+    'penguin': 'penguin, black and white body, orange beak, round belly, two small flippers',
+  };
+  const speciesLock = speciesVisuals[species.toLowerCase()] || `cartoon ${species}`;
+
+  // Extract NON-OVERLAPPING visual fingerprint details.
+  // Skip entries that repeat species anatomy (skin, body, horn) —
+  // those are already covered by speciesVisuals with better wording.
+  const speciesLockLower = speciesLock.toLowerCase();
   const fpDetails = (bible.visual_fingerprint || [])
     .map(s => s.trim())
-    .filter(s => s.length > 0)
-    .slice(0, 4)
+    .filter(s => {
+      if (!s) return false;
+      const lower = s.toLowerCase();
+      // Skip if it's just the species name or already in speciesVisuals
+      if (lower === species.toLowerCase()) return false;
+      if (lower.includes(species.toLowerCase())) return false;
+      // Skip body/skin/horn descriptions — already in speciesVisuals
+      if (/\b(skin|body|horn|legs?|nose|thick|stocky|round|chubby)\b/.test(lower)) return false;
+      // Keep unique details like eye color, expression, specific markings
+      return true;
+    })
+    .slice(0, 2)  // Max 2 non-overlapping details (~8 tokens)
     .join(", ");
 
-  // Species-specific distinguishing features — placed at tokens 7-15 for
-  // maximum SDXL attention. These describe a CUTE CARTOON version of each
-  // animal (not realistic!). Using "cute baby", "small round", "chubby"
-  // keeps SDXL in children's-book territory. Previous "armored", "stocky
-  // barrel-shaped" pushed SDXL toward realistic/aggressive renderings.
-  const speciesVisuals: Record<string, string> = {
-    'rhinoceros': 'small cute rhinoceros, smooth gray skin, prominent round horn on wide flat nose, round chubby body, short thick legs',
-    'rhino': 'small cute rhinoceros, smooth gray skin, prominent round horn on wide flat nose, round chubby body, short thick legs',
-    'elephant': 'small cute baby elephant, large floppy ears, long trunk, smooth gray skin, round chubby body',
-    'giraffe': 'small cute baby giraffe, very long neck, spotted pattern, tall thin legs, small horns',
-    'lion': 'small cute baby lion, golden fluffy mane, round face, tawny fur, tufted tail',
-    'tiger': 'small cute baby tiger, orange fur with black stripes, round face, white belly',
-    'bear': 'small cute baby bear, round ears, fluffy fur, chubby body, round face, large paws',
-    'rabbit': 'small cute baby rabbit, long upright ears, fluffy round tail, soft fur, pink nose',
-    'penguin': 'small cute baby penguin, black and white body, orange beak, tiny flippers',
-  };
-  const speciesLock = speciesVisuals[species.toLowerCase()] || '';
-
-  // Horn clarification — prevents unicorn horn / party hat drift
-  const hornNote = species === "rhinoceros" || species === "rhino"
-    ? "two short rhino horns (not unicorn horn), no hat"
-    : "no hat";
-
   // Framing — "full body" only. Pose will be added per-page in runCandidateRound().
-  // Previous "centered in frame" produced identical static standing poses on every page.
   const framing = "full body";
 
   const inpaintPrompt = [
-    `one single ${name} the cute cartoon ${species}`,
-    speciesLock,                // Species-distinguishing features (tokens 7-20)
-    fpDetails || `a ${species}`,  // Visual fingerprint details (tokens 20-30)
-    hornNote,
-    framing,
-    "2D flat color children's picture book illustration, bold outlines, simple shapes, vibrant colors, soft warm lighting",
-    `alone, only one ${species}, no other animals, no text`,
+    `cartoon ${species} character named ${name}`,  // Tokens 1-6: species + name
+    speciesLock,                                    // Tokens 7-22: species anatomy
+    fpDetails,                                      // Tokens 22-28: unique details (eyes etc.)
+    framing,                                        // Tokens 28-30: framing
+    "children's picture book illustration, bold outlines, vibrant colors",  // Tokens 30-38: style
   ].filter(Boolean).join(", ");
 
   return {
@@ -835,12 +850,10 @@ async function generateOnePage(
   console.log(`[Page ${pageIndex + 1}] TXT2IMG FALLBACK: generating full scene...`);
   const fallbackPose = pageAction ? actionToPose(pageAction) : "standing happily";
   const txt2imgPrompt = [
-    `one single ${identity.name} the cute cartoon ${identity.species}`,
-    identity.inpaintPrompt.split(",").slice(1, 4).join(",").trim(),
-    `full body, ${fallbackPose}`,
-    cardObjects.length > 0 ? cardObjects.join(", ") : "",
-    sceneSetting,
-    "2D flat color children's picture book illustration, bold outlines, simple shapes, vibrant colors, alone, no text",
+    identity.inpaintPrompt,
+    fallbackPose,
+    cardObjects.length > 0 ? cardObjects.slice(0, 2).join(", ") : "",
+    sceneSetting.split(",")[0].trim(),
   ].filter(Boolean).join(", ");
   console.log(`[Page ${pageIndex + 1}] Txt2img prompt: "${txt2imgPrompt.substring(0, 120)}..."`);
 
@@ -1027,8 +1040,8 @@ export async function POST(request: NextRequest) {
       // Use the FULL identity inpaint prompt (same tokens 1-40 as actual inpainting)
       // instead of a sliced subset. This ensures the anchor closely matches
       // what SDXL produces during inpainting.
-      const refPromptWhite = identity.inpaintPrompt + ", simple solid white background, centered in frame, no scene, no props";
-      const refPromptNeutral = identity.inpaintPrompt + ", simple bright green grass and blue sky background, centered in frame, no props";
+      const refPromptWhite = identity.inpaintPrompt + ", centered, solid white background";
+      const refPromptNeutral = identity.inpaintPrompt + ", centered, bright green grass and blue sky";
 
       // Use the SAME base seed as pages (not seed+99999) so the anchor
       // rendering matches what the page inpaints produce.

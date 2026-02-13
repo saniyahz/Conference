@@ -1,30 +1,14 @@
 /**
  * Quality negatives — avoid common SDXL artifacts.
+ * KEEP SHORT — this lands at tokens ~50-65 of the negative prompt.
+ * Only the most impactful terms survive the token budget.
  */
 export function buildQualityOnlyNegative(): string {
   return [
-    "low quality",
-    "blurry",
-    "distorted",
-    "deformed",
-    "disfigured",
-    "bad anatomy",
-    "extra limbs",
-    "mutated",
-    "ugly",
-    "worst quality",
-    "jpeg artifacts",
-    "duplicate",
-    // Color enforcement — kids' book must be vibrant, never monochrome
-    "black and white",
-    "grayscale",
-    "monochrome",
-    "pencil sketch",
-    "pencil drawing",
-    "charcoal",
-    "desaturated",
-    "faded",
-    "washed out",
+    "blurry", "distorted", "deformed", "bad anatomy", "extra limbs",
+    "ugly", "low quality",
+    // Color enforcement — kids' book must be vibrant
+    "black and white", "grayscale", "monochrome", "sketch",
   ].join(", ");
 }
 
@@ -50,31 +34,19 @@ export function buildFramingNegative(): string {
 }
 
 /**
- * Character-safety negatives — prevent unwanted humans, wrong animals,
- * and duplicate rhinos. These go on the CHARACTER INPAINT pass.
+ * Character-safety negatives — prevent unwanted humans and wrong animals.
+ * These go on the CHARACTER INPAINT pass AFTER the hard ban terms.
  *
- * NOTE: Species-specific anti-drift animals (cow, bull, buffalo, etc.)
- * and near-species confusions (elephant, hippo) are now in
- * buildHardBanNegative(species) which is PREPENDED. This list contains
- * only the REMAINING wrong animals to avoid wasting SDXL's ~77-token budget
- * on duplicates. The hard ban terms get tokens 1-30 (highest attention);
- * these terms get tokens 31-60 (still within the window).
+ * IMPORTANT: Keep this SHORT. The hard ban already uses ~30 tokens.
+ * This list gets tokens ~30-50. Only include terms NOT already in hard ban.
+ * Do NOT duplicate species anti-drift terms (cow, bull, elephant, etc.).
  */
 export function buildCharacterSafetyNegative(): string {
   return [
-    // Block humans — basic terms only.
-    // Do NOT include "child" (conflicts with "children's picture book" in prompt).
-    "human", "boy", "girl", "person", "man", "woman",
-    "people", "realistic human",
-    // Block wrong animals NOT already in hard ban.
-    // elephant, hippo, cow, bull, buffalo, bison, zebra, dinosaur etc.
-    // are covered by species-specific anti-drift in buildHardBanNegative().
-    "cat", "dog", "bear", "lion", "tiger", "rabbit",
-    "monkey", "horse", "giraffe", "camel", "deer", "wolf", "fox", "pig",
-    "dolphin", "whale", "bird", "penguin", "frog", "turtle",
-    // Block duplicate rhinos
-    "two rhinoceroses", "extra rhinoceros",
-    // NOTE: Accessories (hat, unicorn horn, cape, etc.) are in buildHardBanNegative()
+    // Block humans (NOT "child" — conflicts with "children's" in prompt)
+    "human", "person", "boy", "girl", "people",
+    // Block common wrong animals NOT in hard ban
+    "horse", "monkey", "giraffe", "wolf", "pig", "deer",
   ].join(", ");
 }
 
@@ -117,61 +89,46 @@ export function buildInpaintCharacterNegative(): string {
  *   1. Never stripped by sanitizeNegatives()
  *   2. Within SDXL's ~77 token window (tokens past ~77 are ignored)
  *
- * The sanitizer incorrectly removes "hat", "unicorn horn", "text" because
- * the positive prompt contains "no hat" / "not unicorn horn" / "no text"
- * and combined.includes("hat") matches the substring inside "no hat".
+ * CRITICAL: Total negative prompt (hard ban + character safety + quality)
+ * MUST stay under ~70 tokens. SDXL ignores tokens past ~77.
  *
- * Species-aware: when species is provided, species-specific anti-drift
- * animals are placed FIRST (tokens 1-10) for maximum SDXL attention.
- * Without this, SDXL frequently substitutes cow/bull/buffalo for rhinoceros.
+ * Token budget allocation:
+ *   Tokens 1-12:  Species anti-drift (highest priority)
+ *   Tokens 13-22: Accessories/clothing blockers
+ *   Tokens 23-32: Duplicate character blockers
+ *   Tokens 33-40: Crop/framing blockers
+ *   Tokens 40-50: Human blockers
+ *   Tokens 50-65: Quality terms
+ *   Tokens 65-77: Text/watermark
  */
 export function buildHardBanNegative(species?: string): string {
   const terms: string[] = [];
 
   // SPECIES-SPECIFIC anti-drift — FIRST POSITION (highest SDXL attention).
-  // These are the animals SDXL most commonly substitutes for the target species.
-  // Placing them at tokens 1-10 ensures maximum negative effect.
+  // Only the TOP confusion species — keep this to 8-10 terms max.
   const antiDrift: Record<string, string[]> = {
-    'rhinoceros': ['cat', 'elephant', 'hippo', 'cow', 'bull', 'calf', 'ox', 'buffalo', 'bison', 'dinosaur'],
-    'rhino': ['cat', 'elephant', 'hippo', 'cow', 'bull', 'calf', 'ox', 'buffalo', 'bison', 'dinosaur'],
-    'elephant': ['hippo', 'rhinoceros', 'mammoth', 'pig', 'cow'],
-    'dog': ['wolf', 'fox', 'coyote', 'bear'],
-    'puppy': ['wolf', 'fox', 'coyote', 'bear', 'kitten'],
-    'cat': ['lion', 'tiger', 'leopard', 'fox'],
-    'kitten': ['lion', 'tiger', 'puppy', 'fox'],
-    'rabbit': ['cat', 'dog', 'mouse', 'hamster'],
-    'bunny': ['cat', 'dog', 'mouse', 'hamster'],
-    'lion': ['dog', 'cat', 'wolf', 'bear'],
-    'bear': ['dog', 'wolf', 'gorilla'],
+    'rhinoceros': ['cow', 'bull', 'hippo', 'elephant', 'buffalo', 'dinosaur', 'cat', 'dog'],
+    'rhino': ['cow', 'bull', 'hippo', 'elephant', 'buffalo', 'dinosaur', 'cat', 'dog'],
+    'elephant': ['hippo', 'rhinoceros', 'cow', 'pig'],
+    'dog': ['wolf', 'fox', 'bear'],
+    'cat': ['lion', 'tiger', 'fox'],
+    'rabbit': ['cat', 'dog', 'mouse'],
+    'lion': ['dog', 'cat', 'wolf'],
+    'bear': ['dog', 'wolf'],
   };
   const speciesKey = species?.toLowerCase() || '';
   const driftTerms = antiDrift[speciesKey] || [];
   terms.push(...driftTerms);
   console.log(`[HardBan] Species "${species}" anti-drift (first tokens): [${driftTerms.join(", ")}]`);
 
-  // Near-species confusions (skip if already covered by anti-drift above)
-  for (const t of ["elephant", "baby elephant", "hippo", "hippopotamus"]) {
-    if (!terms.includes(t)) terms.push(t);
-  }
-  // Accessories — condensed to save token budget
-  terms.push(
-    "party hat", "top hat", "birthday hat", "crown", "cape", "costume",
-  );
-  // Clothing — SDXL invents outfits (orange jacket, scarf, dress)
-  terms.push("clothing", "jacket", "dress", "scarf");
+  // Accessories — top SDXL confusions only
+  terms.push("hat", "crown", "cape", "costume", "clothing", "jacket");
   // Horn drift
-  terms.push("unicorn horn", "extra horn", "long horn");
-  // Duplicate characters — SDXL frequently generates 2-5 copies of the main animal
-  terms.push(
-    "multiple rhinos", "multiple rhinoceros", "two rhinos", "three rhinos",
-    "group of animals", "herd", "pack", "crowd of animals",
-    "multiple animals", "two animals", "duplicate", "extra animal",
-  );
+  terms.push("unicorn horn");
+  // Duplicate characters (condensed)
+  terms.push("multiple animals", "two animals", "herd", "duplicate");
   // Crop — always enforced
-  terms.push(
-    "cropped", "cut off", "out of frame", "close-up",
-    "partial body", "missing legs", "missing feet",
-  );
+  terms.push("cropped", "cut off", "close-up", "partial body");
   // Text
   terms.push("text", "watermark");
 

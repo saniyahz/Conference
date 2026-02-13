@@ -290,7 +290,7 @@ export async function generateInpaintCharacter(
         num_outputs: 1,
         scheduler: "K_EULER",
         num_inference_steps: 40,
-        guidance_scale: 7,  // Moderate guidance — too high overwrites plate + causes identity drift
+        guidance_scale: 9,  // Higher guidance = stronger prompt adherence = more recognizable species
         prompt_strength: promptStrength,
         seed,
       };

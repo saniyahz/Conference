@@ -59,36 +59,38 @@ function buildTestInpaintPrompt(bible: CharacterBible): string {
   const name = bible.name || 'Character';
   const species = bible.species || 'animal';
 
-  const fpDetails = (bible.visual_fingerprint || [])
-    .map((s) => s.trim())
-    .filter((s) => s.length > 0)
-    .slice(0, 4)
-    .join(', ');
-
+  // Species-specific distinguishing anatomy (matches route.ts)
   const speciesVisuals: Record<string, string> = {
     rhinoceros:
-      'small cute rhinoceros, smooth gray skin, prominent round horn on wide flat nose, round chubby body, short thick legs',
+      'gray rhinoceros, thick gray skin, wide flat nose with rounded horn, stocky round body, four short thick legs',
     rhino:
-      'small cute rhinoceros, smooth gray skin, prominent round horn on wide flat nose, round chubby body, short thick legs',
+      'gray rhinoceros, thick gray skin, wide flat nose with rounded horn, stocky round body, four short thick legs',
   };
-  const speciesLock = speciesVisuals[species.toLowerCase()] || '';
+  const speciesLock = speciesVisuals[species.toLowerCase()] || `cartoon ${species}`;
 
-  const hornNote =
-    species === 'rhinoceros' || species === 'rhino'
-      ? 'two short rhino horns (not unicorn horn), no hat'
-      : 'no hat';
+  // Non-overlapping visual fingerprint details (matches route.ts)
+  const speciesLockLower = speciesLock.toLowerCase();
+  const fpDetails = (bible.visual_fingerprint || [])
+    .map((s) => s.trim())
+    .filter((s) => {
+      if (!s) return false;
+      const lower = s.toLowerCase();
+      if (lower === species.toLowerCase()) return false;
+      if (lower.includes(species.toLowerCase())) return false;
+      if (/\b(skin|body|horn|legs?|nose|thick|stocky|round|chubby)\b/.test(lower)) return false;
+      return true;
+    })
+    .slice(0, 2)
+    .join(', ');
 
-  // MATCHES the route's updated framing (no "centered in frame")
   const framing = 'full body';
 
   return [
-    `one single ${name} the cute cartoon ${species}`,
+    `cartoon ${species} character named ${name}`,
     speciesLock,
-    fpDetails || `a ${species}`,
-    hornNote,
+    fpDetails,
     framing,
-    "2D flat color children's picture book illustration, bold outlines, simple shapes, vibrant colors, soft warm lighting",
-    `alone, only one ${species}, no other animals, no text`,
+    "children's picture book illustration, bold outlines, vibrant colors",
   ]
     .filter(Boolean)
     .join(', ');
