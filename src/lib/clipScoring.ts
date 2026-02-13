@@ -12,12 +12,13 @@ import Replicate from "replicate";
  *   misidentifies species ("elephant", "cartoon animal"). CLIP embeddings
  *   compare visual similarity directly, bypassing language entirely.
  *
- * Score contribution:
- *   similarity >= 0.82 → +6  (very close to anchor — strong identity lock)
- *   similarity >= 0.78 → +4  (good match — raised from 0.75)
- *   similarity >= 0.72 → +2  (acceptable match — raised from 0.68)
- *   similarity  0.58-0.72 → -1  (weak match — visual drift)
- *   similarity  < 0.58 → -4  (doesn't look like Riri at all)
+ * Score contribution (increased weights for consistency enforcement):
+ *   similarity >= 0.82 → +8  (very close to anchor — strong identity lock)
+ *   similarity >= 0.78 → +6  (good match)
+ *   similarity >= 0.72 → +3  (acceptable match)
+ *   similarity >= 0.68 → +1  (borderline — just above reject threshold)
+ *   similarity  0.58-0.68 → -2  (weak match — visual drift, penalize)
+ *   similarity  < 0.58 → -6  (doesn't look like Riri at all)
  *
  * Rescue: if BLIP rejected the candidate (score < 0) but CLIP similarity
  * to the anchor is >= 0.80, the candidate can be "rescued" — BLIP was
@@ -148,6 +149,31 @@ export function cosineSimilarity(a: number[], b: number[]): number {
 }
 
 /**
+ * Convert CLIP similarity to a score contribution.
+ * Shared logic for both anchor-url and cached-anchor scoring paths.
+ *
+ * Higher weights than before to make consistency a dominant factor
+ * in candidate ranking. A +8 vs -2 spread (10 points) means a
+ * high-CLIP candidate will ALWAYS outrank a low-CLIP candidate
+ * with similar BLIP scores.
+ */
+function clipSimilarityToScore(similarity: number): { scoreContribution: number; reason: string } {
+  if (similarity >= 0.82) {
+    return { scoreContribution: 8, reason: `CLIP: +8 strong identity lock (${similarity.toFixed(3)} >= 0.82)` };
+  } else if (similarity >= 0.78) {
+    return { scoreContribution: 6, reason: `CLIP: +6 good similarity (${similarity.toFixed(3)} >= 0.78)` };
+  } else if (similarity >= 0.72) {
+    return { scoreContribution: 3, reason: `CLIP: +3 acceptable similarity (${similarity.toFixed(3)} >= 0.72)` };
+  } else if (similarity >= 0.68) {
+    return { scoreContribution: 1, reason: `CLIP: +1 borderline similarity (${similarity.toFixed(3)} >= 0.68)` };
+  } else if (similarity >= 0.58) {
+    return { scoreContribution: -2, reason: `CLIP: -2 weak similarity (${similarity.toFixed(3)} < 0.68)` };
+  } else {
+    return { scoreContribution: -6, reason: `CLIP: -6 LOW similarity (${similarity.toFixed(3)} < 0.58)` };
+  }
+}
+
+/**
  * Score a candidate image against a Riri anchor using CLIP similarity.
  *
  * Runs both embeddings in parallel for speed.
@@ -172,26 +198,7 @@ export async function scoreClipSimilarity(
   }
 
   const similarity = cosineSimilarity(candidateEmb, anchorEmb);
-
-  let scoreContribution: number;
-  let reason: string;
-
-  if (similarity >= 0.82) {
-    scoreContribution = 6;
-    reason = `CLIP: +6 strong identity lock (${similarity.toFixed(3)} >= 0.82)`;
-  } else if (similarity >= 0.78) {
-    scoreContribution = 4;
-    reason = `CLIP: +4 good similarity (${similarity.toFixed(3)} >= 0.78)`;
-  } else if (similarity >= 0.72) {
-    scoreContribution = 2;
-    reason = `CLIP: +2 acceptable similarity (${similarity.toFixed(3)} >= 0.72)`;
-  } else if (similarity >= 0.58) {
-    scoreContribution = -1;
-    reason = `CLIP: -1 weak similarity (${similarity.toFixed(3)} < 0.72)`;
-  } else {
-    scoreContribution = -4;
-    reason = `CLIP: -4 LOW similarity (${similarity.toFixed(3)} < 0.58)`;
-  }
+  const { scoreContribution, reason } = clipSimilarityToScore(similarity);
 
   console.log(`[CLIP] Similarity: ${similarity.toFixed(3)} → ${reason}`);
 
@@ -246,26 +253,7 @@ export async function scoreClipWithCachedAnchor(
   }
 
   const similarity = cosineSimilarity(candidateEmb, anchorEmbedding);
-
-  let scoreContribution: number;
-  let reason: string;
-
-  if (similarity >= 0.82) {
-    scoreContribution = 6;
-    reason = `CLIP: +6 strong identity lock (${similarity.toFixed(3)} >= 0.82)`;
-  } else if (similarity >= 0.78) {
-    scoreContribution = 4;
-    reason = `CLIP: +4 good similarity (${similarity.toFixed(3)} >= 0.78)`;
-  } else if (similarity >= 0.72) {
-    scoreContribution = 2;
-    reason = `CLIP: +2 acceptable similarity (${similarity.toFixed(3)} >= 0.72)`;
-  } else if (similarity >= 0.58) {
-    scoreContribution = -1;
-    reason = `CLIP: -1 weak similarity (${similarity.toFixed(3)} < 0.72)`;
-  } else {
-    scoreContribution = -4;
-    reason = `CLIP: -4 LOW similarity (${similarity.toFixed(3)} < 0.58)`;
-  }
+  const { scoreContribution, reason } = clipSimilarityToScore(similarity);
 
   console.log(`[CLIP] Similarity: ${similarity.toFixed(3)} → ${reason}`);
 

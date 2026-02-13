@@ -1,9 +1,16 @@
 import { describe, it, expect } from 'vitest';
 import { acceptCandidate, scoreCaption, ClipResult, DetectionResult } from '../candidateScoring';
 
-// Helper to make a ClipResult
+// Helper to make a ClipResult (updated score weights for consistency enforcement)
 function clip(similarity: number): ClipResult {
-  return { similarity, scoreContribution: similarity >= 0.82 ? 6 : similarity >= 0.78 ? 4 : similarity >= 0.72 ? 2 : similarity >= 0.58 ? -1 : -4, reason: `CLIP: sim=${similarity}` };
+  let sc: number;
+  if (similarity >= 0.82) sc = 8;
+  else if (similarity >= 0.78) sc = 6;
+  else if (similarity >= 0.72) sc = 3;
+  else if (similarity >= 0.68) sc = 1;
+  else if (similarity >= 0.58) sc = -2;
+  else sc = -6;
+  return { similarity, scoreContribution: sc, reason: `CLIP: sim=${similarity}` };
 }
 
 // Helper to make a DetectionResult
@@ -148,6 +155,47 @@ describe('acceptCandidate - Rule 3: Character must be confirmed', () => {
       'a cute cartoon character in a landscape',
       clip(0.82), // CLIP >= 0.80
       dino(0.30), // DINO too low
+    );
+    expect(result.accepted).toBe(true);
+  });
+});
+
+describe('acceptCandidate - Rule 3b/3c: CLIP identity consistency', () => {
+  it('rejects when CLIP too low and BLIP does NOT say rhino (Rule 3b)', () => {
+    const result = acceptCandidate(
+      'a cute cartoon animal on a hill',
+      clip(0.60), // Below 0.68 threshold
+      dino(0.65), // DINO confirms but CLIP rejects
+    );
+    expect(result.accepted).toBe(false);
+    expect(result.rejectReason).toContain('CLIP IDENTITY MISMATCH');
+  });
+
+  it('rejects BLIP-confirmed rhino when CLIP is very low (Rule 3c)', () => {
+    const result = acceptCandidate(
+      'a cute cartoon rhino on a hill',
+      clip(0.50), // Below 0.55 consistency threshold
+      dino(0.85),
+    );
+    expect(result.accepted).toBe(false);
+    expect(result.rejectReason).toContain('CLIP CONSISTENCY MISMATCH');
+  });
+
+  it('accepts BLIP-confirmed rhino when CLIP is above consistency threshold', () => {
+    const result = acceptCandidate(
+      'a cute cartoon rhino standing on grass',
+      clip(0.60), // Above 0.55 consistency threshold (but below 0.68 general)
+      dino(0.85),
+    );
+    // BLIP says rhino + CLIP >= 0.55 → accepted
+    expect(result.accepted).toBe(true);
+  });
+
+  it('accepts when CLIP is well above threshold', () => {
+    const result = acceptCandidate(
+      'a cute cartoon rhino on the moon',
+      clip(0.78),
+      dino(0.85),
     );
     expect(result.accepted).toBe(true);
   });

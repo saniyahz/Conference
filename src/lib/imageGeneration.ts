@@ -232,7 +232,10 @@ export async function generateTxt2imgScene(
  *   - 0.65 = background stays locked, mask region fills from prompt
  *   - 0.55 = very conservative, slight edits only
  *
- * We use 0.75: character renders clearly in mask region, plate mostly preserved.
+ * We use 0.80: character renders clearly in mask region, plate well preserved
+ * near the edges (minimal seam/fading). Combined with guidance_scale=10
+ * and feathered mask edges for clean plate→character transition.
+ * 0.85 was too high — shifted plate colors near mask boundary ("fading into image").
  * 0.65 was too low — produced no character at all (just plate background).
  */
 export async function generateInpaintCharacter(
@@ -245,7 +248,7 @@ export async function generateInpaintCharacter(
   settingContext: string = "",
   mustInclude: string[] = [],
   lora?: LoraConfig,
-  promptStrength: number = 0.75,
+  promptStrength: number = 0.80,
   species?: string
 ): Promise<string> {
   // Hard validation: mask MUST be a real data URL, otherwise we're
@@ -290,7 +293,7 @@ export async function generateInpaintCharacter(
         num_outputs: 1,
         scheduler: "K_EULER",
         num_inference_steps: 40,
-        guidance_scale: 9,  // Higher guidance = stronger prompt adherence = more recognizable species
+        guidance_scale: 10,  // High guidance = strong prompt adherence within mask. Compensates for lower prompt_strength (0.80) which preserves plate better but needs stronger character signal.
         prompt_strength: promptStrength,
         seed,
       };

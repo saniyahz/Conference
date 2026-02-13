@@ -884,18 +884,22 @@ async function generateOnePage(
  *
  * prompt_strength controls how much SDXL overwrites the ENTIRE image:
  *   - 0.90+: nearly full regen → plate composition destroyed, identity drift
- *   - 0.85: character renders reliably, plate mostly preserved, stronger identity
- *   - 0.82: was sometimes too weak — character renders but with wrong species traits
+ *   - 0.85: character too aggressive — plate colors shift, creating visible
+ *           halo/seam where character meets background ("fading into image")
+ *   - 0.80: BALANCED — character renders clearly, plate preserved near edges,
+ *           minimal seam artifact. Combined with guidance_scale=10 for strong
+ *           prompt adherence within the mask region.
  *   - 0.75: too low — frequently produced no character (just background)
  *   - 0.65: TOO LOW — no character at all (just flowers/butterflies)
  *
- * Increased base from 0.82 → 0.85 to produce stronger character rendering.
- * At 0.82 SDXL sometimes blends the character into the plate too much,
- * producing ambiguous animals that BLIP misidentifies. At 0.85 the character
- * identity prompt has more influence, producing more consistent rhinoceros.
+ * Lowered from 0.85 → 0.80 to fix "fading into image" seam artifact.
+ * At 0.85, SDXL regenerates 85% of the ENTIRE image (not just the mask),
+ * shifting plate colors/lighting near the character edges. At 0.80 the plate
+ * is better preserved, and guidance_scale=10 compensates by making the
+ * character prompt more influential within the mask region.
  */
-const INPAINT_STRENGTH = 0.85;
-const ROUND3_STRENGTH = 0.90;
+const INPAINT_STRENGTH = 0.80;
+const ROUND3_STRENGTH = 0.87;
 
 async function runCandidateRound(
   plateUrl: string,
