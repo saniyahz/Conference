@@ -6,32 +6,36 @@ import sharp from "sharp";
  * White = area to inpaint (character goes here).
  * Black = preserved area (background stays untouched).
  *
- * STANDARD mask — generous full-body coverage with headroom and foot room.
- * Centered slightly below middle to leave sky/background visible above.
+ * STANDARD mask — SCENE-PRESERVING: character in the center with
+ * visible plate edges for story context (sky, ground, environment).
  *
- * Increased from 74%×82% to 80%×86% coverage to ensure the character
- * renders large enough to pass the bbox size check on the first attempt.
- * The old smaller mask frequently produced characters with bbox < 8%,
- * wasting API calls on escalation rounds.
+ * Reduced from 80%×86% to 64%×72% to preserve more of the plate scene.
+ * The old larger mask destroyed the plate — only 10% side strips and 17%
+ * top survived, making story settings (moon, ocean, forest) invisible.
  *
- * NOTE: No mask feathering — Gaussian blur was tested (stdDev=18) but
- * it shrinks the effective white area, causing characters to render too
- * small (bbox 1-7%) and triggering massive TINY CHARACTER rejections.
- * Hard-edged masks produce larger, more prominent characters.
+ * With the smaller mask, the plate scene is clearly visible:
+ *   Top 20%:  sky/ceiling (plate preserved)
+ *   Bottom 8%: ground/floor (plate preserved)
+ *   Left/right 18%: environment (plate preserved)
+ *   Center 64%×72%: character inpaint zone
+ *
+ * At prompt_strength=0.85, the character renders prominently within the
+ * mask. If the character is too small (bbox < 8%), rounds 2-3 escalate
+ * to larger masks (80%×86% and 88%×88%) as fallback.
  *
  * For 1024×1024:
  *   cx = 512 (centered)
- *   cy = 614 (60% down — balanced headroom + foot room)
- *   rx = 410 (80% width coverage)
- *   ry = 440 (86% height coverage — head-to-toe with margins)
+ *   cy = 573 (56% down — balanced headroom + visible ground)
+ *   rx = 328 (64% width coverage)
+ *   ry = 369 (72% height coverage)
  */
 export async function makeRiriZoneMaskDataUrl(
   size: number = 1024
 ): Promise<string> {
   const cx = size * 0.50;
-  const cy = size * 0.60;
-  const rx = size * 0.40;
-  const ry = size * 0.43;
+  const cy = size * 0.56;
+  const rx = size * 0.32;
+  const ry = size * 0.36;
 
   const svg = `
   <svg width="${size}" height="${size}" xmlns="http://www.w3.org/2000/svg">
@@ -44,23 +48,24 @@ export async function makeRiriZoneMaskDataUrl(
 }
 
 /**
- * LARGE mask — for multi-char round 1 or when standard mask isn't enough.
- * Wider and taller to give the character more room in busy scenes.
+ * LARGE mask — escalation path when standard mask produces tiny characters.
+ * Uses the old standard dimensions (80%×86% coverage).
  *
- * Increased from 78%×86% to 84%×88% coverage.
+ * Also used as round 1 mask for multi-character pages where secondary
+ * actors in the plate compete with the main character for visual space.
  *
  *   cx = 50% centered
- *   cy = 58% (slightly higher for more headroom)
- *   rx = 42% (84% width coverage)
- *   ry = 44% (88% height coverage)
+ *   cy = 60% (slightly below center for foot room)
+ *   rx = 40% (80% width coverage)
+ *   ry = 43% (86% height coverage)
  */
 export async function makeRiriZoneLargeMaskDataUrl(
   size: number = 1024
 ): Promise<string> {
   const cx = size * 0.50;
-  const cy = size * 0.58;
-  const rx = size * 0.42;
-  const ry = size * 0.44;
+  const cy = size * 0.60;
+  const rx = size * 0.40;
+  const ry = size * 0.43;
 
   const svg = `
   <svg width="${size}" height="${size}" xmlns="http://www.w3.org/2000/svg">

@@ -923,18 +923,22 @@ async function runCandidateRound(
   // FIXED strength for consistency: same character appearance every page.
   const strength = forceHighStrength ? ROUND3_STRENGTH : INPAINT_STRENGTH;
 
-  // IDENTITY-LOCKED inpaint prompt + POSE + SHORT scene context suffix.
+  // IDENTITY-LOCKED inpaint prompt + POSE. NO per-page scene suffix.
   //
-  // The mask covers 83% of the frame (ellipse: 17%-100% height, 10%-90% width).
-  // Only the top ~17% and narrow side strips preserve the plate. Inside the
-  // mask, SDXL regenerates ENTIRELY from the prompt. Without scene context,
-  // the character renders on a mismatched generic background, creating a
-  // jarring seam with the plate.
+  // The mask now covers ~64%×72% of the frame, leaving the top 20%, sides 18%,
+  // and bottom 8% of the plate visible. This means the plate's scene (moon,
+  // ocean, forest, etc.) is clearly visible around the character.
+  //
+  // CRITICAL: NO scene objects or setting context in the inpaint prompt.
+  // Previously, per-page suffixes like "rocket ship in background, Moon surface"
+  // vs "dolphins in background, Ocean with big waves" caused SDXL to render
+  // the character with different colors/styles per page. Removing ALL per-page
+  // varying tokens ensures the character identity is 100% IDENTICAL across pages.
+  // The plate provides scene context through the visible edges.
   //
   // STRUCTURE (within SDXL's 77-token window):
   //   Tokens 1-35:  Character identity (LOCKED, same every page)
   //   Tokens 35-42: Pose/action (VARIES per page — prevents static standing)
-  //   Tokens 42-55: Scene suffix (VARIES per page — color/lighting coherence)
   let compositePrompt = identity.inpaintPrompt;
 
   // INJECT POSE: Replace "full body" with "full body, [pose]" to give each
@@ -949,21 +953,10 @@ async function runCandidateRound(
     console.log(`[Page ${pageIndex + 1}] Pose injection: "${pose}" (from action: "${pageAction}")`);
   }
 
-  // Scene suffix: max 2 objects + short setting (keeps tokens low)
-  if (sceneObjects.length > 0) {
-    const identityLower = new Set(identity.mustInclude.map(s => s.toLowerCase()));
-    const objectsForPrompt = sceneObjects
-      .filter(obj => !identityLower.has(obj.toLowerCase()))
-      .slice(0, 2);  // Max 2 objects to save token budget
-    if (objectsForPrompt.length > 0) {
-      compositePrompt += `, ${objectsForPrompt.join(" and ")} in background`;
-    }
-  }
-  // Short setting for color/lighting coherence between mask and plate
-  if (settingContext && settingContext !== "colorful storybook landscape with bright green grass and blue sky") {
-    const shortSetting = settingContext.split(",")[0].trim().substring(0, 25);
-    compositePrompt += `, ${shortSetting}`;
-  }
+  // NO scene suffix — the plate provides scene context through visible edges.
+  // Previously scene objects and setting context were appended here, but that
+  // caused character appearance to vary per page (SDXL shifted colors/style
+  // based on "ocean" vs "forest" vs "space" tokens).
   console.log(`[Page ${pageIndex + 1}] Composite inpaint: "${compositePrompt.substring(0, 160)}..."`);
 
   // SERIALIZE candidates (one at a time) to avoid Replicate 429 rate limiting.

@@ -174,13 +174,14 @@ function actionToPose(action: string): string {
 }
 
 // ─── SIMULATE THE ROUTE'S COMPOSITE PROMPT BUILD ────────────────────────
+// NOTE: The route NO LONGER appends scene objects or setting context.
+// The inpaint prompt is now PURE identity + pose. Scene context comes
+// from the visible plate edges (smaller mask preserves 20% top, 18% sides, 8% bottom).
+// This eliminates per-page prompt variation that caused character inconsistency.
 
 function buildCompositeInpaintPrompt(
   inpaintPrompt: string,
   pageAction: string,
-  sceneObjects: string[],
-  settingContext: string,
-  identityMustInclude: string[]
 ): string {
   let compositePrompt = inpaintPrompt;
 
@@ -190,23 +191,8 @@ function buildCompositeInpaintPrompt(
     compositePrompt = compositePrompt.replace('full body,', `full body, ${pose},`);
   }
 
-  // Scene suffix
-  if (sceneObjects.length > 0) {
-    const identityLower = new Set(identityMustInclude.map((s) => s.toLowerCase()));
-    const objectsForPrompt = sceneObjects
-      .filter((obj) => !identityLower.has(obj.toLowerCase()))
-      .slice(0, 2);
-    if (objectsForPrompt.length > 0) {
-      compositePrompt += `, ${objectsForPrompt.join(' and ')} in background`;
-    }
-  }
-  if (
-    settingContext &&
-    settingContext !== 'colorful storybook landscape with bright green grass and blue sky'
-  ) {
-    const shortSetting = settingContext.split(',')[0].trim().substring(0, 25);
-    compositePrompt += `, ${shortSetting}`;
-  }
+  // NO scene suffix — removed to ensure character identity is 100% identical
+  // across all pages. The plate provides scene context through visible edges.
 
   return compositePrompt;
 }
@@ -232,7 +218,6 @@ describe('E2E Pipeline Integration - Pose Variation', () => {
 
   let sceneCards: PageSceneCard[];
   let inpaintPrompt: string;
-  let identityMustInclude: string[];
 
   beforeEach(() => {
     // Generate scene cards for all pages (same as the real pipeline)
@@ -240,7 +225,6 @@ describe('E2E Pipeline Integration - Pose Variation', () => {
       generatePageSceneCard(text, i + 1, mockBible)
     );
     inpaintPrompt = buildTestInpaintPrompt(mockBible);
-    identityMustInclude = ['rhinoceros', 'Riri'];
   });
 
   it('generates 10 scene cards with 10 DISTINCT actions', () => {
@@ -267,15 +251,11 @@ describe('E2E Pipeline Integration - Pose Variation', () => {
     }
   });
 
-  it('builds 10 DISTINCT composite inpaint prompts', () => {
+  it('builds mostly DISTINCT composite inpaint prompts (pose-only variation)', () => {
     const prompts = sceneCards.map((card) => {
-      const sceneObjects = card.key_objects || [];
       return buildCompositeInpaintPrompt(
         inpaintPrompt,
         card.action,
-        sceneObjects,
-        card.setting,
-        identityMustInclude
       );
     });
 
@@ -287,8 +267,12 @@ describe('E2E Pipeline Integration - Pose Variation', () => {
       console.log(`  Page ${i + 1}: ...full body, ${poseChunk}...`);
     });
 
+    // With scene suffix removed, prompts vary ONLY by pose.
+    // Some actions may map to the same pose (e.g., "exploring" and "forest" fallback
+    // both produce "walking forward looking around curiously"), so 1-2 duplicates
+    // are acceptable. At least 8/10 should be unique.
     const uniquePrompts = new Set(prompts);
-    expect(uniquePrompts.size).toBe(10);
+    expect(uniquePrompts.size).toBeGreaterThanOrEqual(8);
   });
 
   it('no composite prompt contains "centered in frame"', () => {
@@ -296,9 +280,6 @@ describe('E2E Pipeline Integration - Pose Variation', () => {
       const prompt = buildCompositeInpaintPrompt(
         inpaintPrompt,
         card.action,
-        card.key_objects || [],
-        card.setting,
-        identityMustInclude
       );
       expect(prompt).not.toContain('centered in frame');
     }
@@ -309,9 +290,6 @@ describe('E2E Pipeline Integration - Pose Variation', () => {
       const prompt = buildCompositeInpaintPrompt(
         inpaintPrompt,
         card.action,
-        card.key_objects || [],
-        card.setting,
-        identityMustInclude
       );
       // Should have "full body, <some pose text>,"
       const fullBodyIdx = prompt.indexOf('full body,');
@@ -335,9 +313,6 @@ describe('E2E Pipeline Integration - Pose Variation', () => {
       const prompt = buildCompositeInpaintPrompt(
         inpaintPrompt,
         card.action,
-        card.key_objects || [],
-        card.setting,
-        identityMustInclude
       );
       return getIdentitySection(prompt);
     });
@@ -346,6 +321,28 @@ describe('E2E Pipeline Integration - Pose Variation', () => {
     const firstIdentity = identitySections[0];
     for (let i = 1; i < identitySections.length; i++) {
       expect(identitySections[i]).toBe(firstIdentity);
+    }
+  });
+
+  it('ENTIRE prompt except pose is IDENTICAL across all pages (no scene suffix)', () => {
+    // With the scene suffix removed, the ONLY varying part should be the pose.
+    // Everything before and after the pose must be identical.
+    const prompts = sceneCards.map((card) =>
+      buildCompositeInpaintPrompt(inpaintPrompt, card.action)
+    );
+
+    // Extract the non-pose portion: remove the pose chunk between "full body," and the next ","
+    const stripPose = (p: string): string => {
+      const fbIdx = p.indexOf('full body,');
+      if (fbIdx < 0) return p;
+      const afterFb = p.indexOf(',', fbIdx + 11);
+      if (afterFb < 0) return p.substring(0, fbIdx + 10);
+      return p.substring(0, fbIdx + 10) + p.substring(afterFb);
+    };
+
+    const first = stripPose(prompts[0]);
+    for (let i = 1; i < prompts.length; i++) {
+      expect(stripPose(prompts[i])).toBe(first);
     }
   });
 
