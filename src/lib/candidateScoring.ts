@@ -369,18 +369,17 @@ export function acceptCandidate(
   const dinoHasRhino = !!(detectionResult?.detected && detectionResult.confidence >= 0.50);
   const clipConfirmsRiri = !!(clipResult && clipResult.similarity >= 0.80);
   const clipAvailable = !!(clipResult && clipResult.similarity > 0);
-  // Raised from 0.62 → 0.68: with improved anchor generation (full identity
-  // prompt, averaged centroid), CLIP scores are more accurate. Raise the
-  // floor to reject images that look noticeably different from the reference.
-  // This is the primary consistency gate — candidates below 0.68 look
-  // visually distinct from the reference Riri and break page-to-page continuity.
-  const clipRejectsRiri = clipAvailable && clipResult!.similarity < 0.68;
+  // Raised from 0.62 → 0.65: with improved anchor generation (full identity
+  // prompt, averaged centroid), CLIP scores are more accurate. Modest raise
+  // to reject clearly different-looking characters without being too aggressive.
+  // 0.68 was tested but rejected too many viable candidates (most scores 0.63-0.67).
+  const clipRejectsRiri = clipAvailable && clipResult!.similarity < 0.65;
   // Even when BLIP confirms "rhino", require minimum CLIP similarity.
   // Without this, a completely different-looking rhino (different color,
   // proportions, style) passes just because BLIP calls it a "rhino".
-  // Threshold is lower than general clipRejectsRiri (0.55 vs 0.68) since
+  // Threshold is lower than general clipRejectsRiri (0.50 vs 0.65) since
   // BLIP species confirmation provides independent evidence.
-  const clipRejectsEvenWithBlip = clipAvailable && clipResult!.similarity < 0.55;
+  const clipRejectsEvenWithBlip = clipAvailable && clipResult!.similarity < 0.50;
 
   // Rhino confirmation: BLIP says "rhino", DINO detects it, OR CLIP strongly
   // matches the anchor image. CLIP >= 0.78 means the candidate looks very similar
@@ -465,21 +464,21 @@ export function acceptCandidate(
   // (per BLIP or DINO) but it looks visually different from the reference Riri.
   // Threshold raised to 0.68 — character must look reasonably like the anchor.
   if (clipRejectsRiri && !blipHasRhino) {
-    // If BLIP doesn't say rhino, CLIP similarity < 0.68 means it's a different character.
+    // If BLIP doesn't say rhino, CLIP similarity < 0.65 means it's a different character.
     return {
       accepted: false,
-      rejectReason: `RULE 3b: CLIP IDENTITY MISMATCH (similarity=${clipResult!.similarity.toFixed(3)} < 0.68, doesn't resemble reference)`,
+      rejectReason: `RULE 3b: CLIP IDENTITY MISMATCH (similarity=${clipResult!.similarity.toFixed(3)} < 0.65, doesn't resemble reference)`,
     };
   }
 
   // ── RULE 3c: CLIP consistency gate — even BLIP-confirmed rhinos must look like Riri ──
   // A cartoon rhino with wrong colors, proportions, or art style breaks page-to-page
   // consistency even if BLIP correctly identifies it as "rhinoceros".
-  // Threshold is lower (0.55) since BLIP provides independent species confirmation.
+  // Threshold is lower (0.50) since BLIP provides independent species confirmation.
   if (clipRejectsEvenWithBlip && blipHasRhino) {
     return {
       accepted: false,
-      rejectReason: `RULE 3c: CLIP CONSISTENCY MISMATCH (similarity=${clipResult!.similarity.toFixed(3)} < 0.55, BLIP says rhino but looks different from reference)`,
+      rejectReason: `RULE 3c: CLIP CONSISTENCY MISMATCH (similarity=${clipResult!.similarity.toFixed(3)} < 0.50, BLIP says rhino but looks different from reference)`,
     };
   }
 

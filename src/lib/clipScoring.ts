@@ -12,13 +12,13 @@ import Replicate from "replicate";
  *   misidentifies species ("elephant", "cartoon animal"). CLIP embeddings
  *   compare visual similarity directly, bypassing language entirely.
  *
- * Score contribution (increased weights for consistency enforcement):
- *   similarity >= 0.82 → +8  (very close to anchor — strong identity lock)
- *   similarity >= 0.78 → +6  (good match)
+ * Score contribution (moderate weights — prefer consistency without dominating):
+ *   similarity >= 0.82 → +7  (very close to anchor — strong identity lock)
+ *   similarity >= 0.78 → +5  (good match)
  *   similarity >= 0.72 → +3  (acceptable match)
- *   similarity >= 0.68 → +1  (borderline — just above reject threshold)
- *   similarity  0.58-0.68 → -2  (weak match — visual drift, penalize)
- *   similarity  < 0.58 → -6  (doesn't look like Riri at all)
+ *   similarity >= 0.65 → +1  (borderline — just above reject threshold)
+ *   similarity  0.58-0.65 → -1  (weak match — visual drift)
+ *   similarity  < 0.58 → -4  (doesn't look like Riri at all)
  *
  * Rescue: if BLIP rejected the candidate (score < 0) but CLIP similarity
  * to the anchor is >= 0.80, the candidate can be "rescued" — BLIP was
@@ -152,24 +152,24 @@ export function cosineSimilarity(a: number[], b: number[]): number {
  * Convert CLIP similarity to a score contribution.
  * Shared logic for both anchor-url and cached-anchor scoring paths.
  *
- * Higher weights than before to make consistency a dominant factor
- * in candidate ranking. A +8 vs -2 spread (10 points) means a
- * high-CLIP candidate will ALWAYS outrank a low-CLIP candidate
- * with similar BLIP scores.
+ * Moderately increased weights to prefer consistent candidates without
+ * being so extreme that marginal CLIP differences dominate selection.
+ * The 0.65 reject threshold handles hard rejections; these weights
+ * handle soft ranking within accepted candidates.
  */
 function clipSimilarityToScore(similarity: number): { scoreContribution: number; reason: string } {
   if (similarity >= 0.82) {
-    return { scoreContribution: 8, reason: `CLIP: +8 strong identity lock (${similarity.toFixed(3)} >= 0.82)` };
+    return { scoreContribution: 7, reason: `CLIP: +7 strong identity lock (${similarity.toFixed(3)} >= 0.82)` };
   } else if (similarity >= 0.78) {
-    return { scoreContribution: 6, reason: `CLIP: +6 good similarity (${similarity.toFixed(3)} >= 0.78)` };
+    return { scoreContribution: 5, reason: `CLIP: +5 good similarity (${similarity.toFixed(3)} >= 0.78)` };
   } else if (similarity >= 0.72) {
     return { scoreContribution: 3, reason: `CLIP: +3 acceptable similarity (${similarity.toFixed(3)} >= 0.72)` };
-  } else if (similarity >= 0.68) {
-    return { scoreContribution: 1, reason: `CLIP: +1 borderline similarity (${similarity.toFixed(3)} >= 0.68)` };
+  } else if (similarity >= 0.65) {
+    return { scoreContribution: 1, reason: `CLIP: +1 borderline similarity (${similarity.toFixed(3)} >= 0.65)` };
   } else if (similarity >= 0.58) {
-    return { scoreContribution: -2, reason: `CLIP: -2 weak similarity (${similarity.toFixed(3)} < 0.68)` };
+    return { scoreContribution: -1, reason: `CLIP: -1 weak similarity (${similarity.toFixed(3)} < 0.65)` };
   } else {
-    return { scoreContribution: -6, reason: `CLIP: -6 LOW similarity (${similarity.toFixed(3)} < 0.58)` };
+    return { scoreContribution: -4, reason: `CLIP: -4 LOW similarity (${similarity.toFixed(3)} < 0.58)` };
   }
 }
 
