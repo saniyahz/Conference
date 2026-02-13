@@ -133,52 +133,62 @@ function extractCharacterIdentity(bible?: CharacterBible): CharacterIdentity {
   //   Tokens 30-38: Pose (injected per-page in runCandidateRound)
   //   Tokens 38-45: Art style (short)
 
-  // Species-specific distinguishing anatomy — tokens 7-22.
-  // These MUST describe the actual species shape clearly enough that SDXL
-  // renders the correct animal (not a cow/hippo/elephant substitute).
-  // Avoid "small", "cute", "baby" — those produce chibi/toy shapes.
-  const speciesVisuals: Record<string, string> = {
-    'rhinoceros': 'gray rhinoceros, thick gray skin, wide flat nose with rounded horn, stocky round body, four short thick legs',
-    'rhino': 'gray rhinoceros, thick gray skin, wide flat nose with rounded horn, stocky round body, four short thick legs',
-    'elephant': 'gray elephant, large floppy ears, long curving trunk, round gray body, four thick legs',
-    'giraffe': 'tall giraffe, very long neck, brown spotted pattern, four long thin legs, small ossicones',
-    'lion': 'golden lion, big fluffy mane around face, tawny fur, muscular body, tufted tail',
-    'tiger': 'orange tiger, black stripes on orange fur, round face, white belly, long striped tail',
-    'bear': 'brown bear, round ears, thick fluffy fur, large round body, big paws',
-    'rabbit': 'white rabbit, two long upright ears, round fluffy tail, soft fur, pink nose',
+  // Species-specific STRUCTURAL anatomy — COLOR-NEUTRAL.
+  // These describe the species SHAPE only (horn, body proportions, limb structure).
+  // NO color tokens (gray, brown, golden, orange, etc.) — colors come from the
+  // bible's visual_fingerprint, which is the definitive appearance source.
+  //
+  // Why color-neutral: if speciesVisuals says "gray" but the bible says "golden fur",
+  // SDXL sees both and randomly picks which to emphasize, causing inconsistent
+  // character appearance across pages. By removing colors from structural anatomy,
+  // the bible's colors are the ONLY color signal → consistent appearance.
+  const speciesStructure: Record<string, string> = {
+    'rhinoceros': 'rhinoceros, wide flat nose with rounded horn, stocky round body, four short thick legs',
+    'rhino': 'rhinoceros, wide flat nose with rounded horn, stocky round body, four short thick legs',
+    'elephant': 'elephant, large floppy ears, long curving trunk, round body, four thick legs',
+    'giraffe': 'giraffe, very long neck, spotted pattern, four long thin legs, small ossicones',
+    'lion': 'lion, big fluffy mane around face, muscular body, tufted tail',
+    'tiger': 'tiger, stripes on fur, round face, long striped tail',
+    'bear': 'bear, round ears, thick fluffy fur, large round body, big paws',
+    'rabbit': 'rabbit, two long upright ears, round fluffy tail, soft fur, pink nose',
     'penguin': 'penguin, black and white body, orange beak, round belly, two small flippers',
   };
-  const speciesLock = speciesVisuals[species.toLowerCase()] || `cartoon ${species}`;
+  const structureLock = speciesStructure[species.toLowerCase()] || species;
 
-  // Extract NON-OVERLAPPING visual fingerprint details.
-  // Skip entries that repeat species anatomy (skin, body, horn) —
-  // those are already covered by speciesVisuals with better wording.
-  const speciesLockLower = speciesLock.toLowerCase();
-  const fpDetails = (bible.visual_fingerprint || [])
+  // Use bible's visual_fingerprint as the PRIMARY appearance source.
+  // This is where colors, eye details, expression, and unique markings live.
+  // Only filter out entries that are EXACTLY the bare species name.
+  // Previously the filter was too aggressive — it stripped "cute cartoon rhinoceros",
+  // "round cheeks", and other identity-critical tokens.
+  const bibleAppearance = (bible.visual_fingerprint || [])
     .map(s => s.trim())
     .filter(s => {
       if (!s) return false;
       const lower = s.toLowerCase();
-      // Skip if it's just the species name or already in speciesVisuals
+      // Only skip bare species name (e.g. "rhinoceros" alone)
       if (lower === species.toLowerCase()) return false;
-      if (lower.includes(species.toLowerCase())) return false;
-      // Skip body/skin/horn descriptions — already in speciesVisuals
-      if (/\b(skin|body|horn|legs?|nose|thick|stocky|round|chubby)\b/.test(lower)) return false;
-      // Keep unique details like eye color, expression, specific markings
+      // Skip entries that are ONLY "cute cartoon <species>" with no extra detail
+      if (lower === `cute cartoon ${species.toLowerCase()}`) return false;
       return true;
     })
-    .slice(0, 2)  // Max 2 non-overlapping details (~8 tokens)
     .join(", ");
 
   // Framing — "full body" only. Pose will be added per-page in runCandidateRound().
   const framing = "full body";
 
+  // PROMPT STRUCTURE (within SDXL's 77-token window):
+  //   Tokens 1-6:   Character opener (species + name)
+  //   Tokens 7-16:  Bible appearance (colors, eyes, expression — HIGHEST PRIORITY)
+  //   Tokens 17-28: Species structure (shape, proportions — confirms species)
+  //   Tokens 28-30: Framing
+  //   Tokens 30-36: Pose (injected per-page in runCandidateRound)
+  //   Tokens 36-45: Art style
   const inpaintPrompt = [
     `cartoon ${species} character named ${name}`,  // Tokens 1-6: species + name
-    speciesLock,                                    // Tokens 7-22: species anatomy
-    fpDetails,                                      // Tokens 22-28: unique details (eyes etc.)
-    framing,                                        // Tokens 28-30: framing
-    "children's picture book illustration, bold outlines, vibrant colors",  // Tokens 30-38: style
+    bibleAppearance,                                // Tokens 7-16: bible colors/eyes/expression
+    structureLock,                                   // Tokens 17-28: structural anatomy (no colors)
+    framing,                                         // Tokens 28-30: framing
+    "children's picture book illustration, bold outlines, vibrant colors",  // Tokens 36-45: style
   ].filter(Boolean).join(", ");
 
   return {

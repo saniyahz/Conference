@@ -59,36 +59,33 @@ function buildTestInpaintPrompt(bible: CharacterBible): string {
   const name = bible.name || 'Character';
   const species = bible.species || 'animal';
 
-  // Species-specific distinguishing anatomy (matches route.ts)
-  const speciesVisuals: Record<string, string> = {
+  // Species-specific STRUCTURAL anatomy — COLOR-NEUTRAL (matches route.ts)
+  const speciesStructure: Record<string, string> = {
     rhinoceros:
-      'gray rhinoceros, thick gray skin, wide flat nose with rounded horn, stocky round body, four short thick legs',
+      'rhinoceros, wide flat nose with rounded horn, stocky round body, four short thick legs',
     rhino:
-      'gray rhinoceros, thick gray skin, wide flat nose with rounded horn, stocky round body, four short thick legs',
+      'rhinoceros, wide flat nose with rounded horn, stocky round body, four short thick legs',
   };
-  const speciesLock = speciesVisuals[species.toLowerCase()] || `cartoon ${species}`;
+  const structureLock = speciesStructure[species.toLowerCase()] || species;
 
-  // Non-overlapping visual fingerprint details (matches route.ts)
-  const speciesLockLower = speciesLock.toLowerCase();
-  const fpDetails = (bible.visual_fingerprint || [])
+  // Bible appearance as PRIMARY source (matches route.ts)
+  const bibleAppearance = (bible.visual_fingerprint || [])
     .map((s) => s.trim())
     .filter((s) => {
       if (!s) return false;
       const lower = s.toLowerCase();
       if (lower === species.toLowerCase()) return false;
-      if (lower.includes(species.toLowerCase())) return false;
-      if (/\b(skin|body|horn|legs?|nose|thick|stocky|round|chubby)\b/.test(lower)) return false;
+      if (lower === `cute cartoon ${species.toLowerCase()}`) return false;
       return true;
     })
-    .slice(0, 2)
     .join(', ');
 
   const framing = 'full body';
 
   return [
     `cartoon ${species} character named ${name}`,
-    speciesLock,
-    fpDetails,
+    bibleAppearance,
+    structureLock,
     framing,
     "children's picture book illustration, bold outlines, vibrant colors",
   ]
