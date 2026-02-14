@@ -79,7 +79,7 @@ function extractCharacterIdentity(bible?: CharacterBible): CharacterIdentity {
       name: "Character",
       species: "animal",
       mustInclude: ["animal"],
-      inpaintPrompt: "cute cartoon children's picture book illustration, bold outlines, flat vibrant colors, adorable chubby cartoon animal character, full body",
+      inpaintPrompt: "children's picture book illustration, bold outlines, flat vibrant colors, cartoon animal character, full body",
     };
   }
 
@@ -133,25 +133,22 @@ function extractCharacterIdentity(bible?: CharacterBible): CharacterIdentity {
   //   Tokens 30-38: Pose (injected per-page in runCandidateRound)
   //   Tokens 38-45: Art style (short)
 
-  // Species-specific STRUCTURAL anatomy — COLOR-NEUTRAL.
-  // These describe the species SHAPE only (horn, body proportions, limb structure).
-  // NO color tokens (gray, brown, golden, orange, etc.) — colors come from the
-  // bible's visual_fingerprint, which is the definitive appearance source.
+  // Species-specific STRUCTURAL anatomy — SPECIES IDENTITY FIRST, then cartoon style.
+  // The #1 job of this block is making SDXL generate the RIGHT ANIMAL.
+  // Each entry leads with the species' most distinctive feature (rhino=horn,
+  // elephant=trunk, giraffe=long neck) so SDXL doesn't drift to a generic animal.
   //
-  // Why color-neutral: if speciesVisuals says "gray" but the bible says "golden fur",
-  // SDXL sees both and randomly picks which to emphasize, causing inconsistent
-  // character appearance across pages. By removing colors from structural anatomy,
-  // the bible's colors are the ONLY color signal → consistent appearance.
+  // COLOR-NEUTRAL: No color tokens — colors come from bible visual_fingerprint.
   const speciesStructure: Record<string, string> = {
-    'rhinoceros': 'cute cartoon rhinoceros, big round head, tiny adorable horn, chubby round body, short stubby legs',
-    'rhino': 'cute cartoon rhinoceros, big round head, tiny adorable horn, chubby round body, short stubby legs',
-    'elephant': 'cute cartoon elephant, big floppy ears, short round trunk, chubby round body, stubby legs',
-    'giraffe': 'cute cartoon giraffe, long neck, round spotted body, big eyes, stubby legs',
-    'lion': 'cute cartoon lion, big fluffy round mane, chubby body, stubby legs, tufted tail',
-    'tiger': 'cute cartoon tiger, round face, stripes, chubby body, stubby legs',
-    'bear': 'cute cartoon bear, round ears, chubby fluffy body, big round belly, stubby paws',
-    'rabbit': 'cute cartoon rabbit, big floppy ears, round fluffy body, tiny tail, pink nose',
-    'penguin': 'cute cartoon penguin, round belly, orange beak, stubby flippers, big eyes',
+    'rhinoceros': 'rhinoceros with prominent rounded horn on nose, thick barrel-shaped body, four thick legs, cartoon style',
+    'rhino': 'rhinoceros with prominent rounded horn on nose, thick barrel-shaped body, four thick legs, cartoon style',
+    'elephant': 'elephant with long trunk, large floppy ears, round body, four thick legs, cartoon style',
+    'giraffe': 'giraffe with very long neck, spotted pattern, four long legs, cartoon style',
+    'lion': 'lion with big fluffy mane around face, muscular body, tufted tail, cartoon style',
+    'tiger': 'tiger with bold stripes, round face, long striped tail, cartoon style',
+    'bear': 'bear with round ears, thick fluffy fur, big round body, big paws, cartoon style',
+    'rabbit': 'rabbit with two long upright ears, round fluffy tail, soft fur, pink nose, cartoon style',
+    'penguin': 'penguin with round belly, orange beak, two small flippers, cartoon style',
   };
   const structureLock = speciesStructure[species.toLowerCase()] || species;
 
@@ -167,9 +164,9 @@ function extractCharacterIdentity(bible?: CharacterBible): CharacterIdentity {
       const lower = s.toLowerCase();
       // Only skip bare species name (e.g. "rhinoceros" alone)
       if (lower === species.toLowerCase()) return false;
-      // Skip entries that are ONLY "cute cartoon <species>" (or "cute chubby cartoon") with no extra detail
+      // Skip entries that are ONLY "cartoon <species>" or "cute cartoon <species>" with no extra detail
+      if (lower === `cartoon ${species.toLowerCase()}`) return false;
       if (lower === `cute cartoon ${species.toLowerCase()}`) return false;
-      if (lower === `cute chubby cartoon ${species.toLowerCase()}`) return false;
       return true;
     })
     .join(", ");
@@ -190,8 +187,8 @@ function extractCharacterIdentity(bible?: CharacterBible): CharacterIdentity {
   // Moving "children's picture book illustration" to token 1 ensures SDXL
   // always renders in cartoon style regardless of the plate background.
   const inpaintPrompt = [
-    "cute cartoon children's picture book illustration, bold outlines, flat vibrant colors",  // Tokens 1-8: STYLE FIRST — "cute cartoon" + "flat" push SDXL away from realism
-    `adorable chubby cartoon ${species} character named ${name}`,  // Tokens 9-15: species + name — exaggerated proportions for kid-friendly look
+    "children's picture book illustration, bold outlines, flat vibrant colors",  // Tokens 1-6: STYLE FIRST — "flat" pushes SDXL away from realism
+    `cartoon ${species} character named ${name}`,  // Tokens 7-12: species + name — "cartoon" style, species identity CLEAR
     bibleAppearance,                                // Tokens 13-22: bible colors/eyes/expression
     structureLock,                                   // Tokens 23-34: structural anatomy (no colors)
     framing,                                         // Tokens 34-36: framing

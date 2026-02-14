@@ -26,10 +26,10 @@ const mockBible: CharacterBible = {
   species: 'rhinoceros',
   age: 'young',
   visual_fingerprint: [
-    'cute cartoon rhinoceros',
+    'cartoon rhinoceros',
     'smooth gray skin',
     'big round brown eyes',
-    'small rounded horn',
+    'prominent rounded horn',
   ],
   appearance: {
     skin_tone: 'light gray',
@@ -59,12 +59,12 @@ function buildTestInpaintPrompt(bible: CharacterBible): string {
   const name = bible.name || 'Character';
   const species = bible.species || 'animal';
 
-  // Species-specific STRUCTURAL anatomy — CARTOON STYLE (matches route.ts)
+  // Species-specific STRUCTURAL anatomy — SPECIES IDENTITY FIRST (matches route.ts)
   const speciesStructure: Record<string, string> = {
     rhinoceros:
-      'cute cartoon rhinoceros, big round head, tiny adorable horn, chubby round body, short stubby legs',
+      'rhinoceros with prominent rounded horn on nose, thick barrel-shaped body, four thick legs, cartoon style',
     rhino:
-      'cute cartoon rhinoceros, big round head, tiny adorable horn, chubby round body, short stubby legs',
+      'rhinoceros with prominent rounded horn on nose, thick barrel-shaped body, four thick legs, cartoon style',
   };
   const structureLock = speciesStructure[species.toLowerCase()] || species;
 
@@ -75,8 +75,8 @@ function buildTestInpaintPrompt(bible: CharacterBible): string {
       if (!s) return false;
       const lower = s.toLowerCase();
       if (lower === species.toLowerCase()) return false;
+      if (lower === `cartoon ${species.toLowerCase()}`) return false;
       if (lower === `cute cartoon ${species.toLowerCase()}`) return false;
-      if (lower === `cute chubby cartoon ${species.toLowerCase()}`) return false;
       return true;
     })
     .join(', ');
@@ -85,8 +85,8 @@ function buildTestInpaintPrompt(bible: CharacterBible): string {
 
   // Style tokens FIRST (matches route.ts — forces consistent cartoon rendering)
   return [
-    "cute cartoon children's picture book illustration, bold outlines, flat vibrant colors",
-    `adorable chubby cartoon ${species} character named ${name}`,
+    "children's picture book illustration, bold outlines, flat vibrant colors",
+    `cartoon ${species} character named ${name}`,
     bibleAppearance,
     structureLock,
     framing,

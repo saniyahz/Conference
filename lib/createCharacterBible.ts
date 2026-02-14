@@ -74,7 +74,7 @@ export function createCharacterBible(dna: CharacterDNA, fallbackSpecies?: string
   // Build visual fingerprint - KEY for SDXL consistency
   const visual_fingerprint: string[] = [];
   if (isAnimal && species) {
-    visual_fingerprint.push(`cute chubby cartoon ${species}`);
+    visual_fingerprint.push(`cartoon ${species}`);
   }
   visual_fingerprint.push(skinTone);
   visual_fingerprint.push(eyes);

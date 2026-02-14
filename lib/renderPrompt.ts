@@ -359,7 +359,7 @@ export function buildVisualFingerprint(bible: CharacterBible): string {
     // Add species-specific locked features if not already present
     const species = bible.species?.toLowerCase() || '';
     if (species.includes('rhino') && !fingerprint.includes('horn')) {
-      return `${fingerprint}, tiny adorable horn, short stubby legs`;
+      return `${fingerprint}, prominent rounded horn on nose, thick legs`;
     }
     return fingerprint;
   }
@@ -371,9 +371,9 @@ export function buildVisualFingerprint(bible: CharacterBible): string {
   if (bible.species) {
     const species = bible.species.toLowerCase();
     if (species.includes('rhino')) {
-      parts.push('cute chubby cartoon rhinoceros');
-      parts.push('tiny adorable horn');
-      parts.push('short stubby legs');
+      parts.push('cartoon rhinoceros');
+      parts.push('prominent rounded horn on nose');
+      parts.push('thick barrel-shaped body');
     } else {
       parts.push(`cute cartoon ${bible.species}`);
     }
@@ -449,7 +449,7 @@ export function renderPrompt(bible: CharacterBible, card: PageSceneCard, pageTex
   // BUILD PROMPT using Template A structure with LOCKED IDENTITY
 
   // 1. CHARACTER LOCK (highest attention) - with identity consistency instruction
-  const characterLock = `${charName} the adorable chubby cartoon ${species}`;
+  const characterLock = `${charName} the cartoon ${species}`;
 
   // 2. FINGERPRINT LOCK - CRITICAL: These details must NOT change between pages
   // Add explicit instruction to maintain consistency
@@ -591,11 +591,11 @@ export function renderCharacterSheetPrompt(bible: CharacterBible): string {
   const fingerprint = buildVisualFingerprint(bible);
   const styleBase = bible.style?.base || "children's picture book illustration";
 
-  const prompt = `CHARACTER SHEET: ${charName} the adorable chubby cartoon ${species}. Full body reference. ` +
-    `${fingerprint}. Neutral pose, friendly smile, big round head, stubby legs. ` +
+  const prompt = `CHARACTER SHEET: ${charName} the cartoon ${species}. Full body reference. ` +
+    `${fingerprint}. Neutral pose, friendly smile. ` +
     `Three views: front view, side view, 3/4 view. ` +
     `Plain light background. ` +
-    `${styleBase}, bold outlines, flat vibrant colors, simple shapes. No text.`;
+    `${styleBase}, bold outlines, flat vibrant colors. No text.`;
 
   console.log(`[CHARACTER SHEET PROMPT]: ${prompt}`);
   return prompt;
@@ -614,11 +614,11 @@ export function renderCoverPrompt(bible: CharacterBible, storyTitle: string): st
   const fingerprint = buildVisualFingerprint(bible);
   const styleBase = bible.style?.base || "children's picture book illustration";
 
-  const prompt = `BOOK COVER: ${charName} the adorable chubby cartoon ${species}. ` +
+  const prompt = `BOOK COVER: ${charName} the cartoon ${species}. ` +
     `${fingerprint}. ` +
     `Big friendly title space at top (leave blank area). ` +
     `Magical colorful scene with sparkles. ` +
-    `${styleBase}, bold outlines, flat vibrant colors, simple shapes. ` +
+    `${styleBase}, bold outlines, flat vibrant colors. ` +
     `Eye-catching, inviting, child-friendly. No text.`;
 
   console.log(`[COVER PROMPT]: ${prompt}`);

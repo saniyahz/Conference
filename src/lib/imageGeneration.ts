@@ -293,7 +293,7 @@ export async function generateInpaintCharacter(
         num_outputs: 1,
         scheduler: "K_EULER",
         num_inference_steps: 50,  // Increased from 40 for sharper, less blurry character details
-        guidance_scale: 9,  // Higher guidance = stronger prompt adherence = more recognizable species
+        guidance_scale: 11,  // High guidance = strong prompt adherence = SDXL draws what the prompt says (rhinoceros, not hippo/elephant)
         prompt_strength: promptStrength,
         seed,
       };
