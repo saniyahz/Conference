@@ -5,12 +5,12 @@
  */
 export function buildQualityOnlyNegative(): string {
   return [
-    // Anti-realistic — force consistent cartoon style, prevent SDXL from
-    // rendering realistic/photographic rhinos on some pages.
-    "realistic", "photorealistic", "3D render",
-    "blurry", "distorted", "deformed", "bad anatomy", "extra limbs",
-    "ugly", "low quality",
-    // Color enforcement — kids' book must be vibrant
+    // Anti-realistic — force kid-friendly cartoon style, prevent SDXL from
+    // rendering realistic/photographic animals on some pages.
+    "realistic", "photorealistic", "3D render", "photograph", "lifelike",
+    "detailed skin texture", "wrinkles", "rough skin",
+    "blurry", "deformed", "bad anatomy",
+    // Color enforcement — kids' book must be vibrant flat colors
     "black and white", "grayscale", "monochrome", "sketch",
   ].join(", ");
 }
@@ -47,7 +47,7 @@ export function buildFramingNegative(): string {
 export function buildCharacterSafetyNegative(): string {
   return [
     // Block humans (NOT "child" — conflicts with "children's" in prompt)
-    "human", "person", "boy", "girl", "people",
+    "human", "person", "boy", "girl",
     // Block common wrong animals NOT in hard ban
     "horse", "monkey", "giraffe", "wolf", "pig", "deer",
   ].join(", ");

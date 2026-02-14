@@ -107,8 +107,8 @@ describe('buildMultiCharPlateNegative', () => {
 
   it('includes quality negatives', () => {
     const neg = buildMultiCharPlateNegative('rhinoceros');
-    expect(neg).toContain('low quality');
     expect(neg).toContain('blurry');
+    expect(neg).toContain('deformed');
   });
 
   it('falls back to species name when no synonyms defined', () => {

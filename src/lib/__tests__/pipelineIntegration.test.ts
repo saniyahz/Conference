@@ -59,12 +59,12 @@ function buildTestInpaintPrompt(bible: CharacterBible): string {
   const name = bible.name || 'Character';
   const species = bible.species || 'animal';
 
-  // Species-specific STRUCTURAL anatomy — COLOR-NEUTRAL (matches route.ts)
+  // Species-specific STRUCTURAL anatomy — CARTOON STYLE (matches route.ts)
   const speciesStructure: Record<string, string> = {
     rhinoceros:
-      'rhinoceros, wide flat nose with rounded horn, stocky round body, four short thick legs',
+      'cute cartoon rhinoceros, big round head, tiny adorable horn, chubby round body, short stubby legs',
     rhino:
-      'rhinoceros, wide flat nose with rounded horn, stocky round body, four short thick legs',
+      'cute cartoon rhinoceros, big round head, tiny adorable horn, chubby round body, short stubby legs',
   };
   const structureLock = speciesStructure[species.toLowerCase()] || species;
 
@@ -76,6 +76,7 @@ function buildTestInpaintPrompt(bible: CharacterBible): string {
       const lower = s.toLowerCase();
       if (lower === species.toLowerCase()) return false;
       if (lower === `cute cartoon ${species.toLowerCase()}`) return false;
+      if (lower === `cute chubby cartoon ${species.toLowerCase()}`) return false;
       return true;
     })
     .join(', ');
@@ -84,8 +85,8 @@ function buildTestInpaintPrompt(bible: CharacterBible): string {
 
   // Style tokens FIRST (matches route.ts — forces consistent cartoon rendering)
   return [
-    "children's picture book illustration, bold outlines, vibrant colors",
-    `cartoon ${species} character named ${name}`,
+    "cute cartoon children's picture book illustration, bold outlines, flat vibrant colors",
+    `adorable chubby cartoon ${species} character named ${name}`,
     bibleAppearance,
     structureLock,
     framing,

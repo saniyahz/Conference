@@ -79,7 +79,7 @@ function extractCharacterIdentity(bible?: CharacterBible): CharacterIdentity {
       name: "Character",
       species: "animal",
       mustInclude: ["animal"],
-      inpaintPrompt: "cartoon animal character, full body, children's picture book illustration, bold outlines, vibrant colors",
+      inpaintPrompt: "cute cartoon children's picture book illustration, bold outlines, flat vibrant colors, adorable chubby cartoon animal character, full body",
     };
   }
 
@@ -143,15 +143,15 @@ function extractCharacterIdentity(bible?: CharacterBible): CharacterIdentity {
   // character appearance across pages. By removing colors from structural anatomy,
   // the bible's colors are the ONLY color signal → consistent appearance.
   const speciesStructure: Record<string, string> = {
-    'rhinoceros': 'rhinoceros, wide flat nose with rounded horn, stocky round body, four short thick legs',
-    'rhino': 'rhinoceros, wide flat nose with rounded horn, stocky round body, four short thick legs',
-    'elephant': 'elephant, large floppy ears, long curving trunk, round body, four thick legs',
-    'giraffe': 'giraffe, very long neck, spotted pattern, four long thin legs, small ossicones',
-    'lion': 'lion, big fluffy mane around face, muscular body, tufted tail',
-    'tiger': 'tiger, stripes on fur, round face, long striped tail',
-    'bear': 'bear, round ears, thick fluffy fur, large round body, big paws',
-    'rabbit': 'rabbit, two long upright ears, round fluffy tail, soft fur, pink nose',
-    'penguin': 'penguin, black and white body, orange beak, round belly, two small flippers',
+    'rhinoceros': 'cute cartoon rhinoceros, big round head, tiny adorable horn, chubby round body, short stubby legs',
+    'rhino': 'cute cartoon rhinoceros, big round head, tiny adorable horn, chubby round body, short stubby legs',
+    'elephant': 'cute cartoon elephant, big floppy ears, short round trunk, chubby round body, stubby legs',
+    'giraffe': 'cute cartoon giraffe, long neck, round spotted body, big eyes, stubby legs',
+    'lion': 'cute cartoon lion, big fluffy round mane, chubby body, stubby legs, tufted tail',
+    'tiger': 'cute cartoon tiger, round face, stripes, chubby body, stubby legs',
+    'bear': 'cute cartoon bear, round ears, chubby fluffy body, big round belly, stubby paws',
+    'rabbit': 'cute cartoon rabbit, big floppy ears, round fluffy body, tiny tail, pink nose',
+    'penguin': 'cute cartoon penguin, round belly, orange beak, stubby flippers, big eyes',
   };
   const structureLock = speciesStructure[species.toLowerCase()] || species;
 
@@ -167,8 +167,9 @@ function extractCharacterIdentity(bible?: CharacterBible): CharacterIdentity {
       const lower = s.toLowerCase();
       // Only skip bare species name (e.g. "rhinoceros" alone)
       if (lower === species.toLowerCase()) return false;
-      // Skip entries that are ONLY "cute cartoon <species>" with no extra detail
+      // Skip entries that are ONLY "cute cartoon <species>" (or "cute chubby cartoon") with no extra detail
       if (lower === `cute cartoon ${species.toLowerCase()}`) return false;
+      if (lower === `cute chubby cartoon ${species.toLowerCase()}`) return false;
       return true;
     })
     .join(", ");
@@ -189,8 +190,8 @@ function extractCharacterIdentity(bible?: CharacterBible): CharacterIdentity {
   // Moving "children's picture book illustration" to token 1 ensures SDXL
   // always renders in cartoon style regardless of the plate background.
   const inpaintPrompt = [
-    "children's picture book illustration, bold outlines, vibrant colors",  // Tokens 1-6: STYLE FIRST
-    `cartoon ${species} character named ${name}`,  // Tokens 7-12: species + name
+    "cute cartoon children's picture book illustration, bold outlines, flat vibrant colors",  // Tokens 1-8: STYLE FIRST — "cute cartoon" + "flat" push SDXL away from realism
+    `adorable chubby cartoon ${species} character named ${name}`,  // Tokens 9-15: species + name — exaggerated proportions for kid-friendly look
     bibleAppearance,                                // Tokens 13-22: bible colors/eyes/expression
     structureLock,                                   // Tokens 23-34: structural anatomy (no colors)
     framing,                                         // Tokens 34-36: framing
