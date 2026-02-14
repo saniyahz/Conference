@@ -178,6 +178,7 @@ export default function AboutPage() {
           <p>Made with love for young storytellers everywhere</p>
           <div className="flex justify-center gap-4 mt-4">
             <Link href="/pricing" className="hover:text-teal-800 underline">Pricing</Link>
+            <Link href="/terms" className="hover:text-teal-800 underline">Terms & Conditions</Link>
             <Link href="/" className="hover:text-teal-800 underline">Create a Story</Link>
           </div>
         </div>

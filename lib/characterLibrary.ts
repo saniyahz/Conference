@@ -125,7 +125,7 @@ export function sanitizeForKids(text: string): { cleaned: string; wasModified: b
   }
 
   // Replace standalone unsafe words
-  for (const word of UNSAFE_WORDS) {
+  for (const word of Array.from(UNSAFE_WORDS)) {
     if (result.includes(word)) {
       // Don't replace "monster" by itself — only when paired with scary words (handled above)
       if (word === "monster" && !modified) continue;

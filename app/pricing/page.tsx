@@ -344,9 +344,12 @@ export default function PricingPage() {
           </div>
         </div>
 
-        <div className="mt-8 text-center">
-          <Link href="/" className="text-purple-600 hover:text-purple-700 font-semibold">
+        <div className="mt-8 text-center space-y-2">
+          <Link href="/" className="text-purple-600 hover:text-purple-700 font-semibold block">
             ← Back to Home
+          </Link>
+          <Link href="/terms" className="text-purple-500 hover:text-purple-700 text-sm underline">
+            Terms & Conditions
           </Link>
         </div>
       </div>

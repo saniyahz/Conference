@@ -172,6 +172,12 @@ export default function Home() {
               Pricing
             </button>
             <button
+              onClick={() => guardedNavigate('/terms')}
+              className="px-4 py-2 text-teal-600 hover:text-teal-800 font-semibold"
+            >
+              Terms
+            </button>
+            <button
               onClick={() => guardedNavigate('/dashboard')}
               className="px-4 py-2 bg-teal-500 text-white rounded-lg hover:bg-teal-600 font-semibold flex items-center gap-2"
             >
