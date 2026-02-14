@@ -22,6 +22,7 @@
 
 import { NextRequest, NextResponse } from "next/server";
 import Replicate from "replicate";
+import sharp from "sharp";
 import { CharacterBible, PageSceneCard } from "@/lib/visual-types";
 // ── Pipeline imports ──
 import { generatePlate, generateInpaintCharacter } from "@/src/lib/imageGeneration";
@@ -603,7 +604,8 @@ async function generateOnePage(
   identity: CharacterIdentity,
   customNegative?: string,
   pageSceneCard?: PageSceneCard,
-  clipAnchorEmbedding?: number[]
+  clipAnchorEmbedding?: number[],
+  anchorBuffer?: Buffer | null
 ): Promise<{ url: string; accepted: boolean; caption: string; score: number }> {
   console.log(`\n${"=".repeat(60)}`);
   console.log(`[Page ${pageIndex + 1}] Character: ${identity.name} (${identity.species})`);
@@ -783,7 +785,7 @@ async function generateOnePage(
   const round1 = await runCandidateRound(
     plateUrl, round1Mask, seed, CANDIDATES_PER_ROUND, pageIndex,
     scoreOpts, inpaintMustInclude, sceneSetting, identity, sceneCategory,
-    false, hasSecondaryActors, cardObjects, pageAction
+    false, hasSecondaryActors, cardObjects, pageAction, anchorBuffer || null
   );
   overallBest = pickBest(round1, overallBest);
   if (overallBest && overallBest.score >= MIN_ROUND_ACCEPT) {
@@ -800,7 +802,7 @@ async function generateOnePage(
     const round2 = await runCandidateRound(
       plateUrl, round2Mask, seed + CANDIDATES_PER_ROUND * SEED_STRIDE, CANDIDATES_PER_ROUND, pageIndex,
       scoreOpts, inpaintMustInclude, sceneSetting, identity, sceneCategory,
-      false, hasSecondaryActors, cardObjects, pageAction
+      false, hasSecondaryActors, cardObjects, pageAction, anchorBuffer || null
     );
     overallBest = pickBest(round2, overallBest);
     if (overallBest && overallBest.score >= MIN_ROUND_ACCEPT) {
@@ -817,7 +819,7 @@ async function generateOnePage(
     console.log(`[Page ${pageIndex + 1}] Round 3: EXTRA-LARGE mask + high strength...`);
     const round3 = await runCandidateRound(
       plateUrl, extraLargeMask, seed + CANDIDATES_PER_ROUND * SEED_STRIDE * 2, CANDIDATES_PER_ROUND, pageIndex,
-      scoreOpts, inpaintMustInclude, sceneSetting, identity, sceneCategory, true, hasSecondaryActors, cardObjects, pageAction
+      scoreOpts, inpaintMustInclude, sceneSetting, identity, sceneCategory, true, hasSecondaryActors, cardObjects, pageAction, anchorBuffer || null
     );
     overallBest = pickBest(round3, overallBest);
     if (overallBest) {
@@ -841,7 +843,7 @@ async function generateOnePage(
         soloPlateUrl, extraLargeMask,
         seed + CANDIDATES_PER_ROUND * SEED_STRIDE * 3, CANDIDATES_PER_ROUND, pageIndex,
         scoreOpts, [...identity.mustInclude], sceneSetting, identity, sceneCategory,
-        true, false, nonAnimalObjects, pageAction  // solo: only non-animal objects
+        true, false, nonAnimalObjects, pageAction, anchorBuffer || null  // solo: only non-animal objects
       );
       overallBest = pickBest(soloRound, overallBest);
       if (overallBest && overallBest.score >= MIN_ROUND_ACCEPT) {
@@ -892,6 +894,101 @@ async function generateOnePage(
   return { url: "", accepted: false, caption: "", score: -999 };
 }
 
+// ─── ANCHOR COMPOSITING ─────────────────────────────────────────────────
+
+/**
+ * Composite the anchor character image onto a plate background.
+ *
+ * WHY: SDXL generates each page from random noise — it has no memory of
+ * previous pages. By pasting the anchor character INTO the plate before
+ * inpainting, SDXL starts from actual character pixels instead of noise.
+ * With lower prompt_strength (0.65), it preserves ~35% of the anchor's
+ * shape/color/horn while adapting ~65% to the new pose and scene.
+ *
+ * HOW:
+ *   1. Use the mask to extract only the character region from the anchor
+ *   2. Composite the masked anchor over the plate
+ *   3. Return as data URL for the SDXL inpaint API
+ *
+ * The result: SDXL sees the anchor character in the mask region and
+ * preserves its identity while adapting the pose from the prompt.
+ */
+async function compositeAnchorOntoPlate(
+  anchorBuffer: Buffer,
+  plateUrl: string,
+  maskDataUrl: string,
+  size: number = 1024
+): Promise<string | null> {
+  try {
+    // Fetch plate image
+    const plateResp = await fetch(plateUrl);
+    if (!plateResp.ok) return null;
+    const plateBuf = Buffer.from(await plateResp.arrayBuffer());
+
+    // Extract mask from data URL
+    const maskBase64 = maskDataUrl.split(",")[1];
+    if (!maskBase64) return null;
+    const maskBuf = Buffer.from(maskBase64, "base64");
+
+    // Convert mask to single-channel grayscale (white=character, black=background)
+    const maskGray = await sharp(maskBuf)
+      .resize(size, size)
+      .greyscale()
+      .toBuffer();
+
+    // Get anchor as raw RGB (3 channels)
+    const anchorRaw = await sharp(anchorBuffer)
+      .resize(size, size)
+      .removeAlpha()
+      .raw()
+      .toBuffer();
+
+    // Create RGBA buffer: anchor RGB + mask as alpha channel
+    // Where mask is white (255) → anchor visible (character region)
+    // Where mask is black (0) → anchor transparent (plate shows through)
+    const rgbaBuffer = Buffer.alloc(size * size * 4);
+    for (let i = 0; i < size * size; i++) {
+      rgbaBuffer[i * 4 + 0] = anchorRaw[i * 3 + 0]; // R
+      rgbaBuffer[i * 4 + 1] = anchorRaw[i * 3 + 1]; // G
+      rgbaBuffer[i * 4 + 2] = anchorRaw[i * 3 + 2]; // B
+      rgbaBuffer[i * 4 + 3] = maskGray[i];            // A from mask
+    }
+
+    // Create masked anchor PNG
+    const maskedAnchorPng = await sharp(rgbaBuffer, {
+      raw: { width: size, height: size, channels: 4 },
+    }).png().toBuffer();
+
+    // Composite: plate background + anchor character in mask region
+    const composited = await sharp(plateBuf)
+      .resize(size, size)
+      .composite([{ input: maskedAnchorPng, blend: "over" }])
+      .png({ compressionLevel: 6 })
+      .toBuffer();
+
+    const dataUrl = `data:image/png;base64,${composited.toString("base64")}`;
+    console.log(`[Composite] Success: ${Math.round(composited.length / 1024)}KB composited image`);
+    return dataUrl;
+  } catch (e) {
+    console.warn(`[Composite] Failed, falling back to plate-only:`, e);
+    return null;
+  }
+}
+
+/**
+ * Fetch a remote image and return as a Buffer. Used to cache the anchor
+ * image so we don't refetch it for every page.
+ */
+async function fetchImageBuffer(url: string): Promise<Buffer | null> {
+  try {
+    const resp = await fetch(url);
+    if (!resp.ok) return null;
+    return Buffer.from(await resp.arrayBuffer());
+  } catch {
+    return null;
+  }
+}
+
 /**
  * FIXED inpaint strength for ALL pages and rounds.
  *
@@ -905,6 +1002,7 @@ async function generateOnePage(
  *   - 0.65: TOO LOW — no character at all (just flowers/butterflies)
  */
 const INPAINT_STRENGTH = 0.85;
+const INPAINT_STRENGTH_WITH_ANCHOR = 0.65;  // Lower when anchor is composited — keeps ~35% of anchor character pixels
 const ROUND3_STRENGTH = 0.90;
 
 async function runCandidateRound(
@@ -921,10 +1019,28 @@ async function runCandidateRound(
   forceHighStrength: boolean = false,
   isMultiChar: boolean = false,
   sceneObjects: string[] = [],
-  pageAction: string = ""
+  pageAction: string = "",
+  anchorBuffer: Buffer | null = null
 ): Promise<CandidateResult[]> {
-  // FIXED strength for consistency: same character appearance every page.
-  const strength = forceHighStrength ? ROUND3_STRENGTH : INPAINT_STRENGTH;
+  // ANCHOR COMPOSITING: If we have an anchor buffer, composite it onto the plate.
+  // This gives SDXL a visual starting point for the character → better consistency.
+  // Use lower prompt_strength so SDXL preserves the anchor character's identity.
+  let effectivePlateUrl: string = plateUrl;
+  let strength: number;
+
+  if (anchorBuffer && !forceHighStrength) {
+    const compositedUrl = await compositeAnchorOntoPlate(anchorBuffer, plateUrl, maskDataUrl);
+    if (compositedUrl) {
+      effectivePlateUrl = compositedUrl;
+      strength = INPAINT_STRENGTH_WITH_ANCHOR;
+      console.log(`[Page ${pageIndex + 1}] Using ANCHOR-COMPOSITED plate (strength=${strength}) — character seeded from reference`);
+    } else {
+      strength = INPAINT_STRENGTH;
+      console.log(`[Page ${pageIndex + 1}] Anchor compositing failed, using plain plate (strength=${strength})`);
+    }
+  } else {
+    strength = forceHighStrength ? ROUND3_STRENGTH : INPAINT_STRENGTH;
+  }
 
   // IDENTITY-LOCKED inpaint prompt + POSE. NO per-page scene suffix.
   //
@@ -973,7 +1089,7 @@ async function runCandidateRound(
     console.log(`[Page ${pageIndex + 1}] Candidate ${i + 1}/${count} seed=${seed} [INPAINT strength=${strength}]`);
 
     const url = await generateInpaintCharacter(
-      replicate, compositePrompt, plateUrl, maskDataUrl,
+      replicate, compositePrompt, effectivePlateUrl, maskDataUrl,
       seed, pageIndex, settingContext, mustInclude, undefined, strength,
       identity.species
     );
@@ -1032,13 +1148,13 @@ export async function POST(request: NextRequest) {
     const imageUrls: string[] = [];
     const usedSeeds: number[] = [];
 
-    // ── CLIP ANCHOR: Generate reference images for identity consistency ──
-    // Create 2 clean reference images and AVERAGE their CLIP embeddings.
-    // Using 2 variants (white bg + neutral bg) creates a centroid that
-    // accounts for background variation — CLIP embeds the WHOLE image,
-    // so a white-only anchor scores lower against pages with complex scenes.
-    // Averaging reduces background bias and gives a more robust reference.
+    // ── CLIP ANCHOR + COMPOSITING REFERENCE ──
+    // Create 2 clean reference images:
+    //   1. CLIP embeddings: averaged centroid for identity consistency scoring
+    //   2. Compositing: anchor image cached as Buffer, pasted onto each plate
+    //      so SDXL starts from actual character pixels (not random noise)
     let clipAnchorEmbedding: number[] = [];
+    let anchorImageBuffer: Buffer | null = null;
     try {
       console.log(`\n[CLIP] Generating character reference images for anchor embedding...`);
       // Use the FULL identity inpaint prompt (same tokens 1-40 as actual inpainting)
@@ -1055,6 +1171,16 @@ export async function POST(request: NextRequest) {
       ]);
 
       console.log(`[CLIP] Anchor white: ${refUrlWhite ? "OK" : "FAILED"}, neutral: ${refUrlNeutral ? "OK" : "FAILED"}`);
+
+      // ANCHOR COMPOSITING: Cache the white-bg anchor image as a Buffer.
+      // This will be composited onto each page's plate so SDXL starts from
+      // the anchor character's pixels instead of random noise.
+      // Prefer white-bg anchor (cleaner character isolation).
+      const bestAnchorUrl = refUrlWhite || refUrlNeutral;
+      if (bestAnchorUrl) {
+        anchorImageBuffer = await fetchImageBuffer(bestAnchorUrl);
+        console.log(`[Anchor] Cached anchor image buffer: ${anchorImageBuffer ? `${Math.round(anchorImageBuffer.length / 1024)}KB` : "FAILED"}`);
+      }
 
       // Get CLIP embeddings for each anchor and average them
       const anchorUrls = [refUrlWhite, refUrlNeutral].filter(Boolean) as string[];
@@ -1096,7 +1222,8 @@ export async function POST(request: NextRequest) {
         console.log(`\n========== GENERATING PAGE ${i + 1}/${imagePrompts.length} ==========`);
         results[i] = await generateOnePage(
           imagePrompts[i], i, pageSeed, identity, customNeg, pageCard,
-          clipAnchorEmbedding.length > 0 ? clipAnchorEmbedding : undefined
+          clipAnchorEmbedding.length > 0 ? clipAnchorEmbedding : undefined,
+          anchorImageBuffer
         );
       }
     }

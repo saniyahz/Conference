@@ -244,7 +244,7 @@ export function createSimpleBible(
   // Build visual fingerprint
   const visual_fingerprint: string[] = [];
   if (isAnimal && actualSpecies && actualSpecies !== 'animal') {
-    visual_fingerprint.push(`cute chubby cartoon ${actualSpecies}`);
+    visual_fingerprint.push(`cartoon ${actualSpecies}`);
   }
   visual_fingerprint.push(skinTone);
   visual_fingerprint.push("big expressive eyes");
