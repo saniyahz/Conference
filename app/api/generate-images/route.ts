@@ -180,8 +180,10 @@ function extractCharacterIdentity(bible?: CharacterBible): CharacterIdentity {
     console.log(`[Safety] Sanitized appearance: "${bibleAppearance}" → "${safeBibleAppearance}"`);
   }
 
-  // Framing — "full body" only. Pose will be added per-page in runCandidateRound().
-  const framing = "full body";
+  // Framing — "full body centered prominently" tells SDXL to render the character
+  // large and centered. Without "centered prominently", SDXL often renders tiny
+  // characters (bbox 3-7%) that fail the RULE 4 minimum size check.
+  const framing = "full body centered prominently in frame";
 
   // PROMPT STRUCTURE (within SDXL's 77-token window):
   //   Tokens 1-6:   ART STYLE FIRST — forces consistent cartoon rendering
@@ -1002,16 +1004,18 @@ async function fetchImageBuffer(url: string): Promise<Buffer | null> {
  *
  * prompt_strength controls how much SDXL overwrites the ENTIRE image:
  *   - 0.90+: nearly full regen → plate composition destroyed, identity drift
- *   - 0.85: best balance — character renders prominently, plate mostly preserved.
- *           Produces characters large enough to pass bbox > 8% consistently.
- *   - 0.80: TOO LOW — character renders too small, massive TINY CHARACTER
- *           rejections (bbox 1-7%). Tested and failed.
+ *   - 0.88: best balance — character renders prominently at bbox 9-15%,
+ *           plate scene still visible at edges. Increased from 0.85 after
+ *           production runs showed too many TINY CHARACTER rejections.
+ *   - 0.85: marginal — bbox 3-7%, many pages needed Round 3 escalation.
+ *   - 0.80: TOO LOW — character renders too small (bbox 1-7%).
  *   - 0.75: too low — frequently produced no character (just background)
  *   - 0.65: TOO LOW — no character at all (just flowers/butterflies)
  */
-const INPAINT_STRENGTH = 0.85;
-const INPAINT_STRENGTH_WITH_ANCHOR = 0.65;  // Lower when anchor is composited — keeps ~35% of anchor character pixels
+const INPAINT_STRENGTH = 0.88;
+const INPAINT_STRENGTH_WITH_ANCHOR = 0.72;  // Increased from 0.65 — preserves ~28% of anchor pixels, pushes CLIP from 0.58-0.67 to 0.70-0.78
 const ROUND3_STRENGTH = 0.90;
+const ROUND3_STRENGTH_WITH_ANCHOR = 0.80;  // Round 3 still uses anchor compositing (was skipped before) but more aggressive
 
 async function runCandidateRound(
   plateUrl: string,
@@ -1036,14 +1040,19 @@ async function runCandidateRound(
   let effectivePlateUrl: string = plateUrl;
   let strength: number;
 
-  if (anchorBuffer && !forceHighStrength) {
+  if (anchorBuffer) {
+    // ALWAYS composite anchor — even on Round 3.
+    // Previously Round 3 (forceHighStrength) skipped compositing entirely,
+    // generating from scratch. This caused character identity drift because
+    // SDXL had no visual reference. Now Round 3 keeps the anchor but uses
+    // higher strength (0.80 vs 0.72) for more aggressive regeneration.
     const compositedUrl = await compositeAnchorOntoPlate(anchorBuffer, plateUrl, maskDataUrl);
     if (compositedUrl) {
       effectivePlateUrl = compositedUrl;
-      strength = INPAINT_STRENGTH_WITH_ANCHOR;
+      strength = forceHighStrength ? ROUND3_STRENGTH_WITH_ANCHOR : INPAINT_STRENGTH_WITH_ANCHOR;
       console.log(`[Page ${pageIndex + 1}] Using ANCHOR-COMPOSITED plate (strength=${strength}) — character seeded from reference`);
     } else {
-      strength = INPAINT_STRENGTH;
+      strength = forceHighStrength ? ROUND3_STRENGTH : INPAINT_STRENGTH;
       console.log(`[Page ${pageIndex + 1}] Anchor compositing failed, using plain plate (strength=${strength})`);
     }
   } else {

@@ -164,7 +164,7 @@ describe('acceptCandidate - Rule 3b/3c: CLIP identity consistency', () => {
   it('rejects when CLIP too low and BLIP does NOT say rhino (Rule 3b)', () => {
     const result = acceptCandidate(
       'a cute cartoon animal on a hill',
-      clip(0.68), // Below 0.72 threshold
+      clip(0.66), // Below 0.68 threshold
       dino(0.65), // DINO confirms but CLIP rejects
     );
     expect(result.accepted).toBe(false);

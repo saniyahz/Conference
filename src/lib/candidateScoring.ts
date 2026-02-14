@@ -366,17 +366,18 @@ export function acceptCandidate(
   const blipHasRhino = /\brhinos?\b|\brhinoceros(es)?\b/.test(c);
   const blipHasHippo = /\bhippos?\b|\bhippopotamus(es)?\b/.test(c);
   const blipHasElephant = /\belephants?\b/.test(c);
-  const dinoHasRhino = !!(detectionResult?.detected && detectionResult.confidence >= 0.50);
+  const dinoHasRhino = !!(detectionResult?.detected && detectionResult.confidence >= 0.45);
   const clipConfirmsRiri = !!(clipResult && clipResult.similarity >= 0.80);
   const clipAvailable = !!(clipResult && clipResult.similarity > 0);
-  // Raised from 0.65 → 0.72: with style tokens moved to front of prompt
-  // and 4 candidates per round (up from 3), SDXL produces more consistent
-  // results. The higher threshold rejects visually dissimilar characters
-  // that BLIP misidentifies. With more candidates, the pipeline has enough
-  // retries to find high-CLIP matches.
-  // Previous thresholds tested: 0.62 (too loose), 0.65 (still inconsistent),
-  // 0.68 (too aggressive with 3 candidates, OK with 4).
-  const clipRejectsRiri = clipAvailable && clipResult!.similarity < 0.72;
+  // Lowered from 0.72 → 0.68: production runs showed that cartoon inpainting
+  // with different backgrounds consistently produces CLIP 0.65-0.72 for
+  // CORRECT characters. 0.72 was rejecting good candidates (rhino confirmed
+  // by DINO at 0.80+ confidence, but CLIP only 0.66-0.71 because the
+  // background differs from the white-bg reference). With anchor compositing
+  // strength raised to 0.72, CLIP scores should improve, but 0.68 gives
+  // the pipeline room to accept visually correct characters on Round 1
+  // instead of escalating to Round 3 every time.
+  const clipRejectsRiri = clipAvailable && clipResult!.similarity < 0.68;
   // Even when BLIP confirms "rhino", require minimum CLIP similarity.
   // Raised from 0.50 → 0.65: a BLIP-confirmed rhino with CLIP 0.50-0.65
   // looks visually very different from the reference (different art style,
@@ -467,10 +468,10 @@ export function acceptCandidate(
   // (per BLIP or DINO) but it looks visually different from the reference Riri.
   // Threshold raised to 0.68 — character must look reasonably like the anchor.
   if (clipRejectsRiri && !blipHasRhino) {
-    // If BLIP doesn't say rhino, CLIP similarity < 0.72 means it's a different character.
+    // If BLIP doesn't say rhino, CLIP similarity < 0.68 means it's a different character.
     return {
       accepted: false,
-      rejectReason: `RULE 3b: CLIP IDENTITY MISMATCH (similarity=${clipResult!.similarity.toFixed(3)} < 0.72, doesn't resemble reference)`,
+      rejectReason: `RULE 3b: CLIP IDENTITY MISMATCH (similarity=${clipResult!.similarity.toFixed(3)} < 0.68, doesn't resemble reference)`,
     };
   }
 

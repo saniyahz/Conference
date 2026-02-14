@@ -9,33 +9,29 @@ import sharp from "sharp";
  * STANDARD mask — SCENE-PRESERVING: character in the center with
  * visible plate edges for story context (sky, ground, environment).
  *
- * Sized at 72%×78% — a middle ground between:
- *   - 80%×86% (original): destroyed plate scene, only thin strips survived
- *   - 64%×72% (tested): too small, caused TINY CHARACTER rejections (bbox 3.7%)
+ * Sized at 80%×82% — increased from 72%×78% after production testing
+ * showed characters rendering too small (bbox 3-7%) at the old size.
+ * With the larger mask, characters have enough room to render at
+ * bbox > 8% on Round 1 without needing escalation to Round 2/3.
  *
- * With 72%×78%, the plate scene is visible:
- *   Top 17%:  sky/ceiling (plate preserved)
+ *   Top 13%:   sky/ceiling (plate preserved)
  *   Bottom 5%: ground/floor (plate preserved)
- *   Left/right 14%: environment (plate preserved)
- *   Center 72%×78%: character inpaint zone
- *
- * At prompt_strength=0.85, the character renders prominently within the
- * mask. If the character is too small (bbox < 8%), rounds 2-3 escalate
- * to larger masks (80%×86% and 88%×88%) as fallback.
+ *   Left/right 10%: environment (plate preserved)
+ *   Center 80%×82%: character inpaint zone
  *
  * For 1024×1024:
  *   cx = 512 (centered)
- *   cy = 573 (56% down — balanced headroom + visible ground)
- *   rx = 369 (72% width coverage)
- *   ry = 400 (78% height coverage)
+ *   cy = 563 (55% down — balanced headroom + visible ground)
+ *   rx = 410 (80% width coverage)
+ *   ry = 420 (82% height coverage)
  */
 export async function makeRiriZoneMaskDataUrl(
   size: number = 1024
 ): Promise<string> {
   const cx = size * 0.50;
-  const cy = size * 0.56;
-  const rx = size * 0.36;
-  const ry = size * 0.39;
+  const cy = size * 0.55;
+  const rx = size * 0.40;
+  const ry = size * 0.41;
 
   const svg = `
   <svg width="${size}" height="${size}" xmlns="http://www.w3.org/2000/svg">
@@ -49,23 +45,23 @@ export async function makeRiriZoneMaskDataUrl(
 
 /**
  * LARGE mask — escalation path when standard mask produces tiny characters.
- * Uses the old standard dimensions (80%×86% coverage).
+ * Covers 86%×88% of the frame.
  *
  * Also used as round 1 mask for multi-character pages where secondary
  * actors in the plate compete with the main character for visual space.
  *
  *   cx = 50% centered
- *   cy = 60% (slightly below center for foot room)
- *   rx = 40% (80% width coverage)
- *   ry = 43% (86% height coverage)
+ *   cy = 55% (slightly below center for foot room)
+ *   rx = 43% (86% width coverage)
+ *   ry = 44% (88% height coverage)
  */
 export async function makeRiriZoneLargeMaskDataUrl(
   size: number = 1024
 ): Promise<string> {
   const cx = size * 0.50;
-  const cy = size * 0.60;
-  const rx = size * 0.40;
-  const ry = size * 0.43;
+  const cy = size * 0.55;
+  const rx = size * 0.43;
+  const ry = size * 0.44;
 
   const svg = `
   <svg width="${size}" height="${size}" xmlns="http://www.w3.org/2000/svg">
