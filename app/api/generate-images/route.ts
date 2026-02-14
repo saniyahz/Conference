@@ -31,6 +31,7 @@ import { resolveSceneSetting, enforceMustInclude, classifyScene } from "@/src/li
 import { scoreCandidate, CandidateResult, ScoreOptions, getSettingKeywords, deriveSettingKeywordsFromText } from "@/src/lib/candidateScoring";
 import { cacheAnchorEmbedding, getClipEmbedding } from "@/src/lib/clipScoring";
 import { buildMultiCharPlateNegative } from "@/src/lib/negativePrompts";
+import { lookupCharacter, saveAssets, sanitizeForKids, KID_FRIENDLY_STYLE, isInLibrary } from "@/lib/characterLibrary";
 
 const replicate = new Replicate({
   auth: process.env.REPLICATE_API_TOKEN,
@@ -172,6 +173,13 @@ function extractCharacterIdentity(bible?: CharacterBible): CharacterIdentity {
     })
     .join(", ");
 
+  // KID-FRIENDLY SAFETY: Sanitize appearance text for custom/non-library characters.
+  // A kid saying "scary monster with sharp teeth" gets softened to "silly creature with big smile".
+  const { cleaned: safeBibleAppearance, wasModified: wasSanitized } = sanitizeForKids(bibleAppearance);
+  if (wasSanitized) {
+    console.log(`[Safety] Sanitized appearance: "${bibleAppearance}" → "${safeBibleAppearance}"`);
+  }
+
   // Framing — "full body" only. Pose will be added per-page in runCandidateRound().
   const framing = "full body";
 
@@ -190,7 +198,7 @@ function extractCharacterIdentity(bible?: CharacterBible): CharacterIdentity {
   const inpaintPrompt = [
     "children's picture book illustration, bold outlines, flat vibrant colors",  // Tokens 1-6: STYLE FIRST — "flat" pushes SDXL away from realism
     `cartoon ${species} character named ${name}`,  // Tokens 7-12: species + name — "cartoon" style, species identity CLEAR
-    bibleAppearance,                                // Tokens 13-22: bible colors/eyes/expression
+    safeBibleAppearance,                             // Tokens 13-22: bible colors/eyes/expression (kid-safe)
     structureLock,                                   // Tokens 23-34: structural anatomy (no colors)
     framing,                                         // Tokens 34-36: framing
   ].filter(Boolean).join(", ");
@@ -1148,63 +1156,109 @@ export async function POST(request: NextRequest) {
     const imageUrls: string[] = [];
     const usedSeeds: number[] = [];
 
-    // ── CLIP ANCHOR + COMPOSITING REFERENCE ──
-    // Create 2 clean reference images:
-    //   1. CLIP embeddings: averaged centroid for identity consistency scoring
-    //   2. Compositing: anchor image cached as Buffer, pasted onto each plate
-    //      so SDXL starts from actual character pixels (not random noise)
+    // ── CHARACTER LIBRARY CHECK + ANCHOR GENERATION ──
+    // 1. Check if species is in the character library with cached assets
+    // 2. If cached → load from disk (0s instead of ~25s)
+    // 3. If not cached → generate from scratch, then SAVE for next time
     let clipAnchorEmbedding: number[] = [];
     let anchorImageBuffer: Buffer | null = null;
-    try {
-      console.log(`\n[CLIP] Generating character reference images for anchor embedding...`);
-      // Use the FULL identity inpaint prompt (same tokens 1-40 as actual inpainting)
-      // instead of a sliced subset. This ensures the anchor closely matches
-      // what SDXL produces during inpainting.
-      const refPromptWhite = identity.inpaintPrompt + ", centered, solid white background";
-      const refPromptNeutral = identity.inpaintPrompt + ", centered, bright green grass and blue sky";
 
-      // Use the SAME base seed as pages (not seed+99999) so the anchor
-      // rendering matches what the page inpaints produce.
-      const [refUrlWhite, refUrlNeutral] = await Promise.all([
-        generatePlate(replicate, refPromptWhite, storySeed, 99),
-        generatePlate(replicate, refPromptNeutral, storySeed + 1, 98),
-      ]);
+    const libraryResult = lookupCharacter(identity.species);
+    const libraryHit = libraryResult?.hasAssets ?? false;
 
-      console.log(`[CLIP] Anchor white: ${refUrlWhite ? "OK" : "FAILED"}, neutral: ${refUrlNeutral ? "OK" : "FAILED"}`);
+    if (libraryResult && libraryHit) {
+      // ── FAST PATH: Library character with cached assets ──
+      console.log(`\n[Library] HIT: "${identity.species}" found with cached assets — skipping anchor generation`);
 
-      // ANCHOR COMPOSITING: Cache the white-bg anchor image as a Buffer.
-      // This will be composited onto each page's plate so SDXL starts from
-      // the anchor character's pixels instead of random noise.
-      // Prefer white-bg anchor (cleaner character isolation).
-      const bestAnchorUrl = refUrlWhite || refUrlNeutral;
-      if (bestAnchorUrl) {
-        anchorImageBuffer = await fetchImageBuffer(bestAnchorUrl);
-        console.log(`[Anchor] Cached anchor image buffer: ${anchorImageBuffer ? `${Math.round(anchorImageBuffer.length / 1024)}KB` : "FAILED"}`);
+      anchorImageBuffer = libraryResult.assets.refWhiteBuffer || libraryResult.assets.refNeutralBuffer;
+      if (anchorImageBuffer) {
+        console.log(`[Library] Loaded anchor buffer: ${Math.round(anchorImageBuffer.length / 1024)}KB`);
       }
 
-      // Get CLIP embeddings for each anchor and average them
-      const anchorUrls = [refUrlWhite, refUrlNeutral].filter(Boolean) as string[];
-      if (anchorUrls.length > 0) {
-        const embeddings = await Promise.all(
-          anchorUrls.map(url => getClipEmbedding(replicate, url))
-        );
-        const validEmb = embeddings.filter(e => e.length > 0);
-
-        if (validEmb.length > 0) {
-          // Average all valid embeddings to create a scene-agnostic centroid
-          const dim = validEmb[0].length;
-          clipAnchorEmbedding = new Array(dim).fill(0);
-          for (const emb of validEmb) {
-            for (let d = 0; d < dim; d++) clipAnchorEmbedding[d] += emb[d];
+      if (libraryResult.assets.clipEmbedding) {
+        clipAnchorEmbedding = libraryResult.assets.clipEmbedding;
+        console.log(`[Library] Loaded CLIP embedding: ${clipAnchorEmbedding.length} dims — identity scoring enabled`);
+      } else if (anchorImageBuffer) {
+        // Assets exist but no CLIP embedding — compute and save it
+        console.log(`[Library] No cached CLIP embedding — computing from anchor...`);
+        try {
+          const anchorDataUrl = `data:image/png;base64,${anchorImageBuffer.toString("base64")}`;
+          const emb = await getClipEmbedding(replicate, anchorDataUrl);
+          if (emb.length > 0) {
+            clipAnchorEmbedding = emb;
+            saveAssets(libraryResult.character.species, null, null, clipAnchorEmbedding);
+            console.log(`[Library] Computed and saved CLIP embedding: ${emb.length} dims`);
           }
-          for (let d = 0; d < dim; d++) clipAnchorEmbedding[d] /= validEmb.length;
-          console.log(`[CLIP] Anchor centroid ready (${dim} dims, averaged ${validEmb.length} embeddings) — identity scoring enabled`);
-        } else {
-          console.warn(`[CLIP] All anchor embeddings failed — identity scoring disabled`);
+        } catch (e) {
+          console.warn(`[Library] CLIP computation failed:`, e);
         }
       }
-    } catch (e) {
-      console.warn(`[CLIP] Anchor generation failed, proceeding without identity scoring:`, e);
+    } else {
+      // ── GENERATE PATH: No cached assets — generate anchors from scratch ──
+      const librarySpecies = libraryResult ? libraryResult.character.species : null;
+      if (libraryResult) {
+        console.log(`\n[Library] "${identity.species}" in library but NO cached assets — generating and saving...`);
+      } else {
+        console.log(`\n[Library] MISS: "${identity.species}" not in library — generating anchors from scratch`);
+      }
+
+      try {
+        console.log(`[CLIP] Generating character reference images for anchor embedding...`);
+        const refPromptWhite = identity.inpaintPrompt + ", centered, solid white background";
+        const refPromptNeutral = identity.inpaintPrompt + ", centered, bright green grass and blue sky";
+
+        const [refUrlWhite, refUrlNeutral] = await Promise.all([
+          generatePlate(replicate, refPromptWhite, storySeed, 99),
+          generatePlate(replicate, refPromptNeutral, storySeed + 1, 98),
+        ]);
+
+        console.log(`[CLIP] Anchor white: ${refUrlWhite ? "OK" : "FAILED"}, neutral: ${refUrlNeutral ? "OK" : "FAILED"}`);
+
+        // Cache anchor image buffer for compositing
+        const bestAnchorUrl = refUrlWhite || refUrlNeutral;
+        let refWhiteBuffer: Buffer | null = null;
+        let refNeutralBuffer: Buffer | null = null;
+
+        if (refUrlWhite) {
+          refWhiteBuffer = await fetchImageBuffer(refUrlWhite);
+        }
+        if (refUrlNeutral) {
+          refNeutralBuffer = await fetchImageBuffer(refUrlNeutral);
+        }
+        anchorImageBuffer = refWhiteBuffer || refNeutralBuffer;
+        if (anchorImageBuffer) {
+          console.log(`[Anchor] Cached anchor image buffer: ${Math.round(anchorImageBuffer.length / 1024)}KB`);
+        }
+
+        // Compute CLIP embeddings
+        const anchorUrls = [refUrlWhite, refUrlNeutral].filter(Boolean) as string[];
+        if (anchorUrls.length > 0) {
+          const embeddings = await Promise.all(
+            anchorUrls.map(url => getClipEmbedding(replicate, url))
+          );
+          const validEmb = embeddings.filter(e => e.length > 0);
+
+          if (validEmb.length > 0) {
+            const dim = validEmb[0].length;
+            clipAnchorEmbedding = new Array(dim).fill(0);
+            for (const emb of validEmb) {
+              for (let d = 0; d < dim; d++) clipAnchorEmbedding[d] += emb[d];
+            }
+            for (let d = 0; d < dim; d++) clipAnchorEmbedding[d] /= validEmb.length;
+            console.log(`[CLIP] Anchor centroid ready (${dim} dims, averaged ${validEmb.length} embeddings) — identity scoring enabled`);
+          } else {
+            console.warn(`[CLIP] All anchor embeddings failed — identity scoring disabled`);
+          }
+        }
+
+        // SAVE to library for next time (library characters only)
+        if (librarySpecies) {
+          saveAssets(librarySpecies, refWhiteBuffer, refNeutralBuffer, clipAnchorEmbedding.length > 0 ? clipAnchorEmbedding : null);
+          console.log(`[Library] Saved generated assets for "${librarySpecies}" — next story will be instant`);
+        }
+      } catch (e) {
+        console.warn(`[CLIP] Anchor generation failed, proceeding without identity scoring:`, e);
+      }
     }
 
     // Generate pages with bounded concurrency
