@@ -43,12 +43,9 @@ const CANDIDATES_PER_ROUND = 4;
 const SEED_STRIDE = 29;
 // Minimum score to accept from rounds 1-2. If the best accepted candidate
 // scores below this, continue to the next round for better options.
-// Raised from 6 → 8: With the DINO override removed from Rule 2,
-// accepted images are now BLIP-confirmed rhinos (base score 6) or
-// DINO-only ambiguous images (base score 3). Setting threshold to 8
-// ensures we keep trying until we find an image where BLIP actually says
-// "rhino" plus some quality bonuses (cartoon +1, full body +2 = 9+).
-// DINO-only images (score 3-7) won't trigger early exit.
+// Set to 8: BLIP-confirmed rhinos get base 6 + bonuses (cartoon +1, full body +2 = 9+).
+// DINO+CLIP override images get base 6 + CLIP/DINO contributions = 9-11.
+// DINO-only images (score 3-5) won't trigger early exit — keep trying.
 const MIN_ROUND_ACCEPT = 8;
 // Bounded page concurrency. With sequential candidates + early-accept,
 // each page has ~1-2 active Replicate calls at a time. Running 2 pages

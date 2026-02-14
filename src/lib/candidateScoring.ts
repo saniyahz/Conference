@@ -423,17 +423,25 @@ export function acceptCandidate(
     return { accepted: false, rejectReason: `RULE 1d: CROPPED/CLOSE-UP detected ("${cropMatch}")` };
   }
 
-  // ── RULE 2: Wrong animal gate — STRICT, NO OVERRIDE ──
-  // If BLIP identifies a wrong animal in the caption, ALWAYS reject.
-  // Previously DINO was used to override BLIP ("BLIP says cow but DINO says rhino"),
-  // but this produced images that looked like cows/zebras/dinosaurs to humans.
-  // DINO detects "large quadruped shape" and maps it to "rhinoceros" because
-  // that's the query — a cow IS a large quadruped, so DINO gives decent
-  // confidence even on cow images. BLIP's species identification, while
-  // imperfect, is a much better signal: if it says "cow", the image looks
-  // like a cow. The retry mechanism (9+ candidates per page) ensures we
-  // eventually find images where BLIP correctly identifies rhinoceros.
-  // DINO is still used for Rule 3 (character present) and Rule 4 (size).
+  // ── RULE 2: Wrong animal gate — WITH DINO+CLIP OVERRIDE ──
+  // If BLIP identifies a wrong animal in the caption, normally reject.
+  //
+  // OVERRIDE: When BOTH DINO and CLIP strongly confirm the character,
+  // allow the image despite BLIP's wrong-animal caption. Production data
+  // shows BLIP misidentifies cartoon rhinoceros as rabbit/pig/dinosaur/
+  // elephant/bird/dog ~60-80% of the time due to stylization. Meanwhile:
+  //   - DINO at confidence >= 0.70 with bbox >= 8% = shape-confirmed rhino
+  //   - CLIP at similarity >= 0.68 = visually matches reference character
+  // When both agree, BLIP is the one being wrong — the image IS the
+  // correct character rendered in cartoon style that confuses BLIP.
+  //
+  // Without this override, the pipeline rejects 60-80% of correct
+  // cartoon rhino images and needs 12+ candidates per page to find
+  // one where BLIP happens to say "rhinoceros".
+  //
+  // DINO alone is NOT enough (a cow IS a large quadruped → decent DINO
+  // confidence). CLIP alone is NOT enough (stylistic similarity without
+  // shape confirmation). Both together = high confidence override.
   const allowedList = (opts?.allowedAnimals ?? []).map(a => a.toLowerCase());
   const allowedSet = new Set(allowedList);
   // Expand allowed animals to include singular/plural variants
@@ -443,10 +451,33 @@ export function acceptCandidate(
   }
   const wrongAnimal = WRONG_ANIMALS.find((a) => c.includes(a) && !allowedSet.has(a));
   if (wrongAnimal) {
-    return {
-      accepted: false,
-      rejectReason: `RULE 2: WRONG ANIMAL "${wrongAnimal}" detected in caption`,
-    };
+    // Check for DINO+CLIP override: both must strongly confirm
+    const dinoStrongConfirm = !!(
+      detectionResult?.detected &&
+      detectionResult.confidence >= 0.70 &&
+      detectionResult.bestBboxArea >= MIN_BBOX_AREA
+    );
+    const clipConfirmsIdentity = !!(clipResult && clipResult.similarity >= 0.68);
+
+    if (dinoStrongConfirm && clipConfirmsIdentity) {
+      // Both DINO (shape) and CLIP (visual similarity) confirm the character.
+      // BLIP's species label is wrong — the cartoon style confused it.
+      // Allow the image to proceed to remaining rules.
+      console.log(
+        `[Rule 2] DINO+CLIP OVERRIDE: BLIP says "${wrongAnimal}" but ` +
+        `DINO conf=${detectionResult!.confidence.toFixed(2)} bbox=${(detectionResult!.bestBboxArea * 100).toFixed(1)}%, ` +
+        `CLIP sim=${clipResult!.similarity.toFixed(3)} — allowing (both strongly confirm character)`
+      );
+    } else {
+      return {
+        accepted: false,
+        rejectReason: `RULE 2: WRONG ANIMAL "${wrongAnimal}" detected in caption` +
+          (detectionResult?.detected
+            ? ` (DINO conf=${detectionResult.confidence.toFixed(2)} bbox=${(detectionResult.bestBboxArea * 100).toFixed(1)}%` +
+              `, CLIP=${clipResult ? clipResult.similarity.toFixed(3) : "off"} — override requires DINO>=0.70+bbox>=8% AND CLIP>=0.68)`
+            : ""),
+      };
+    }
   }
 
   // ── RULE 3: Rhinoceros confirmed by at least one signal ──
@@ -759,13 +790,20 @@ export async function scoreCandidate(
   let { score, reasons } = scoreCaption(caption, opts);
 
   // DINO base bonus: when BLIP doesn't say "rhino" (score=0) but the image
-  // was accepted via DINO/CLIP confirmation, add a partial base score.
+  // was accepted via DINO/CLIP confirmation, add a base score.
   // Without this, 70% of cartoon rhino images get score=0 from scoreCaption()
   // because BLIP misidentifies them, making marginal and good images
-  // indistinguishable. The +3 base raises the floor for DINO-confirmed images.
+  // indistinguishable.
+  //
+  // When CLIP ALSO confirms identity (>= 0.68), give +6 instead of +3.
+  // This ensures DINO+CLIP override images (Rule 2 override) can reach
+  // MIN_ROUND_ACCEPT (8) and get accepted in round 1/2 without escalation.
+  // +6 (DINO+CLIP) + CLIP contribution (~1-3) + DINO contribution (~2) = 9-11.
   if (accepted && score === 0 && detectionResult?.detected && detectionResult.confidence >= 0.65) {
-    score += 3;
-    reasons.push("+3 DINO-confirmed character (BLIP missed rhino)");
+    const clipAlsoConfirms = !!(clipResult && clipResult.similarity >= 0.68);
+    const bonus = clipAlsoConfirms ? 6 : 3;
+    score += bonus;
+    reasons.push(`+${bonus} DINO-confirmed character (BLIP missed rhino${clipAlsoConfirms ? ", CLIP confirms identity" : ""})`);
   }
 
   if (clipResult) {

@@ -23,53 +23,63 @@ function dino(confidence: number, bboxArea: number = 0.15): DetectionResult {
   };
 }
 
-describe('acceptCandidate - Rule 2: Wrong animal STRICT rejection', () => {
-  it('rejects when BLIP says "cow" — no DINO override', () => {
+describe('acceptCandidate - Rule 2: Wrong animal rejection', () => {
+  it('rejects when BLIP says "cow" and DINO/CLIP too weak for override', () => {
     const result = acceptCandidate(
       'a cartoon cow standing in a field',
-      clip(0.75),
-      dino(0.85), // DINO says rhinoceros at high confidence
+      clip(0.60),   // CLIP too low for override (< 0.68)
+      dino(0.85),
     );
     expect(result.accepted).toBe(false);
     expect(result.rejectReason).toContain('WRONG ANIMAL');
     expect(result.rejectReason).toContain('cow');
   });
 
-  it('rejects when BLIP says "giraffe" — no DINO override', () => {
+  it('rejects when BLIP says "giraffe" and DINO too weak for override', () => {
     const result = acceptCandidate(
       'a cute cartoon giraffe in a forest',
-      clip(0.80),
-      dino(0.90),
+      clip(0.75),
+      dino(0.55), // DINO too low for override (< 0.70)
     );
     expect(result.accepted).toBe(false);
     expect(result.rejectReason).toContain('WRONG ANIMAL');
   });
 
-  it('rejects when BLIP says "zebra" even with strong DINO', () => {
+  it('rejects when BLIP says "zebra" with high DINO but low CLIP', () => {
     const result = acceptCandidate(
       'a cartoon zebra with stripes on a hill',
-      clip(0.82),
+      clip(0.60),   // CLIP too low for override
       dino(0.92),
     );
     expect(result.accepted).toBe(false);
     expect(result.rejectReason).toContain('WRONG ANIMAL');
   });
 
-  it('rejects when BLIP says "dinosaur"', () => {
+  it('rejects when BLIP says "dinosaur" with high CLIP but low DINO', () => {
     const result = acceptCandidate(
       'a cute cartoon dinosaur on moon surface',
-      clip(0.70),
-      dino(0.80),
+      clip(0.75),
+      dino(0.55), // DINO too low for override (< 0.70)
     );
     expect(result.accepted).toBe(false);
     expect(result.rejectReason).toContain('WRONG ANIMAL');
   });
 
-  it('rejects when BLIP says "bull"', () => {
+  it('rejects when BLIP says "bull" with no CLIP', () => {
     const result = acceptCandidate(
       'a cartoon bull standing on grass',
-      clip(0.72),
+      null,        // No CLIP — override not possible
       dino(0.78),
+    );
+    expect(result.accepted).toBe(false);
+    expect(result.rejectReason).toContain('WRONG ANIMAL');
+  });
+
+  it('rejects when BLIP says wrong animal with tiny bbox (even high DINO+CLIP)', () => {
+    const result = acceptCandidate(
+      'a cartoon rabbit in a garden',
+      clip(0.75),
+      dino(0.85, 0.05), // bbox 5% — too small for override (< 8%)
     );
     expect(result.accepted).toBe(false);
     expect(result.rejectReason).toContain('WRONG ANIMAL');
@@ -86,16 +96,86 @@ describe('acceptCandidate - Rule 2: Wrong animal STRICT rejection', () => {
     expect(result.accepted).toBe(true);
   });
 
-  it('rejects wrong animal NOT in allowedAnimals', () => {
+  it('rejects wrong animal NOT in allowedAnimals (even with high DINO+CLIP)', () => {
     const result = acceptCandidate(
       'a cartoon cow and a lion in a forest',
-      clip(0.78),
+      clip(0.60),   // CLIP too low for override
       dino(0.85),
       { allowedAnimals: ['lions'] },
     );
-    // "cow" is NOT allowed → reject
+    // "cow" is NOT allowed and CLIP too low → reject
     expect(result.accepted).toBe(false);
     expect(result.rejectReason).toContain('cow');
+  });
+});
+
+describe('acceptCandidate - Rule 2: DINO+CLIP override', () => {
+  it('overrides BLIP "rabbit" when DINO and CLIP both strongly confirm', () => {
+    const result = acceptCandidate(
+      'a cartoon rabbit in a garden',
+      clip(0.75),      // CLIP >= 0.68 ✓
+      dino(0.80, 0.25), // DINO >= 0.70 AND bbox >= 8% ✓
+    );
+    // DINO+CLIP override: BLIP says "rabbit" but both detection signals confirm character
+    expect(result.accepted).toBe(true);
+  });
+
+  it('overrides BLIP "elephant" when DINO and CLIP both strongly confirm', () => {
+    const result = acceptCandidate(
+      'a cute cartoon elephant on the moon',
+      clip(0.72),      // CLIP >= 0.68 ✓
+      dino(0.85, 0.30), // DINO >= 0.70 AND bbox >= 8% ✓
+    );
+    expect(result.accepted).toBe(true);
+  });
+
+  it('overrides BLIP "dinosaur" when DINO and CLIP both strongly confirm', () => {
+    const result = acceptCandidate(
+      'a cute cartoon dinosaur in a forest',
+      clip(0.70),      // CLIP >= 0.68 ✓
+      dino(0.75, 0.20), // DINO >= 0.70 AND bbox >= 8% ✓
+    );
+    expect(result.accepted).toBe(true);
+  });
+
+  it('does NOT override when DINO is below 0.70 confidence', () => {
+    const result = acceptCandidate(
+      'a cartoon pig on a hill',
+      clip(0.75),
+      dino(0.65, 0.20), // DINO too low (< 0.70)
+    );
+    expect(result.accepted).toBe(false);
+    expect(result.rejectReason).toContain('WRONG ANIMAL');
+  });
+
+  it('does NOT override when CLIP is below 0.68 similarity', () => {
+    const result = acceptCandidate(
+      'a cartoon pig on a hill',
+      clip(0.66),       // CLIP too low (< 0.68)
+      dino(0.85, 0.20),
+    );
+    expect(result.accepted).toBe(false);
+    expect(result.rejectReason).toContain('WRONG ANIMAL');
+  });
+
+  it('does NOT override when bbox is below 8%', () => {
+    const result = acceptCandidate(
+      'a cartoon dog in a park',
+      clip(0.75),
+      dino(0.85, 0.05), // bbox too small (< 8%)
+    );
+    expect(result.accepted).toBe(false);
+    expect(result.rejectReason).toContain('WRONG ANIMAL');
+  });
+
+  it('does NOT override when CLIP is null', () => {
+    const result = acceptCandidate(
+      'a cartoon bear in the woods',
+      null,              // No CLIP data
+      dino(0.90, 0.30),
+    );
+    expect(result.accepted).toBe(false);
+    expect(result.rejectReason).toContain('WRONG ANIMAL');
   });
 });
 
