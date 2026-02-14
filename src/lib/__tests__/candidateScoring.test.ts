@@ -164,7 +164,7 @@ describe('acceptCandidate - Rule 3b/3c: CLIP identity consistency', () => {
   it('rejects when CLIP too low and BLIP does NOT say rhino (Rule 3b)', () => {
     const result = acceptCandidate(
       'a cute cartoon animal on a hill',
-      clip(0.60), // Below 0.65 threshold
+      clip(0.68), // Below 0.72 threshold
       dino(0.65), // DINO confirms but CLIP rejects
     );
     expect(result.accepted).toBe(false);
@@ -174,7 +174,7 @@ describe('acceptCandidate - Rule 3b/3c: CLIP identity consistency', () => {
   it('rejects BLIP-confirmed rhino when CLIP is very low (Rule 3c)', () => {
     const result = acceptCandidate(
       'a cute cartoon rhino on a hill',
-      clip(0.45), // Below 0.50 consistency threshold
+      clip(0.60), // Below 0.65 consistency threshold
       dino(0.85),
     );
     expect(result.accepted).toBe(false);
@@ -184,10 +184,10 @@ describe('acceptCandidate - Rule 3b/3c: CLIP identity consistency', () => {
   it('accepts BLIP-confirmed rhino when CLIP is above consistency threshold', () => {
     const result = acceptCandidate(
       'a cute cartoon rhino standing on grass',
-      clip(0.55), // Above 0.50 consistency threshold (but below 0.65 general)
+      clip(0.68), // Above 0.65 consistency threshold (but below 0.72 general)
       dino(0.85),
     );
-    // BLIP says rhino + CLIP >= 0.50 → accepted
+    // BLIP says rhino + CLIP >= 0.65 → accepted
     expect(result.accepted).toBe(true);
   });
 

@@ -82,12 +82,13 @@ function buildTestInpaintPrompt(bible: CharacterBible): string {
 
   const framing = 'full body';
 
+  // Style tokens FIRST (matches route.ts — forces consistent cartoon rendering)
   return [
+    "children's picture book illustration, bold outlines, vibrant colors",
     `cartoon ${species} character named ${name}`,
     bibleAppearance,
     structureLock,
     framing,
-    "children's picture book illustration, bold outlines, vibrant colors",
   ]
     .filter(Boolean)
     .join(', ');
@@ -185,10 +186,10 @@ function buildCompositeInpaintPrompt(
 ): string {
   let compositePrompt = inpaintPrompt;
 
-  // Pose injection (mirrors route.ts runCandidateRound)
+  // Pose injection (mirrors route.ts runCandidateRound — uses regex for end-of-string)
   if (pageAction) {
     const pose = actionToPose(pageAction);
-    compositePrompt = compositePrompt.replace('full body,', `full body, ${pose},`);
+    compositePrompt = compositePrompt.replace(/\bfull body\b/, `full body, ${pose}`);
   }
 
   // NO scene suffix — removed to ensure character identity is 100% identical

@@ -292,7 +292,7 @@ export async function generateInpaintCharacter(
         height: 1024,
         num_outputs: 1,
         scheduler: "K_EULER",
-        num_inference_steps: 40,
+        num_inference_steps: 50,  // Increased from 40 for sharper, less blurry character details
         guidance_scale: 9,  // Higher guidance = stronger prompt adherence = more recognizable species
         prompt_strength: promptStrength,
         seed,

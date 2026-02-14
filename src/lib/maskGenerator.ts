@@ -9,15 +9,15 @@ import sharp from "sharp";
  * STANDARD mask — SCENE-PRESERVING: character in the center with
  * visible plate edges for story context (sky, ground, environment).
  *
- * Reduced from 80%×86% to 64%×72% to preserve more of the plate scene.
- * The old larger mask destroyed the plate — only 10% side strips and 17%
- * top survived, making story settings (moon, ocean, forest) invisible.
+ * Sized at 72%×78% — a middle ground between:
+ *   - 80%×86% (original): destroyed plate scene, only thin strips survived
+ *   - 64%×72% (tested): too small, caused TINY CHARACTER rejections (bbox 3.7%)
  *
- * With the smaller mask, the plate scene is clearly visible:
- *   Top 20%:  sky/ceiling (plate preserved)
- *   Bottom 8%: ground/floor (plate preserved)
- *   Left/right 18%: environment (plate preserved)
- *   Center 64%×72%: character inpaint zone
+ * With 72%×78%, the plate scene is visible:
+ *   Top 17%:  sky/ceiling (plate preserved)
+ *   Bottom 5%: ground/floor (plate preserved)
+ *   Left/right 14%: environment (plate preserved)
+ *   Center 72%×78%: character inpaint zone
  *
  * At prompt_strength=0.85, the character renders prominently within the
  * mask. If the character is too small (bbox < 8%), rounds 2-3 escalate
@@ -26,16 +26,16 @@ import sharp from "sharp";
  * For 1024×1024:
  *   cx = 512 (centered)
  *   cy = 573 (56% down — balanced headroom + visible ground)
- *   rx = 328 (64% width coverage)
- *   ry = 369 (72% height coverage)
+ *   rx = 369 (72% width coverage)
+ *   ry = 400 (78% height coverage)
  */
 export async function makeRiriZoneMaskDataUrl(
   size: number = 1024
 ): Promise<string> {
   const cx = size * 0.50;
   const cy = size * 0.56;
-  const rx = size * 0.32;
-  const ry = size * 0.36;
+  const rx = size * 0.36;
+  const ry = size * 0.39;
 
   const svg = `
   <svg width="${size}" height="${size}" xmlns="http://www.w3.org/2000/svg">

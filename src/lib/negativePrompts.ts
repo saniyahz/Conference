@@ -5,6 +5,9 @@
  */
 export function buildQualityOnlyNegative(): string {
   return [
+    // Anti-realistic — force consistent cartoon style, prevent SDXL from
+    // rendering realistic/photographic rhinos on some pages.
+    "realistic", "photorealistic", "3D render",
     "blurry", "distorted", "deformed", "bad anatomy", "extra limbs",
     "ugly", "low quality",
     // Color enforcement — kids' book must be vibrant

@@ -37,7 +37,7 @@ const replicate = new Replicate({
 
 // ─── CONFIG ──────────────────────────────────────────────────────────────
 
-const CANDIDATES_PER_ROUND = 3;
+const CANDIDATES_PER_ROUND = 4;
 const SEED_STRIDE = 29;
 // Minimum score to accept from rounds 1-2. If the best accepted candidate
 // scores below this, continue to the next round for better options.
@@ -177,18 +177,23 @@ function extractCharacterIdentity(bible?: CharacterBible): CharacterIdentity {
   const framing = "full body";
 
   // PROMPT STRUCTURE (within SDXL's 77-token window):
-  //   Tokens 1-6:   Character opener (species + name)
-  //   Tokens 7-16:  Bible appearance (colors, eyes, expression — HIGHEST PRIORITY)
-  //   Tokens 17-28: Species structure (shape, proportions — confirms species)
-  //   Tokens 28-30: Framing
-  //   Tokens 30-36: Pose (injected per-page in runCandidateRound)
-  //   Tokens 36-45: Art style
+  //   Tokens 1-6:   ART STYLE FIRST — forces consistent cartoon rendering
+  //   Tokens 7-12:  Character opener (species + name)
+  //   Tokens 13-22: Bible appearance (colors, eyes, expression)
+  //   Tokens 23-34: Species structure (shape, proportions)
+  //   Tokens 34-36: Framing
+  //   Tokens 36-42: Pose (injected per-page in runCandidateRound)
+  //
+  // CRITICAL: Style tokens MUST be at the FRONT. When they were at the end
+  // (tokens 36-45), SDXL inconsistently rendered realistic vs cartoon rhinos.
+  // Moving "children's picture book illustration" to token 1 ensures SDXL
+  // always renders in cartoon style regardless of the plate background.
   const inpaintPrompt = [
-    `cartoon ${species} character named ${name}`,  // Tokens 1-6: species + name
-    bibleAppearance,                                // Tokens 7-16: bible colors/eyes/expression
-    structureLock,                                   // Tokens 17-28: structural anatomy (no colors)
-    framing,                                         // Tokens 28-30: framing
-    "children's picture book illustration, bold outlines, vibrant colors",  // Tokens 36-45: style
+    "children's picture book illustration, bold outlines, vibrant colors",  // Tokens 1-6: STYLE FIRST
+    `cartoon ${species} character named ${name}`,  // Tokens 7-12: species + name
+    bibleAppearance,                                // Tokens 13-22: bible colors/eyes/expression
+    structureLock,                                   // Tokens 23-34: structural anatomy (no colors)
+    framing,                                         // Tokens 34-36: framing
   ].filter(Boolean).join(", ");
 
   return {
@@ -925,8 +930,8 @@ async function runCandidateRound(
 
   // IDENTITY-LOCKED inpaint prompt + POSE. NO per-page scene suffix.
   //
-  // The mask now covers ~64%×72% of the frame, leaving the top 20%, sides 18%,
-  // and bottom 8% of the plate visible. This means the plate's scene (moon,
+  // The mask covers ~72%×78% of the frame, leaving the top 17%, sides 14%,
+  // and bottom 5% of the plate visible. This means the plate's scene (moon,
   // ocean, forest, etc.) is clearly visible around the character.
   //
   // CRITICAL: NO scene objects or setting context in the inpaint prompt.
@@ -944,11 +949,12 @@ async function runCandidateRound(
   // INJECT POSE: Replace "full body" with "full body, [pose]" to give each
   // page a distinct character pose matching the story action.
   // Without this, every page renders the same standing-in-center pose.
+  // Uses regex to handle "full body" at end of prompt (no trailing comma).
   if (pageAction) {
     const pose = actionToPose(pageAction);
     compositePrompt = compositePrompt.replace(
-      "full body,",
-      `full body, ${pose},`
+      /\bfull body\b/,
+      `full body, ${pose}`
     );
     console.log(`[Page ${pageIndex + 1}] Pose injection: "${pose}" (from action: "${pageAction}")`);
   }
