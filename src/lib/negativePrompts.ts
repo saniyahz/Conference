@@ -110,8 +110,8 @@ export function buildHardBanNegative(species?: string): string {
   // SPECIES-SPECIFIC anti-drift — FIRST POSITION (highest SDXL attention).
   // Only the TOP confusion species — keep this to 8-10 terms max.
   const antiDrift: Record<string, string[]> = {
-    'rhinoceros': ['cow', 'bull', 'hippo', 'elephant', 'buffalo', 'dinosaur', 'cat', 'dog'],
-    'rhino': ['cow', 'bull', 'hippo', 'elephant', 'buffalo', 'dinosaur', 'cat', 'dog'],
+    'rhinoceros': ['cow', 'bull', 'hippo', 'elephant', 'rabbit', 'bunny', 'whale', 'dolphin', 'cat', 'dog'],
+    'rhino': ['cow', 'bull', 'hippo', 'elephant', 'rabbit', 'bunny', 'whale', 'dolphin', 'cat', 'dog'],
     'elephant': ['hippo', 'rhinoceros', 'cow', 'pig'],
     'dog': ['wolf', 'fox', 'bear'],
     'cat': ['lion', 'tiger', 'fox'],

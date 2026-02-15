@@ -293,7 +293,7 @@ export async function generateInpaintCharacter(
         num_outputs: 1,
         scheduler: "K_EULER",
         num_inference_steps: 50,  // Increased from 40 for sharper, less blurry character details
-        guidance_scale: 11,  // High guidance = strong prompt adherence = SDXL draws what the prompt says (rhinoceros, not hippo/elephant)
+        guidance_scale: 14,  // Very high guidance = strong prompt adherence for hard species (rhinoceros). Raised from 11 after production showed frequent drift to rabbit/dog/elephant
         prompt_strength: promptStrength,
         seed,
       };

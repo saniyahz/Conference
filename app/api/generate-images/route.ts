@@ -139,8 +139,8 @@ function extractCharacterIdentity(bible?: CharacterBible): CharacterIdentity {
   //
   // COLOR-NEUTRAL: No color tokens — colors come from bible visual_fingerprint.
   const speciesStructure: Record<string, string> = {
-    'rhinoceros': 'rhinoceros with prominent rounded horn on nose, thick barrel-shaped body, four thick legs, cartoon style',
-    'rhino': 'rhinoceros with prominent rounded horn on nose, thick barrel-shaped body, four thick legs, cartoon style',
+    'rhinoceros': 'rhinoceros with large prominent horn on nose, thick gray skin, wide barrel-shaped body, four thick sturdy legs',
+    'rhino': 'rhinoceros with large prominent horn on nose, thick gray skin, wide barrel-shaped body, four thick sturdy legs',
     'elephant': 'elephant with long trunk, large floppy ears, round body, four thick legs, cartoon style',
     'giraffe': 'giraffe with very long neck, spotted pattern, four long legs, cartoon style',
     'lion': 'lion with big fluffy mane around face, muscular body, tufted tail, cartoon style',
