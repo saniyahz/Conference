@@ -16,7 +16,8 @@ import {
   Volume2,
   Eye,
   Library,
-  Sparkles
+  Sparkles,
+  ArrowLeft
 } from 'lucide-react'
 import { PLANS, PlanType } from '@/lib/subscription'
 
@@ -180,6 +181,17 @@ export default function DashboardPage() {
   return (
     <div className="min-h-screen p-4 md:p-8 bg-gradient-to-br from-teal-50 via-yellow-50 to-orange-50">
       <div className="max-w-7xl mx-auto">
+        {/* Back to Home */}
+        <div className="mb-4">
+          <Link
+            href="/"
+            className="inline-flex items-center gap-2 text-teal-600 hover:text-teal-800 font-semibold"
+          >
+            <ArrowLeft className="w-5 h-5" />
+            Back to Home
+          </Link>
+        </div>
+
         {/* Header */}
         <div className="bg-white rounded-2xl shadow-xl p-6 mb-8 border-2 border-teal-200">
           <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-4">
@@ -369,6 +381,17 @@ export default function DashboardPage() {
               })}
             </div>
           )}
+        </div>
+
+        {/* Footer */}
+        <div className="mt-12 text-center text-teal-600 text-sm">
+          <p>Made with love for young storytellers everywhere</p>
+          <div className="flex justify-center gap-4 mt-4">
+            <Link href="/" className="hover:text-teal-800 underline">Create a Story</Link>
+            <Link href="/about" className="hover:text-teal-800 underline">About Us</Link>
+            <Link href="/pricing" className="hover:text-teal-800 underline">Pricing</Link>
+            <Link href="/terms" className="hover:text-teal-800 underline">Terms & Conditions</Link>
+          </div>
         </div>
       </div>
     </div>
