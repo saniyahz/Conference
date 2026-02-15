@@ -180,7 +180,7 @@ function extractCharacterIdentity(bible?: CharacterBible): CharacterIdentity {
   // Framing — "full body centered prominently" tells SDXL to render the character
   // large and centered. Without "centered prominently", SDXL often renders tiny
   // characters (bbox 3-7%) that fail the RULE 4 minimum size check.
-  const framing = "full body centered prominently in frame";
+  const framing = "full body large centered prominently in frame";
 
   // PROMPT STRUCTURE (within SDXL's 77-token window):
   //   Tokens 1-6:   ART STYLE FIRST — forces consistent cartoon rendering
@@ -1010,7 +1010,7 @@ async function fetchImageBuffer(url: string): Promise<Buffer | null> {
  *   - 0.65: TOO LOW — no character at all (just flowers/butterflies)
  */
 const INPAINT_STRENGTH = 0.88;
-const INPAINT_STRENGTH_WITH_ANCHOR = 0.72;  // Increased from 0.65 — preserves ~28% of anchor pixels, pushes CLIP from 0.58-0.67 to 0.70-0.78
+const INPAINT_STRENGTH_WITH_ANCHOR = 0.76;  // Raised from 0.72 — with guidance 14, SDXL needs more freedom to render character large enough (bbox > 8%)
 const ROUND3_STRENGTH = 0.90;
 const ROUND3_STRENGTH_WITH_ANCHOR = 0.80;  // Round 3 still uses anchor compositing (was skipped before) but more aggressive
 
