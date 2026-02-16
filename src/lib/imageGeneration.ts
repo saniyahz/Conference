@@ -294,7 +294,7 @@ export async function generateInpaintCharacter(
         num_outputs: 1,
         scheduler: "K_EULER",
         num_inference_steps: 50,  // Increased from 40 for sharper, less blurry character details
-        guidance_scale: 14,  // Very high guidance = strong prompt adherence for hard species (rhinoceros). Raised from 11 after production showed frequent drift to rabbit/dog/elephant
+        guidance_scale: promptStrength <= 0.65 ? 9 : 14,  // When strength <= 0.65 (anchor compositing), use moderate guidance (9). The anchor already provides strong visual identity — high guidance (14) fights with low strength causing distorted chimeric results (dragon-rhino hybrids, orange-colored rhinos). Without anchor, keep 14 for strong prompt adherence.
         prompt_strength: promptStrength,
         seed,
       };

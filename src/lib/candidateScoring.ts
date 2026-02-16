@@ -369,17 +369,16 @@ export function acceptCandidate(
   const dinoHasRhino = !!(detectionResult?.detected && detectionResult.confidence >= 0.45);
   const clipConfirmsRiri = !!(clipResult && clipResult.similarity >= 0.80);
   const clipAvailable = !!(clipResult && clipResult.similarity > 0);
-  // Raised from 0.68 → 0.70: with anchor compositing providing a visual
-  // starting point, CLIP scores for correct characters should be 0.72+.
-  // A CLIP of 0.65-0.70 means the character's appearance has drifted
-  // significantly from the reference — reject and try again.
-  const clipRejectsRiri = clipAvailable && clipResult!.similarity < 0.70;
+  // Raised from 0.70 → 0.73: with anchor compositing at 0.62 strength,
+  // the reference character is strongly preserved. Correct images should
+  // score CLIP 0.75+. Production showed images at 0.70-0.73 that looked
+  // like dinosaurs/dragons/hamsters — clearly not the right character.
+  const clipRejectsRiri = clipAvailable && clipResult!.similarity < 0.73;
   // Even when BLIP confirms "rhino", require minimum CLIP similarity.
-  // Raised from 0.65 → 0.68: a BLIP-confirmed rhino with CLIP 0.55-0.68
-  // looks visually very different from the reference (different art style,
-  // colors, proportions). With 4 candidates per round, we can afford to
-  // reject these and find a better match.
-  const clipRejectsEvenWithBlip = clipAvailable && clipResult!.similarity < 0.68;
+  // Raised from 0.68 → 0.72: with stronger anchor preservation (0.62),
+  // even BLIP-confirmed rhinos should have high CLIP similarity to the
+  // reference. A rhino with CLIP < 0.72 has wrong colors/proportions/style.
+  const clipRejectsEvenWithBlip = clipAvailable && clipResult!.similarity < 0.72;
 
   // Rhino confirmation: BLIP says "rhino", DINO detects it, OR CLIP strongly
   // matches the anchor image. CLIP >= 0.78 means the candidate looks very similar
@@ -419,6 +418,20 @@ export function acceptCandidate(
     return { accepted: false, rejectReason: `RULE 1d: CROPPED/CLOSE-UP detected ("${cropMatch}")` };
   }
 
+  // ── RULE 1e: ABSOLUTE CLIP FLOOR ──
+  // With anchor compositing at 0.62 strength, the reference character is
+  // strongly preserved in the image. Any correct rendering should achieve
+  // CLIP >= 0.72 against the anchor. Images below this threshold have
+  // fundamentally different characters (dragons, hamsters, bulls, etc.)
+  // regardless of what BLIP or DINO say. This is the single most important
+  // gate for page-to-page consistency.
+  if (clipAvailable && clipResult!.similarity < 0.72) {
+    return {
+      accepted: false,
+      rejectReason: `RULE 1e: CLIP ABSOLUTE FLOOR (similarity=${clipResult!.similarity.toFixed(3)} < 0.72, character too different from reference)`,
+    };
+  }
+
   // ── RULE 2: Wrong animal gate — WITH DINO+CLIP OVERRIDE ──
   // If BLIP identifies a wrong animal in the caption, normally reject.
   //
@@ -426,8 +439,8 @@ export function acceptCandidate(
   // allow the image despite BLIP's wrong-animal caption. Production data
   // shows BLIP misidentifies cartoon rhinoceros as rabbit/pig/dinosaur/
   // elephant/bird/dog ~60-80% of the time due to stylization. Meanwhile:
-  //   - DINO at confidence >= 0.70 with bbox >= 8% = shape-confirmed rhino
-  //   - CLIP at similarity >= 0.68 = visually matches reference character
+  //   - DINO at confidence >= 0.85 with bbox >= 8% = shape-confirmed rhino
+  //   - CLIP at similarity >= 0.76 = visually matches reference character
   // When both agree, BLIP is the one being wrong — the image IS the
   // correct character rendered in cartoon style that confuses BLIP.
   //
@@ -447,18 +460,19 @@ export function acceptCandidate(
   }
   const wrongAnimal = WRONG_ANIMALS.find((a) => c.includes(a) && !allowedSet.has(a));
   if (wrongAnimal) {
-    // Check for DINO+CLIP override: both must strongly confirm.
-    // Thresholds raised from DINO>=0.70/CLIP>=0.68 to DINO>=0.78/CLIP>=0.72.
-    // The old thresholds were accepting images where BLIP said "hippo", "cat",
-    // "zebra", "dinosaur" etc. — meaning the actual visual rendering didn't
-    // look like a rhinoceros to the captioning model. With higher thresholds,
-    // only images that genuinely resemble the reference character pass through.
+    // Check for DINO+CLIP override: both must VERY strongly confirm.
+    // Thresholds raised to DINO>=0.85/CLIP>=0.76. Previous thresholds
+    // (DINO>=0.78/CLIP>=0.72) still accepted images that BLIP called
+    // "dinosaur" (DINO 0.86, CLIP 0.751) — clearly wrong characters.
+    // With anchor compositing at 0.62, correct images should have CLIP 0.78+.
+    // If BLIP says "dinosaur" and the image only has CLIP 0.75, it probably
+    // IS a dinosaur that vaguely resembles the anchor's silhouette.
     const dinoStrongConfirm = !!(
       detectionResult?.detected &&
-      detectionResult.confidence >= 0.78 &&
+      detectionResult.confidence >= 0.85 &&
       detectionResult.bestBboxArea >= MIN_BBOX_AREA
     );
-    const clipConfirmsIdentity = !!(clipResult && clipResult.similarity >= 0.72);
+    const clipConfirmsIdentity = !!(clipResult && clipResult.similarity >= 0.76);
 
     if (dinoStrongConfirm && clipConfirmsIdentity) {
       // Both DINO (shape) and CLIP (visual similarity) confirm the character.
@@ -475,7 +489,7 @@ export function acceptCandidate(
         rejectReason: `RULE 2: WRONG ANIMAL "${wrongAnimal}" detected in caption` +
           (detectionResult?.detected
             ? ` (DINO conf=${detectionResult.confidence.toFixed(2)} bbox=${(detectionResult.bestBboxArea * 100).toFixed(1)}%` +
-              `, CLIP=${clipResult ? clipResult.similarity.toFixed(3) : "off"} — override requires DINO>=0.78+bbox>=8% AND CLIP>=0.72)`
+              `, CLIP=${clipResult ? clipResult.similarity.toFixed(3) : "off"} — override requires DINO>=0.85+bbox>=8% AND CLIP>=0.76)`
             : ""),
       };
     }
@@ -503,7 +517,7 @@ export function acceptCandidate(
     // If BLIP doesn't say rhino, CLIP similarity < 0.68 means it's a different character.
     return {
       accepted: false,
-      rejectReason: `RULE 3b: CLIP IDENTITY MISMATCH (similarity=${clipResult!.similarity.toFixed(3)} < 0.70, doesn't resemble reference)`,
+      rejectReason: `RULE 3b: CLIP IDENTITY MISMATCH (similarity=${clipResult!.similarity.toFixed(3)} < 0.73, doesn't resemble reference)`,
     };
   }
 
@@ -514,7 +528,7 @@ export function acceptCandidate(
   if (clipRejectsEvenWithBlip && blipHasRhino) {
     return {
       accepted: false,
-      rejectReason: `RULE 3c: CLIP CONSISTENCY MISMATCH (similarity=${clipResult!.similarity.toFixed(3)} < 0.68, BLIP says rhino but looks different from reference)`,
+      rejectReason: `RULE 3c: CLIP CONSISTENCY MISMATCH (similarity=${clipResult!.similarity.toFixed(3)} < 0.72, BLIP says rhino but looks different from reference)`,
     };
   }
 

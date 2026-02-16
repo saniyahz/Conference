@@ -1014,9 +1014,9 @@ async function fetchImageBuffer(url: string): Promise<Buffer | null> {
  *   - 0.65: TOO LOW — no character at all (just flowers/butterflies)
  */
 const INPAINT_STRENGTH = 0.88;
-const INPAINT_STRENGTH_WITH_ANCHOR = 0.72;  // Lowered from 0.76 → 0.72: preserves ~28% of anchor vs ~24% before. With stricter CLIP thresholds, we need SDXL to preserve MORE of the anchor's shape/color/horn. 0.76 gave SDXL too much freedom, producing characters that look like different animals.
+const INPAINT_STRENGTH_WITH_ANCHOR = 0.62;  // Lowered from 0.72 → 0.62: with anchor compositing, the rhino is already painted into the plate. A strength of 0.62 means SDXL only modifies 62% of pixel values — the pre-composited rhino shape/color STRONGLY persists. Previous 0.72 was obliterating the anchor, making SDXL regenerate the character from scratch. NOTE: The old comment about 0.65 being "too low" was WITHOUT anchor compositing. With anchor, 0.62 is optimal.
 const ROUND3_STRENGTH = 0.90;
-const ROUND3_STRENGTH_WITH_ANCHOR = 0.76;  // Lowered from 0.80 → 0.76: Round 3 uses anchor compositing but more aggressive than round 1/2
+const ROUND3_STRENGTH_WITH_ANCHOR = 0.70;  // Lowered from 0.76 → 0.70: Round 3 still uses anchor but with slightly more freedom for difficult compositions
 
 async function runCandidateRound(
   plateUrl: string,
