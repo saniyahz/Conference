@@ -258,8 +258,14 @@ export function deriveSettingKeywordsFromText(settingText: string): string[] {
   return bestGroup;
 }
 
-/** Minimum bbox area (fraction of frame) to count as foreground character */
-const MIN_BBOX_AREA = 0.08;
+/** Minimum bbox area (fraction of frame) to count as foreground character.
+ * Lowered from 0.08 → 0.05: With anchor compositing at 0.62 strength,
+ * expansive scenes (moon surfaces, oceans, space) frequently render the
+ * character at 5-8% bbox. The character is still clearly visible and
+ * identifiable at this size. The previous 8% threshold caused many
+ * otherwise-good images to be rejected as "TINY CHARACTER".
+ */
+const MIN_BBOX_AREA = 0.05;
 
 function norm(s: string): string {
   return s.toLowerCase().replace(/[^\w\s]/g, " ").replace(/\s+/g, " ").trim();
@@ -366,19 +372,20 @@ export function acceptCandidate(
   const blipHasRhino = /\brhinos?\b|\brhinoceros(es)?\b/.test(c);
   const blipHasHippo = /\bhippos?\b|\bhippopotamus(es)?\b/.test(c);
   const blipHasElephant = /\belephants?\b/.test(c);
-  const dinoHasRhino = !!(detectionResult?.detected && detectionResult.confidence >= 0.45);
-  const clipConfirmsRiri = !!(clipResult && clipResult.similarity >= 0.80);
+  const dinoHasRhino = !!(detectionResult?.detected && detectionResult.confidence >= 0.40);
+  const clipConfirmsRiri = !!(clipResult && clipResult.similarity >= 0.75);
   const clipAvailable = !!(clipResult && clipResult.similarity > 0);
-  // Raised from 0.70 → 0.73: with anchor compositing at 0.62 strength,
-  // the reference character is strongly preserved. Correct images should
-  // score CLIP 0.75+. Production showed images at 0.70-0.73 that looked
-  // like dinosaurs/dragons/hamsters — clearly not the right character.
-  const clipRejectsRiri = clipAvailable && clipResult!.similarity < 0.73;
+  // With anchor compositing at 0.62 strength, SDXL rewrites 62% of pixels.
+  // Scene elements (rockets, waves, space backgrounds) significantly dilute
+  // CLIP similarity. Production shows correct inpainted rhinos at 0.65-0.76.
+  // Lowered from 0.73 → 0.66 to accept good inpainted characters.
+  const clipRejectsRiri = clipAvailable && clipResult!.similarity < 0.66;
   // Even when BLIP confirms "rhino", require minimum CLIP similarity.
-  // Raised from 0.68 → 0.72: with stronger anchor preservation (0.62),
-  // even BLIP-confirmed rhinos should have high CLIP similarity to the
-  // reference. A rhino with CLIP < 0.72 has wrong colors/proportions/style.
-  const clipRejectsEvenWithBlip = clipAvailable && clipResult!.similarity < 0.72;
+  // Lowered from 0.72 → 0.62 to allow BLIP-confirmed rhinos that look
+  // somewhat different due to scene interference. If BLIP says "rhino",
+  // the species is correct — the 0.62 floor just catches completely
+  // wrong-looking characters (e.g., realistic photo of a rhino).
+  const clipRejectsEvenWithBlip = clipAvailable && clipResult!.similarity < 0.62;
 
   // Rhino confirmation: BLIP says "rhino", DINO detects it, OR CLIP strongly
   // matches the anchor image. CLIP >= 0.78 means the candidate looks very similar
@@ -419,16 +426,28 @@ export function acceptCandidate(
   }
 
   // ── RULE 1e: ABSOLUTE CLIP FLOOR ──
-  // With anchor compositing at 0.62 strength, the reference character is
-  // strongly preserved in the image. Any correct rendering should achieve
-  // CLIP >= 0.72 against the anchor. Images below this threshold have
-  // fundamentally different characters (dragons, hamsters, bulls, etc.)
-  // regardless of what BLIP or DINO say. This is the single most important
-  // gate for page-to-page consistency.
-  if (clipAvailable && clipResult!.similarity < 0.72) {
+  // With anchor compositing at 0.62 strength, SDXL rewrites 62% of pixels
+  // which significantly alters the character from the reference. Production
+  // data shows correct inpainted rhinos consistently score CLIP 0.65-0.76,
+  // while txt2img fallbacks (no scene interference) score 0.78+.
+  //
+  // The floor must be LOW ENOUGH to accept good inpainted images (0.65+)
+  // but HIGH ENOUGH to reject completely wrong characters (< 0.62).
+  //
+  // DINO+BLIP provide secondary confirmation — if DINO detects rhinoceros
+  // with good confidence, we can trust lower CLIP scores because scene
+  // elements (rockets, ocean waves, space backgrounds) dilute CLIP similarity.
+  //
+  // Tiered floor:
+  //   - DINO confirms rhino (conf >= 0.65): floor = 0.62 (scene dilution expected)
+  //   - BLIP confirms rhino: floor = 0.62 (species confirmed, style may vary)
+  //   - No confirmation: floor = 0.68 (need higher visual similarity)
+  const dinoConfirmsForFloor = !!(detectionResult?.detected && detectionResult.confidence >= 0.65);
+  const clipFloor = (dinoConfirmsForFloor || blipHasRhino) ? 0.62 : 0.68;
+  if (clipAvailable && clipResult!.similarity < clipFloor) {
     return {
       accepted: false,
-      rejectReason: `RULE 1e: CLIP ABSOLUTE FLOOR (similarity=${clipResult!.similarity.toFixed(3)} < 0.72, character too different from reference)`,
+      rejectReason: `RULE 1e: CLIP ABSOLUTE FLOOR (similarity=${clipResult!.similarity.toFixed(3)} < ${clipFloor}, character too different from reference)`,
     };
   }
 
@@ -460,19 +479,25 @@ export function acceptCandidate(
   }
   const wrongAnimal = WRONG_ANIMALS.find((a) => c.includes(a) && !allowedSet.has(a));
   if (wrongAnimal) {
-    // Check for DINO+CLIP override: both must VERY strongly confirm.
-    // Thresholds raised to DINO>=0.85/CLIP>=0.76. Previous thresholds
-    // (DINO>=0.78/CLIP>=0.72) still accepted images that BLIP called
-    // "dinosaur" (DINO 0.86, CLIP 0.751) — clearly wrong characters.
-    // With anchor compositing at 0.62, correct images should have CLIP 0.78+.
-    // If BLIP says "dinosaur" and the image only has CLIP 0.75, it probably
-    // IS a dinosaur that vaguely resembles the anchor's silhouette.
+    // Check for DINO+CLIP override: both must confirm the character.
+    // Production data shows BLIP misidentifies cartoon rhinoceros as
+    // elephant/dinosaur/pig/hippo in 60-80% of inpainted images.
+    // Meanwhile DINO correctly detects rhinoceros shape and CLIP confirms
+    // visual similarity to the reference.
+    //
+    // With anchor compositing at strength 0.62, inpainted images typically
+    // score CLIP 0.65-0.76 (scene elements dilute similarity). Requiring
+    // CLIP >= 0.76 rejected nearly all correct inpainted images.
+    //
+    // Lowered to DINO >= 0.75 (shape confirmed) + CLIP >= 0.70 (reasonable
+    // visual match considering scene dilution). Both together = high confidence
+    // that the character is correct despite BLIP's wrong species label.
     const dinoStrongConfirm = !!(
       detectionResult?.detected &&
-      detectionResult.confidence >= 0.85 &&
+      detectionResult.confidence >= 0.75 &&
       detectionResult.bestBboxArea >= MIN_BBOX_AREA
     );
-    const clipConfirmsIdentity = !!(clipResult && clipResult.similarity >= 0.76);
+    const clipConfirmsIdentity = !!(clipResult && clipResult.similarity >= 0.70);
 
     if (dinoStrongConfirm && clipConfirmsIdentity) {
       // Both DINO (shape) and CLIP (visual similarity) confirm the character.
@@ -489,7 +514,7 @@ export function acceptCandidate(
         rejectReason: `RULE 2: WRONG ANIMAL "${wrongAnimal}" detected in caption` +
           (detectionResult?.detected
             ? ` (DINO conf=${detectionResult.confidence.toFixed(2)} bbox=${(detectionResult.bestBboxArea * 100).toFixed(1)}%` +
-              `, CLIP=${clipResult ? clipResult.similarity.toFixed(3) : "off"} — override requires DINO>=0.85+bbox>=8% AND CLIP>=0.76)`
+              `, CLIP=${clipResult ? clipResult.similarity.toFixed(3) : "off"} — override requires DINO>=0.75+bbox>=8% AND CLIP>=0.70)`
             : ""),
       };
     }
@@ -512,23 +537,23 @@ export function acceptCandidate(
   // When CLIP is available, reject candidates with low similarity to the
   // anchor image. This catches cases where the image technically has "a rhinoceros"
   // (per BLIP or DINO) but it looks visually different from the reference Riri.
-  // Threshold raised to 0.68 — character must look reasonably like the anchor.
   if (clipRejectsRiri && !blipHasRhino) {
-    // If BLIP doesn't say rhino, CLIP similarity < 0.68 means it's a different character.
+    // If BLIP doesn't say rhino, CLIP similarity < 0.66 means it's a different character.
     return {
       accepted: false,
-      rejectReason: `RULE 3b: CLIP IDENTITY MISMATCH (similarity=${clipResult!.similarity.toFixed(3)} < 0.73, doesn't resemble reference)`,
+      rejectReason: `RULE 3b: CLIP IDENTITY MISMATCH (similarity=${clipResult!.similarity.toFixed(3)} < 0.66, doesn't resemble reference)`,
     };
   }
 
   // ── RULE 3c: CLIP consistency gate — even BLIP-confirmed rhinos must look like Riri ──
   // A cartoon rhino with wrong colors, proportions, or art style breaks page-to-page
   // consistency even if BLIP correctly identifies it as "rhinoceros".
-  // Raised from 0.50 → 0.65: rejects rhinos that look too different from the reference.
+  // Floor at 0.62: very permissive because BLIP already confirmed the species.
+  // Only rejects completely wrong-looking images (realistic photos, etc.).
   if (clipRejectsEvenWithBlip && blipHasRhino) {
     return {
       accepted: false,
-      rejectReason: `RULE 3c: CLIP CONSISTENCY MISMATCH (similarity=${clipResult!.similarity.toFixed(3)} < 0.72, BLIP says rhino but looks different from reference)`,
+      rejectReason: `RULE 3c: CLIP CONSISTENCY MISMATCH (similarity=${clipResult!.similarity.toFixed(3)} < 0.62, BLIP says rhino but looks different from reference)`,
     };
   }
 

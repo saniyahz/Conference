@@ -12,16 +12,20 @@ import Replicate from "replicate";
  *   misidentifies species ("elephant", "cartoon animal"). CLIP embeddings
  *   compare visual similarity directly, bypassing language entirely.
  *
- * Score contribution (moderate weights — prefer consistency without dominating):
- *   similarity >= 0.82 → +7  (very close to anchor — strong identity lock)
- *   similarity >= 0.78 → +5  (good match)
- *   similarity >= 0.72 → +3  (acceptable match)
- *   similarity >= 0.65 → +1  (borderline — just above reject threshold)
- *   similarity  0.58-0.65 → -1  (weak match — visual drift)
- *   similarity  < 0.58 → -4  (doesn't look like Riri at all)
+ * Score contribution tiers adjusted for anchor-composited inpainting.
+ * With strength 0.62, SDXL rewrites 62% of pixels — scene elements
+ * (rockets, waves, space) dilute similarity. Correct inpainted rhinos
+ * typically score 0.65-0.76. Tiers shifted down accordingly:
+ *
+ *   similarity >= 0.80 → +7  (very close to anchor — strong identity lock)
+ *   similarity >= 0.74 → +5  (good match for inpainted image)
+ *   similarity >= 0.68 → +3  (acceptable match with scene dilution)
+ *   similarity >= 0.62 → +1  (borderline but plausible)
+ *   similarity  0.55-0.62 → -1  (weak match — significant drift)
+ *   similarity  < 0.55 → -4  (doesn't look like Riri at all)
  *
  * Rescue: if BLIP rejected the candidate (score < 0) but CLIP similarity
- * to the anchor is >= 0.80, the candidate can be "rescued" — BLIP was
+ * to the anchor is >= 0.75, the candidate can be "rescued" — BLIP was
  * probably wrong about the species on a cartoon image.
  */
 
@@ -158,18 +162,18 @@ export function cosineSimilarity(a: number[], b: number[]): number {
  * handle soft ranking within accepted candidates.
  */
 function clipSimilarityToScore(similarity: number): { scoreContribution: number; reason: string } {
-  if (similarity >= 0.82) {
-    return { scoreContribution: 7, reason: `CLIP: +7 strong identity lock (${similarity.toFixed(3)} >= 0.82)` };
-  } else if (similarity >= 0.78) {
-    return { scoreContribution: 5, reason: `CLIP: +5 good similarity (${similarity.toFixed(3)} >= 0.78)` };
-  } else if (similarity >= 0.72) {
-    return { scoreContribution: 3, reason: `CLIP: +3 acceptable similarity (${similarity.toFixed(3)} >= 0.72)` };
-  } else if (similarity >= 0.65) {
-    return { scoreContribution: 1, reason: `CLIP: +1 borderline similarity (${similarity.toFixed(3)} >= 0.65)` };
-  } else if (similarity >= 0.58) {
-    return { scoreContribution: -1, reason: `CLIP: -1 weak similarity (${similarity.toFixed(3)} < 0.65)` };
+  if (similarity >= 0.80) {
+    return { scoreContribution: 7, reason: `CLIP: +7 strong identity lock (${similarity.toFixed(3)} >= 0.80)` };
+  } else if (similarity >= 0.74) {
+    return { scoreContribution: 5, reason: `CLIP: +5 good similarity (${similarity.toFixed(3)} >= 0.74)` };
+  } else if (similarity >= 0.68) {
+    return { scoreContribution: 3, reason: `CLIP: +3 acceptable similarity (${similarity.toFixed(3)} >= 0.68)` };
+  } else if (similarity >= 0.62) {
+    return { scoreContribution: 1, reason: `CLIP: +1 borderline similarity (${similarity.toFixed(3)} >= 0.62)` };
+  } else if (similarity >= 0.55) {
+    return { scoreContribution: -1, reason: `CLIP: -1 weak similarity (${similarity.toFixed(3)} < 0.62)` };
   } else {
-    return { scoreContribution: -4, reason: `CLIP: -4 LOW similarity (${similarity.toFixed(3)} < 0.58)` };
+    return { scoreContribution: -4, reason: `CLIP: -4 LOW similarity (${similarity.toFixed(3)} < 0.55)` };
   }
 }
 
