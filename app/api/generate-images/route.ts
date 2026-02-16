@@ -511,9 +511,9 @@ function deriveStyleHintsFromSetting(settingText: string): string {
     [["desert", "sand", "dune"], "golden sand, warm tones, wide sky, gentle shadows"],
     [["cave", "cavern", "underground", "grotto"], "rocky walls, soft glow, stalactites, mysterious atmosphere"],
     [["savannah", "grassland", "plain", "prairie"], "golden grass, warm light, wide horizon, scattered trees"],
-    // Space/celestial — MUST be bright and colorful for kids' book (no gray/dark)
-    [["moon", "crater", "lunar"], "bright purple and blue moon surface, colorful craters, glowing stars, bright Earth in sky, vivid colors, well-lit"],
-    [["space", "star", "planet", "galaxy", "cosmos", "orbit"], "bright colorful ground, colorful starry sky, vivid neon colors, colorful glowing planets, well-lit"],
+    // Space/celestial — recognizable moon/space, bright enough for kids' book
+    [["moon", "crater", "lunar"], "gray rocky moon surface, round craters, bright Earth visible in starry sky, starlight, well-lit foreground, soft blue glow"],
+    [["space", "star", "planet", "galaxy", "cosmos", "orbit"], "colorful starry sky, bright planets, colorful nebula, well-lit foreground, vivid colors"],
     // Sky/weather
     [["sky", "cloud", "flying", "soar"], "blue sky, white fluffy clouds, bright sunlight"],
     [["night", "starlit", "starry", "dark"], "deep blue night sky, bright glowing stars, moonlight, soft warm glow, well-lit foreground"],
@@ -561,13 +561,16 @@ function rewriteRocketPlatePrompt(
 ): string {
   // Filter out "rocket ship"/"rocket" from scene objects — it's already in the rewritten prompt
   const otherObjects = sceneObjects.filter(o => !/rocket|spaceship/i.test(o));
+  // SHORTENED: Keep under ~50 tokens so setting stays in SDXL's attention window.
+  // Rocket is placed SMALL in background so the character mask area has clear ground.
   const parts = [
-    "wide scene, bright green grass and ground in lower half, large colorful rocket ship clearly visible in upper right sky, rocket trail with flames",
+    "wide scene, bright green meadow in lower half, small colorful rocket ship in upper sky with flame trail",
   ];
   if (otherObjects.length > 0) parts.push(otherObjects.join(", "));
-  parts.push(styleHints);
-  parts.push("2D flat color children's picture book illustration, bold outlines, simple shapes, high clarity, well-defined shapes, vivid saturated colors, well-lit, bright");
-  parts.push("no characters, no animals, no people, no text, no black and white, no grayscale, no monochrome");
+  const shortHints = styleHints.split(", ").slice(0, 4).join(", ");
+  parts.push(shortHints);
+  parts.push("children's picture book illustration, bold outlines, flat vibrant colors, well-lit");
+  parts.push("no characters, no animals, no people, no text");
   return parts.join(", ");
 }
 
@@ -588,16 +591,27 @@ function buildPlatePrompt(
   mainSpecies: string,
   hasSecondaryActors: boolean
 ): string {
+  // CRITICAL: Setting MUST be in tokens 1-20 (highest SDXL attention).
+  // Previously, appending ~40 tokens of style AFTER setting pushed the scene
+  // description past SDXL's effective attention window, causing wrong backgrounds.
+  //
+  // New structure:
+  //   Tokens 1-20:  SETTING (highest attention) — "Moon surface with craters and starry sky"
+  //   Tokens 20-35: SCENE OBJECTS — "rocket ship, dolphins"
+  //   Tokens 35-50: STYLE HINTS — scene-specific atmosphere
+  //   Tokens 50-65: ART STYLE — shortened to essentials only
+  //   Tokens 65-77: EXCLUSIONS
   const parts = [setting];
   if (sceneObjects.length > 0) parts.push(sceneObjects.join(", "));
-  parts.push(styleHints);
-  parts.push("2D flat color children's picture book illustration, bold outlines, simple shapes, high clarity, well-defined shapes, vivid saturated colors, well-lit, bright");
+  // Shortened style hints: only first 6 comma-separated terms to save tokens
+  const shortHints = styleHints.split(", ").slice(0, 6).join(", ");
+  parts.push(shortHints);
+  // Shortened art style: removed redundant terms to stay under 77 tokens
+  parts.push("children's picture book illustration, bold outlines, flat vibrant colors, well-lit");
   if (hasSecondaryActors) {
-    // Multi-char: allow secondary actors (dolphins, etc.), block only main character + humans
-    parts.push(`no ${mainSpecies}, no people, no text, no black and white, no grayscale, no monochrome`);
+    parts.push(`no ${mainSpecies}, no people, no text`);
   } else {
-    // Solo: no animals at all in the plate
-    parts.push("no characters, no animals, no people, no text, no black and white, no grayscale, no monochrome");
+    parts.push("no characters, no animals, no people, no text");
   }
   return parts.join(", ");
 }
@@ -762,13 +776,13 @@ async function generateOnePage(
   const round1Mask = hasSecondaryActors ? escalatedMask : initialMask;
   const round2Mask = hasSecondaryActors ? extraLargeMask : escalatedMask;
 
-  // Large secondary animals (lions, bears) almost always dominate the plate
-  // and prevent the rhino from being recognized. Skip to solo plate faster.
+  // Large secondary animals (lions, bears) can dominate the plate
+  // and compete with the rhino for visual space.
+  // Give them 2 multi-char rounds (was 1, which meant they NEVER appeared).
+  // The solo fallback still happens if both rounds fail.
   const LARGE_ANIMALS = new Set(["lions", "lion", "bear", "bears", "dragon", "dragons"]);
   const hasLargeSecondary = hasSecondaryActors && animalObjects.some(a => LARGE_ANIMALS.has(a.toLowerCase()));
-  // For large secondary animals: only try 1 multi-char round, then go solo.
-  // For smaller animals (dolphins, butterflies): try all 3 rounds first.
-  const multiCharMaxRounds = hasLargeSecondary ? 1 : 3;
+  const multiCharMaxRounds = hasLargeSecondary ? 2 : 3;
   if (hasLargeSecondary) {
     console.log(`[Page ${pageIndex + 1}] LARGE secondary animals detected — will fast-track to solo plate after 1 round`);
   }

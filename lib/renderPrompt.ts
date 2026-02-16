@@ -96,6 +96,12 @@ function extractSetting(text: string): string {
   if (text.includes('forest') || text.includes('woods')) {
     return 'magical forest with tall trees';
   }
+  if (text.includes('meadow') || text.includes('field')) {
+    if (text.includes('rocket') || text.includes('spaceship')) {
+      return 'bright green meadow with flowers, rocket ship visible in the sky';
+    }
+    return 'bright green meadow with colorful flowers';
+  }
   if (text.includes('beach') || text.includes('shore')) {
     return 'sunny beach with sand and waves';
   }
@@ -107,7 +113,7 @@ function extractSetting(text: string): string {
   if (text.includes('crater') || text.includes('moon surface') || text.includes('lunar surface')) {
     return 'grey moon surface with craters, Earth in starry sky';
   }
-  if (text.includes('moon rabbit') || text.includes('lunar guardian')) {
+  if (text.includes('moon rabbit') || text.includes('moon bunn') || text.includes('lunar guardian')) {
     return 'moon surface with craters, magical atmosphere';
   }
   if (text.includes('lunar') || (text.includes('moon') && !text.includes('moonlight'))) {
@@ -197,7 +203,7 @@ function extractMustInclude(text: string, charName: string, species: string): st
   }
 
   // CHARACTERS/CREATURES
-  if (text.includes('moon rabbit')) {
+  if (text.includes('moon rabbit') || text.includes('moon bunn') || text.includes('moon rabbits') || text.includes('moon bunnies')) {
     // Count if mentioned
     if (text.includes('group') || text.includes('friends')) {
       items.push('group of moon rabbits');
@@ -248,13 +254,16 @@ function extractSupportingCharacters(text: string, mainChar: string): string[] {
   const main = mainChar.toLowerCase();
 
   const patterns = [
-    { pattern: /moon\s*rabbits?/i, char: 'moon rabbits' },
+    { pattern: /moon\s*(?:rabbits?|bunn(?:y|ies))/i, char: 'moon rabbits' },
     { pattern: /lunar\s*guardians?/i, char: 'lunar guardians' },
     { pattern: /\bdolphins?\b/i, char: 'dolphins' },
     { pattern: /\bwhales?\b/i, char: 'whale' },
+    { pattern: /\blions?\b/i, char: 'lions' },
     { pattern: /\bbutterfl(?:y|ies)\b/i, char: 'butterflies' },
     { pattern: /\bbirds?\b/i, char: 'birds' },
     { pattern: /\bfish\b/i, char: 'fish' },
+    { pattern: /\bbears?\b/i, char: 'bears' },
+    { pattern: /\brabbits?\b|\bbunnies\b|\bbunny\b/i, char: 'rabbits' },
     { pattern: /\bfriends?\b/i, char: 'friends' },
   ];
 

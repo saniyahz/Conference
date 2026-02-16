@@ -67,7 +67,7 @@ function extractSetting(text: string): string {
     // Broad moon matching — "reached the moon", "flew to the moon", "arrived at the moon",
     // "on the moon", "landed on the moon", "moon surface", "moon rabbits"
     { pattern: /(?:reached|arrived\s+at|got\s+to|flew\s+to|traveled\s+to|journeyed\s+to|on|landed\s+on)\s+(?:the\s+)?moon/i, setting: 'Moon surface with craters and starry sky' },
-    { pattern: /moon\s+(?:surface|rabbit|bunny|rock|dust|crater|landscape)/i, setting: 'Moon surface with craters and starry sky' },
+    { pattern: /moon\s+(?:surface|rabbit|rabbits|bunny|bunnies|rock|dust|crater|landscape)/i, setting: 'Moon surface with craters and starry sky' },
     { pattern: /(?:on|landed\s+on)\s+(?:the\s+)?(?:mars|planet)/i, setting: 'Alien planet surface' },
 
     // City/Town
@@ -79,11 +79,12 @@ function extractSetting(text: string): string {
     { pattern: /(?:in|inside)\s+(?:the\s+)?(?:castle|palace|throne)/i, setting: 'Castle interior' },
     { pattern: /(?:in|inside)\s+(?:the\s+)?(?:school|classroom)/i, setting: 'School classroom' },
     { pattern: /(?:in|inside|back\s+to)\s+(?:the\s+)?(?:rocket|spaceship|ship)/i, setting: 'Inside a rocket ship cockpit' },
-    { pattern: /climbed\s+inside/i, setting: 'Inside a rocket ship cockpit' },
+    { pattern: /climbed\s+(?:inside|into)/i, setting: 'Inside a rocket ship cockpit' },
 
-    // Nature
+    // Nature — broader matching for meadow/field to catch "exploring his favorite meadow"
     { pattern: /(?:in|through|into)\s+(?:the\s+)?(?:forest|woods)/i, setting: 'Forest with tall trees' },
-    { pattern: /(?:in|at|by)\s+(?:the\s+)?(?:meadow|field|garden)/i, setting: 'Beautiful meadow with flowers' },
+    { pattern: /(?:in|at|by|his|her|the|a)\s+(?:\w+\s+)?(?:meadow|field|garden)/i, setting: 'Beautiful meadow with flowers' },
+    { pattern: /\bmeadow\b/i, setting: 'Beautiful meadow with flowers' },
     { pattern: /(?:in|at)\s+(?:the\s+)?(?:desert|dunes)/i, setting: 'Desert with sand dunes' },
     { pattern: /(?:on|at)\s+(?:the\s+)?(?:mountain|hill|cliff)/i, setting: 'Mountain landscape' },
     { pattern: /(?:at|on)\s+(?:the\s+)?(?:beach|shore)/i, setting: 'Beach with sand and waves' },
@@ -132,7 +133,17 @@ function extractSetting(text: string): string {
     { keywords: ['sky', 'clouds', 'flying'], setting: 'Sky scene' },
   ];
 
+  // Ground location keywords — if any of these are present, "rocket/spaceship"
+  // keyword should NOT override the setting. The rocket becomes a scene OBJECT
+  // instead. Example: "spotted a rocket in the meadow" → meadow, not rocket scene.
+  const groundKeywords = ['meadow', 'field', 'garden', 'forest', 'woods', 'beach', 'shore', 'village', 'home', 'house'];
+  const hasGroundLocation = groundKeywords.some(kw => text.includes(kw));
+
   for (const { keywords, setting } of keywordPatterns) {
+    // Skip rocket/spaceship keyword match when a ground location is present
+    if (hasGroundLocation && keywords.some(kw => kw === 'rocket' || kw === 'spaceship')) {
+      continue;
+    }
     if (keywords.some(kw => text.includes(kw))) {
       return setting;
     }
@@ -199,11 +210,13 @@ function extractSupportingCharacters(text: string, mainCharName: string): string
   // Only look for specific animal/creature keyword patterns.
   // "friends" and "family" are NOT visual actors — they don't trigger Mode B.
   const characterPatterns = [
+    // Moon creatures (check BEFORE generic rabbit/bunny to get correct name)
+    { keywords: ['moon rabbit', 'moon bunny', 'moon bunnies', 'moon rabbits'], name: 'moon rabbits' },
     // Animals
     { keywords: ['dog', 'puppy'], name: 'dog' },
     { keywords: ['cat', 'kitten'], name: 'cat' },
     { keywords: ['bird', 'birds'], name: 'birds' },
-    { keywords: ['rabbit', 'bunny'], name: 'rabbit' },
+    { keywords: ['rabbit', 'bunny', 'rabbits', 'bunnies'], name: 'rabbit' },
     { keywords: ['bear'], name: 'bear' },
     { keywords: ['fox'], name: 'fox' },
     { keywords: ['owl'], name: 'owl' },

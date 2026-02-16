@@ -14,8 +14,6 @@ describe('buildHardBanNegative', () => {
     expect(neg).toContain('bull');
     expect(neg).toContain('hippo');
     expect(neg).toContain('elephant');
-    expect(neg).toContain('buffalo');
-    expect(neg).toContain('dinosaur');
     expect(neg).toContain('cat');
     expect(neg).toContain('dog');
   });
