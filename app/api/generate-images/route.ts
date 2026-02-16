@@ -792,7 +792,8 @@ async function generateOnePage(
   const round1 = await runCandidateRound(
     plateUrl, round1Mask, seed, CANDIDATES_PER_ROUND, pageIndex,
     scoreOpts, inpaintMustInclude, sceneSetting, identity, sceneCategory,
-    false, hasSecondaryActors, cardObjects, pageAction, anchorBuffer || null
+    false, hasSecondaryActors, cardObjects, pageAction, anchorBuffer || null,
+    animalObjects
   );
   overallBest = pickBest(round1, overallBest);
   if (overallBest && overallBest.score >= MIN_ROUND_ACCEPT) {
@@ -809,7 +810,8 @@ async function generateOnePage(
     const round2 = await runCandidateRound(
       plateUrl, round2Mask, seed + CANDIDATES_PER_ROUND * SEED_STRIDE, CANDIDATES_PER_ROUND, pageIndex,
       scoreOpts, inpaintMustInclude, sceneSetting, identity, sceneCategory,
-      false, hasSecondaryActors, cardObjects, pageAction, anchorBuffer || null
+      false, hasSecondaryActors, cardObjects, pageAction, anchorBuffer || null,
+      animalObjects
     );
     overallBest = pickBest(round2, overallBest);
     if (overallBest && overallBest.score >= MIN_ROUND_ACCEPT) {
@@ -826,7 +828,8 @@ async function generateOnePage(
     console.log(`[Page ${pageIndex + 1}] Round 3: EXTRA-LARGE mask + high strength...`);
     const round3 = await runCandidateRound(
       plateUrl, extraLargeMask, seed + CANDIDATES_PER_ROUND * SEED_STRIDE * 2, CANDIDATES_PER_ROUND, pageIndex,
-      scoreOpts, inpaintMustInclude, sceneSetting, identity, sceneCategory, true, hasSecondaryActors, cardObjects, pageAction, anchorBuffer || null
+      scoreOpts, inpaintMustInclude, sceneSetting, identity, sceneCategory, true, hasSecondaryActors, cardObjects, pageAction, anchorBuffer || null,
+      animalObjects
     );
     overallBest = pickBest(round3, overallBest);
     if (overallBest) {
@@ -850,7 +853,8 @@ async function generateOnePage(
         soloPlateUrl, extraLargeMask,
         seed + CANDIDATES_PER_ROUND * SEED_STRIDE * 3, CANDIDATES_PER_ROUND, pageIndex,
         scoreOpts, [...identity.mustInclude], sceneSetting, identity, sceneCategory,
-        true, false, nonAnimalObjects, pageAction, anchorBuffer || null  // solo: only non-animal objects
+        true, false, nonAnimalObjects, pageAction, anchorBuffer || null,
+        []  // solo: no secondary animals to protect
       );
       overallBest = pickBest(soloRound, overallBest);
       if (overallBest && overallBest.score >= MIN_ROUND_ACCEPT) {
@@ -1010,9 +1014,9 @@ async function fetchImageBuffer(url: string): Promise<Buffer | null> {
  *   - 0.65: TOO LOW — no character at all (just flowers/butterflies)
  */
 const INPAINT_STRENGTH = 0.88;
-const INPAINT_STRENGTH_WITH_ANCHOR = 0.76;  // Raised from 0.72 — with guidance 14, SDXL needs more freedom to render character large enough (bbox > 8%)
+const INPAINT_STRENGTH_WITH_ANCHOR = 0.72;  // Lowered from 0.76 → 0.72: preserves ~28% of anchor vs ~24% before. With stricter CLIP thresholds, we need SDXL to preserve MORE of the anchor's shape/color/horn. 0.76 gave SDXL too much freedom, producing characters that look like different animals.
 const ROUND3_STRENGTH = 0.90;
-const ROUND3_STRENGTH_WITH_ANCHOR = 0.80;  // Round 3 still uses anchor compositing (was skipped before) but more aggressive
+const ROUND3_STRENGTH_WITH_ANCHOR = 0.76;  // Lowered from 0.80 → 0.76: Round 3 uses anchor compositing but more aggressive than round 1/2
 
 async function runCandidateRound(
   plateUrl: string,
@@ -1029,7 +1033,8 @@ async function runCandidateRound(
   isMultiChar: boolean = false,
   sceneObjects: string[] = [],
   pageAction: string = "",
-  anchorBuffer: Buffer | null = null
+  anchorBuffer: Buffer | null = null,
+  allowedAnimals: string[] = []
 ): Promise<CandidateResult[]> {
   // ANCHOR COMPOSITING: If we have an anchor buffer, composite it onto the plate.
   // This gives SDXL a visual starting point for the character → better consistency.
@@ -1105,7 +1110,7 @@ async function runCandidateRound(
     const url = await generateInpaintCharacter(
       replicate, compositePrompt, effectivePlateUrl, maskDataUrl,
       seed, pageIndex, settingContext, mustInclude, undefined, strength,
-      identity.species
+      identity.species, allowedAnimals
     );
 
     if (!url) {

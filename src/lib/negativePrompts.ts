@@ -104,7 +104,7 @@ export function buildInpaintCharacterNegative(): string {
  *   Tokens 50-65: Quality terms
  *   Tokens 65-77: Text/watermark
  */
-export function buildHardBanNegative(species?: string): string {
+export function buildHardBanNegative(species?: string, allowedAnimals?: string[]): string {
   const terms: string[] = [];
 
   // SPECIES-SPECIFIC anti-drift — FIRST POSITION (highest SDXL attention).
@@ -120,7 +120,35 @@ export function buildHardBanNegative(species?: string): string {
     'bear': ['dog', 'wolf'],
   };
   const speciesKey = species?.toLowerCase() || '';
-  const driftTerms = antiDrift[speciesKey] || [];
+  let driftTerms = antiDrift[speciesKey] || [];
+
+  // CRITICAL: Remove drift terms that conflict with required secondary characters.
+  // E.g., if page needs "rabbit" and "dolphins" as secondary actors, don't block them.
+  // Without this, the hard ban actively destroys secondary characters that the plate rendered.
+  if (allowedAnimals && allowedAnimals.length > 0) {
+    const allowedSet = new Set<string>();
+    for (const a of allowedAnimals) {
+      const lower = a.toLowerCase();
+      allowedSet.add(lower);
+      // Add singular/plural variants
+      if (lower.endsWith('s')) allowedSet.add(lower.slice(0, -1));
+      else allowedSet.add(lower + 's');
+      // Common variant mappings
+      if (lower === 'dolphins' || lower === 'dolphin') { allowedSet.add('dolphin'); allowedSet.add('dolphins'); }
+      if (lower === 'rabbits' || lower === 'rabbit') { allowedSet.add('rabbit'); allowedSet.add('rabbits'); allowedSet.add('bunny'); allowedSet.add('bunnies'); }
+      if (lower === 'whales' || lower === 'whale') { allowedSet.add('whale'); allowedSet.add('whales'); }
+      if (lower === 'cats' || lower === 'cat') { allowedSet.add('cat'); allowedSet.add('cats'); }
+      if (lower === 'dogs' || lower === 'dog') { allowedSet.add('dog'); allowedSet.add('dogs'); }
+      if (lower === 'lions' || lower === 'lion') { allowedSet.add('lion'); allowedSet.add('lions'); }
+      if (lower === 'bears' || lower === 'bear') { allowedSet.add('bear'); allowedSet.add('bears'); }
+    }
+    const before = driftTerms.length;
+    driftTerms = driftTerms.filter(t => !allowedSet.has(t.toLowerCase()));
+    if (driftTerms.length < before) {
+      console.log(`[HardBan] Removed ${before - driftTerms.length} drift terms that conflict with secondary characters: [${allowedAnimals.join(", ")}]`);
+    }
+  }
+
   terms.push(...driftTerms);
   console.log(`[HardBan] Species "${species}" anti-drift (first tokens): [${driftTerms.join(", ")}]`);
 

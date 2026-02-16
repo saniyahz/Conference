@@ -249,7 +249,8 @@ export async function generateInpaintCharacter(
   mustInclude: string[] = [],
   lora?: LoraConfig,
   promptStrength: number = 0.85,
-  species?: string
+  species?: string,
+  allowedAnimals?: string[]
 ): Promise<string> {
   // Hard validation: mask MUST be a real data URL, otherwise we're
   // silently falling back to img2img and SDXL will ignore the character.
@@ -275,7 +276,7 @@ export async function generateInpaintCharacter(
   // SDXL ignores tokens past ~77, so critical terms (species anti-drift, crop blockers)
   // MUST be at the FRONT. Species-specific anti-drift (cow, bull, buffalo for rhino)
   // are placed at tokens 1-10 for maximum negative effect.
-  negativePrompt = buildHardBanNegative(species) + ", " + negativePrompt;
+  negativePrompt = buildHardBanNegative(species, allowedAnimals) + ", " + negativePrompt;
 
   // Log actual inpaint prompts — hard bans should be visible at the start
   console.log(`[Inpaint ${pageIndex}] POSITIVE: "${effectivePrompt.substring(0, 120)}..."`);
