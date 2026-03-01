@@ -20,6 +20,8 @@ function dino(confidence: number, bboxArea: number = 0.15): DetectionResult {
     confidence,
     bestBboxArea: bboxArea,
     scoreContribution: confidence >= 0.65 ? 2 : 0,
+    detections: [],
+    reason: `DINO: conf=${confidence}`,
   };
 }
 

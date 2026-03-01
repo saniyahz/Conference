@@ -10,7 +10,14 @@
 body {
   color: var(--foreground);
   background: var(--background);
-  font-family: Arial, Helvetica, sans-serif;
+  font-family: var(--font-outfit), 'Outfit', sans-serif;
+}
+
+/* Tactile feedback & smooth transitions for interactive elements */
+button, a, [role="button"] {
+  transition: transform 0.2s cubic-bezier(0.16, 1, 0.3, 1),
+              background-color 0.2s cubic-bezier(0.16, 1, 0.3, 1),
+              box-shadow 0.2s cubic-bezier(0.16, 1, 0.3, 1);
 }
 
 @layer utilities {
@@ -115,4 +122,121 @@ body {
 
 .animate-bounce-slow {
   animation: bounce-slow 2s ease-in-out infinite;
+}
+
+/* ───── StoryBook page-flip animation ───── */
+
+/* The wrapper that provides 3D perspective */
+.book-perspective {
+  perspective: 2200px;
+  perspective-origin: 50% 50%;
+}
+
+/* Base state for the flippable page container */
+.page-flip-container {
+  transform-style: preserve-3d;
+  transform-origin: left center;
+  transition: none; /* driven by classes below */
+}
+
+/* Flip forward (next page): gentle page turn from 0 -> -120 on Y axis
+   Uses a shallower angle (120° instead of 180°) for a more natural, less dramatic flip.
+   A real page doesn't rotate 180° — it lifts, curves, and settles. */
+@keyframes flipForward {
+  0% {
+    transform: rotateY(0deg) scale(1);
+    opacity: 1;
+  }
+  30% {
+    transform: rotateY(-50deg) scale(0.98);
+    opacity: 0.85;
+  }
+  60% {
+    transform: rotateY(-90deg) scale(0.96);
+    opacity: 0.5;
+  }
+  100% {
+    transform: rotateY(-120deg) scale(0.95);
+    opacity: 0;
+  }
+}
+
+/* Incoming page after a forward flip: page gently settles into view */
+@keyframes flipForwardIn {
+  0% {
+    transform: rotateY(120deg) scale(0.95);
+    opacity: 0;
+  }
+  40% {
+    transform: rotateY(60deg) scale(0.97);
+    opacity: 0.5;
+  }
+  70% {
+    transform: rotateY(20deg) scale(0.99);
+    opacity: 0.85;
+  }
+  100% {
+    transform: rotateY(0deg) scale(1);
+    opacity: 1;
+  }
+}
+
+/* Flip backward (previous page): gentle reverse page turn */
+@keyframes flipBackward {
+  0% {
+    transform: rotateY(0deg) scale(1);
+    opacity: 1;
+  }
+  30% {
+    transform: rotateY(50deg) scale(0.98);
+    opacity: 0.85;
+  }
+  60% {
+    transform: rotateY(90deg) scale(0.96);
+    opacity: 0.5;
+  }
+  100% {
+    transform: rotateY(120deg) scale(0.95);
+    opacity: 0;
+  }
+}
+
+/* Incoming page after a backward flip */
+@keyframes flipBackwardIn {
+  0% {
+    transform: rotateY(-120deg) scale(0.95);
+    opacity: 0;
+  }
+  40% {
+    transform: rotateY(-60deg) scale(0.97);
+    opacity: 0.5;
+  }
+  70% {
+    transform: rotateY(-20deg) scale(0.99);
+    opacity: 0.85;
+  }
+  100% {
+    transform: rotateY(0deg) scale(1);
+    opacity: 1;
+  }
+}
+
+.page-flip-forward {
+  animation: flipForward 0.8s cubic-bezier(0.4, 0.0, 0.2, 1) forwards;
+  backface-visibility: hidden;
+}
+
+.page-flip-forward-in {
+  animation: flipForwardIn 0.8s cubic-bezier(0.4, 0.0, 0.2, 1) forwards;
+  backface-visibility: hidden;
+}
+
+.page-flip-backward {
+  animation: flipBackward 0.8s cubic-bezier(0.4, 0.0, 0.2, 1) forwards;
+  backface-visibility: hidden;
+}
+
+.page-flip-backward-in {
+  animation: flipBackwardIn 0.8s cubic-bezier(0.4, 0.0, 0.2, 1) forwards;
+  backface-visibility: hidden;
 }

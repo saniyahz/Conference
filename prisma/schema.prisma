@@ -70,7 +70,9 @@ model Subscription {
   userId               String   @unique
   user                 User     @relation(fields: [userId], references: [id], onDelete: Cascade)
 
-  plan                 String   @default("free") // "free", "basic", "premium"
+  // "free", "plus", "unlimited", "library_starter", "library_plus", "library_max"
+  plan                 String   @default("free")
+  audience             String   @default("parent") // "parent" | "school"
   billingCycle         String?  // "monthly", "yearly"
   status               String   @default("active") // "active", "cancelled", "expired", "past_due"
 
@@ -82,8 +84,70 @@ model Subscription {
   currentPeriodEnd     DateTime?
   cancelAtPeriodEnd    Boolean  @default(false)
 
+  // School plan: link to the school org (null for parent plans)
+  schoolId             String?
+  school               School?  @relation(fields: [schoolId], references: [id])
+
   createdAt            DateTime @default(now())
   updatedAt            DateTime @updatedAt
+}
+
+// ── School organisation ───────────────────────────
+model School {
+  id                   String   @id @default(cuid())
+  name                 String
+  adminUserId          String   // the user who manages billing
+
+  // Current plan limits (denormalised for fast checks)
+  maxStudents          Int      @default(250)
+  sharedBookPool       Int      @default(500)
+  booksUsedThisMonth   Int      @default(0)
+
+  // Add-ons (stored as JSON string: [{id, quantity}])
+  activeAddOns         String   @default("[]")
+
+  // Multi-school bundle
+  parentBundleId       String?  // links to a SchoolBundle if part of a multi-school deal
+
+  subscriptions        Subscription[]
+  students             SchoolStudent[]
+
+  createdAt            DateTime @default(now())
+  updatedAt            DateTime @updatedAt
+
+  @@index([adminUserId])
+}
+
+model SchoolStudent {
+  id                   String   @id @default(cuid())
+  schoolId             String
+  school               School   @relation(fields: [schoolId], references: [id], onDelete: Cascade)
+
+  userId               String?  // linked user account (nullable for invite-pending)
+  studentName          String?
+  grade                String?  // e.g. "3rd", "K"
+  className            String?  // e.g. "Ms. Rivera's Class"
+
+  booksCreatedThisMonth Int     @default(0)
+
+  createdAt            DateTime @default(now())
+  updatedAt            DateTime @updatedAt
+
+  @@index([schoolId])
+  @@index([userId])
+}
+
+model SchoolBundle {
+  id                   String   @id @default(cuid())
+  name                 String?  // e.g. "Springfield District"
+  adminUserId          String
+  discountPercent      Int      @default(15) // 15% per additional school
+  schoolIds            String   // JSON array of school IDs in bundle
+
+  createdAt            DateTime @default(now())
+  updatedAt            DateTime @updatedAt
+
+  @@index([adminUserId])
 }
 
 model UsageTracking {
@@ -157,6 +221,11 @@ model PrintOrder {
 
   // Stripe payment
   stripePaymentIntentId String?
+
+  // Gelato print-on-demand integration
+  gelatoOrderId   String?   // Gelato's order ID (e.g., "ord_xxx")
+  gelatoStatus    String?   // Raw Gelato status string for debugging
+  pdfUrl          String?   // Public URL of the uploaded print-ready PDF
 
   createdAt       DateTime @default(now())
   updatedAt       DateTime @updatedAt

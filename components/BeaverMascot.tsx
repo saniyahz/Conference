@@ -4,7 +4,7 @@ interface BeaverMascotProps {
   greeting?: string
   isRecording?: boolean
   isProcessing?: boolean
-  size?: 'small' | 'medium' | 'large'
+  size?: 'tiny' | 'small' | 'medium' | 'large'
 }
 
 export default function BeaverMascot({
@@ -14,12 +14,14 @@ export default function BeaverMascot({
   size = 'medium'
 }: BeaverMascotProps) {
   const sizeClasses = {
+    tiny: 'w-10 h-10',
     small: 'w-24 h-24',
     medium: 'w-36 h-36',
     large: 'w-44 h-44'
   }
 
   const svgSize = {
+    tiny: { width: 40, height: 40 },
     small: { width: 96, height: 96 },
     medium: { width: 144, height: 144 },
     large: { width: 176, height: 176 }
@@ -27,18 +29,20 @@ export default function BeaverMascot({
 
   return (
     <div className="flex flex-col items-center">
-      {/* Speech Bubble */}
-      <div className="relative mb-2">
-        <div className="bg-white border-2 border-teal-400 rounded-2xl px-4 py-2 shadow-lg relative">
-          <p className="text-sm font-bold text-teal-700 whitespace-nowrap">
-            {isProcessing ? "Hmm, let me think..." : isRecording ? "I'm listening!" : greeting}
-          </p>
-          {/* Speech bubble tail */}
-          <div className="absolute -bottom-2 left-6">
-            <div className="w-0 h-0 border-l-[8px] border-r-[8px] border-t-[10px] border-l-transparent border-r-transparent border-t-teal-400"></div>
+      {/* Speech Bubble — hidden for tiny */}
+      {size !== 'tiny' && (
+        <div className="relative mb-2">
+          <div className="bg-white border border-zinc-200 rounded-2xl px-4 py-2 shadow-[0_20px_40px_-15px_rgba(0,0,0,0.05)] relative">
+            <p className="text-sm font-semibold text-zinc-700 whitespace-nowrap">
+              {isProcessing ? "Hmm, let me think..." : isRecording ? "I'm listening!" : greeting}
+            </p>
+            {/* Speech bubble tail */}
+            <div className="absolute -bottom-2 left-6">
+              <div className="w-0 h-0 border-l-[8px] border-r-[8px] border-t-[10px] border-l-transparent border-r-transparent border-t-zinc-200"></div>
+            </div>
           </div>
         </div>
-      </div>
+      )}
 
       {/* Beaver SVG - Friendly character pointing right */}
       <div className={`${sizeClasses[size]} relative ${isRecording ? 'animate-gentle-sway' : 'animate-soft-breathe'}`}>
@@ -167,10 +171,12 @@ export default function BeaverMascot({
         </svg>
       </div>
 
-      {/* Name badge */}
-      <div className="mt-1 bg-teal-500 text-white px-3 py-0.5 rounded-full font-bold text-xs shadow-md">
-        Benny
-      </div>
+      {/* Name badge — hidden for tiny */}
+      {size !== 'tiny' && (
+        <div className="mt-1 bg-emerald-600 text-white px-3 py-0.5 rounded-full font-bold text-xs shadow-md">
+          Benny
+        </div>
+      )}
     </div>
   )
 }

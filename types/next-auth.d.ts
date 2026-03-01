@@ -9,8 +9,9 @@ declare module 'next-auth' {
       image?: string | null
       subscription?: {
         plan: string
+        audience: string
         status: string
-        storiesSavedThisMonth: number
+        billingCycle?: string | null
       } | null
     }
   }

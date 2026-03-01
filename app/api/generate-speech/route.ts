@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server'
+import { validateContent } from '@/lib/contentSafety'
 
 // OpenAI TTS voice mapping
 const VOICE_MAP: { [key: string]: string } = {
@@ -10,11 +11,24 @@ const VOICE_MAP: { [key: string]: string } = {
 
 export async function POST(request: NextRequest) {
   try {
-    const { text, voice } = await request.json()
+    const { text, voice, speed: requestedSpeed } = await request.json()
 
     if (!text || typeof text !== 'string') {
       return NextResponse.json(
         { error: 'Invalid text provided' },
+        { status: 400 }
+      )
+    }
+
+    // ─── CONTENT SAFETY: Block unsafe text from being spoken ──────
+    // This prevents malicious direct API calls from getting TTS to speak
+    // inappropriate content. The story route already validates, but this
+    // is defense-in-depth against direct endpoint abuse.
+    const validation = validateContent(text);
+    if (!validation.safe) {
+      console.warn(`[SPEECH SAFETY] Blocked unsafe text: "${validation.matchedTerm}" (${validation.category})`);
+      return NextResponse.json(
+        { error: "This text contains content that isn't appropriate for a children's story app." },
         { status: 400 }
       )
     }
@@ -42,7 +56,7 @@ export async function POST(request: NextRequest) {
         input: text,
         voice: openaiVoice,
         response_format: 'mp3',
-        speed: 0.9, // Slightly slower for kids
+        speed: requestedSpeed || 1.0, // Normal speed
       }),
     })
 

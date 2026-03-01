@@ -71,6 +71,13 @@ export const authOptions: NextAuthOptions = {
         })
 
         session.user.subscription = subscription
+          ? {
+              plan: subscription.plan,
+              audience: subscription.audience,
+              status: subscription.status,
+              billingCycle: subscription.billingCycle,
+            }
+          : null
       }
       return session
     },

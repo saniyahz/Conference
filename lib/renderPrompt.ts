@@ -83,6 +83,32 @@ export function extractSceneCard(
  * Extract setting from text - checks ground-based settings FIRST
  */
 function extractSetting(text: string): string {
+  // ── Helper: is "moon" only in compound/reference form? ──
+  // "moon creatures", "moon friends", "about the moon", "stories about the moon" etc.
+  // are references TO the moon, not scenes ON the moon.
+  const moonCompoundPattern = /moon\s+(?:creature|creatures|friend|friends|rabbit|rabbits|bunny|bunnies)|moonlight|moon'?s?\s+light|(?:about|of|from)\s+(?:the\s+)?moon/i;
+  const hasMoonCompound = moonCompoundPattern.test(text);
+  const textWithoutMoonCompounds = text
+    .replace(/moon\s+(?:creature|creatures|friend|friends|rabbit|rabbits|bunny|bunnies)/gi, '')
+    .replace(/moonlight/gi, '')
+    .replace(/moon'?s?\s+light/gi, '')
+    .replace(/(?:about|of|from|stories\s+about|tales\s+of)\s+(?:the\s+)?moon/gi, '')
+    .replace(/(?:under|beneath)\s+(?:the\s+)?moon/gi, '');
+  const hasBareMoon = /\bmoon\b/i.test(textWithoutMoonCompounds);
+  // Only treat "moon" as a location when it's NOT just in compound form
+  const moonIsLocation = hasBareMoon || !hasMoonCompound;
+
+  // SCENE-DEFINING ACTIVITIES (check first — picnic, sunset, celebration override location)
+  if (/sun\s+began\s+to\s+set/i.test(text) || text.includes('sunset')) {
+    return 'Beautiful outdoor sunset scene with orange and pink sky';
+  }
+  if (text.includes('picnic')) {
+    return 'Outdoor picnic scene on green grass with food and blanket';
+  }
+  if (text.includes('celebrated') || text.includes('celebrating') || text.includes('celebration') || text.includes('sang songs')) {
+    return 'Outdoor celebration scene with warm golden light';
+  }
+
   // GROUND-BASED (check first to avoid title contamination)
   if (text.includes('savannah') || text.includes('savanna') || text.includes('grassland')) {
     if (text.includes('rocket') || text.includes('spaceship')) {
@@ -113,10 +139,11 @@ function extractSetting(text: string): string {
   if (text.includes('crater') || text.includes('moon surface') || text.includes('lunar surface')) {
     return 'grey moon surface with craters, Earth in starry sky';
   }
-  if (text.includes('moon rabbit') || text.includes('moon bunn') || text.includes('lunar guardian')) {
+  // "moon rabbit", "moon bunny" → only moon surface if character is ON the moon
+  if ((text.includes('moon rabbit') || text.includes('moon bunn') || text.includes('lunar guardian')) && moonIsLocation) {
     return 'moon surface with craters, magical atmosphere';
   }
-  if (text.includes('lunar') || (text.includes('moon') && !text.includes('moonlight'))) {
+  if (text.includes('lunar') || (moonIsLocation && text.includes('moon') && !text.includes('moonlight'))) {
     return 'moon surface with craters and stars';
   }
   if (text.includes('inside') && (text.includes('rocket') || text.includes('spaceship'))) {
@@ -146,44 +173,91 @@ function extractSetting(text: string): string {
  * These feed into the Template A prompt's scene section AND are used
  * by actionToPose() in the image pipeline to inject body positions
  * into the inpaint prompt. Descriptive actions = distinct poses per page.
+ *
+ * Uses regex patterns to match ALL verb tenses (past, present, participle)
+ * because story text is typically past tense ("danced", "swam").
  */
 function extractAction(text: string, charName: string): string {
-  // Priority 1: Multi-word compound actions (most specific)
+  // Priority 1: Multi-word compound actions (most specific, unambiguous)
+  // Physical actions BEFORE emotional states.
+  // NOTE: "spotted", "noticed", "worried", "nervous" are NOT here — they're too ambiguous
+  if (text.includes('froze') || text.includes('frozen') || text.includes('freezing')) return `${charName} standing frozen stiff with wide scared eyes`;
+  if (text.includes('pressed a') || text.includes('pressing a') || text.includes('pressed the') || text.includes('pressing the')) return `${charName} pressing a button with one hand excitedly`;
+  // Physical exit actions — BEFORE squeezing
+  if (text.includes('tumbled out') || text.includes('tumbling out')) return `${charName} tumbling out happily with legs splayed`;
+  if (text.includes('hopped out') || text.includes('hopping out')) return `${charName} hopping out energetically with a big smile`;
+  // Scene-defining activities — BEFORE splash (picnic/stories/celebration are the KEY scene, not incidental water)
+  if (text.includes('picnic')) return `${charName} sitting on the ground eating happily at a picnic`;
+  if (text.includes('shared stories') || text.includes('sharing stories') || text.includes('told stories')) return `${charName} sitting and talking happily with animated gestures`;
+  if (text.includes('sang songs') || text.includes('singing songs')) return `${charName} singing happily with mouth open wide`;
+  if (text.includes('celebrated') || text.includes('celebrating')) return `${charName} celebrating with both arms raised high`;
+  // Water actions
+  if (text.includes('splash')) return `${charName} splashing in water with legs kicking`;
+  if (text.includes('squeezed') || text.includes('squeezing')) return `${charName} squeezing through eagerly with a determined face`;
+  if (text.includes('stepped outside') || text.includes('stepped onto')) return `${charName} stepping forward with one foot out looking around in awe`;
+  if (text.includes('stepped out')) return `${charName} stepping forward with one foot out looking around in awe`;
+  if (text.includes('stepped forward') || text.includes('stepping forward')) return `${charName} stepping forward bravely with one arm raised`;
+  if (text.includes('waddled') || text.includes('waddling')) return `${charName} waddling forward with a big happy grin`;
+  // Original compounds
   if (text.includes('blasted off') || text.includes('blast off')) return `${charName} blasting off excitedly with arms raised`;
   if (text.includes('soared over') || text.includes('soaring over')) return `${charName} soaring high with arms spread wide`;
   if (text.includes('flew over') || text.includes('flying over')) return `${charName} flying forward with arms outstretched`;
   if (text.includes('landed safely') || text.includes('safe landing')) return `${charName} landing with feet touching down`;
-  if (text.includes('climbed inside') || text.includes('climbing inside')) return `${charName} climbing forward eagerly`;
+  if (text.includes('climbed inside') || text.includes('climbing inside') || text.includes('climbed into')) return `${charName} climbing forward eagerly`;
   if (text.includes('taking off') || text.includes('took off')) return `${charName} leaping upward excitedly`;
   if (text.includes('dived in') || text.includes('dove in') || text.includes('jumped in')) return `${charName} diving forward arms first`;
-  if (text.includes('splash')) return `${charName} splashing in water with legs kicking`;
 
-  // Priority 2: Single verbs with pose detail
-  if (text.includes('wave') || text.includes('waving')) return `${charName} waving one arm up high`;
-  if (text.includes('welcome') || text.includes('greeted')) return `${charName} waving happily with one arm raised`;
-  if (text.includes('explore') || text.includes('exploring')) return `${charName} walking forward looking around curiously`;
-  if (text.includes('discover') || text.includes('found') || text.includes('stumbled')) return `${charName} leaning forward curiously reaching out`;
-  if (text.includes('flying') || text.includes('soar')) return `${charName} soaring with arms spread wide`;
-  if (text.includes('float') || text.includes('weightless')) return `${charName} floating weightlessly with limbs spread`;
-  if (text.includes('land') || text.includes('arrived')) return `${charName} landing with feet touching down`;
-  if (text.includes('play') || text.includes('playing')) return `${charName} bouncing playfully mid-motion`;
-  if (text.includes('run') || text.includes('running')) return `${charName} running forward with legs in stride`;
-  if (text.includes('swim') || text.includes('swimming')) return `${charName} swimming forward with legs kicking`;
-  if (text.includes('climb') || text.includes('climbing')) return `${charName} climbing upward with arms reaching high`;
-  if (text.includes('jump') || text.includes('jumping') || text.includes('leap')) return `${charName} jumping up with legs off the ground`;
-  if (text.includes('danc') || text.includes('dancing')) return `${charName} dancing joyfully with arms raised`;
-  if (text.includes('look') || text.includes('gaze') || text.includes('marvel')) return `${charName} looking upward with wide eyes in awe`;
-  if (text.includes('cheer')) return `${charName} cheering with both arms raised high`;
-  if (text.includes('hug')) return `${charName} hugging with arms wrapped warmly`;
-  if (text.includes('sleep')) return `${charName} curled up sleeping peacefully`;
-  if (text.includes('point')) return `${charName} pointing forward excitedly`;
+  // Priority 2: Single verbs with pose detail — regex for all tenses
+  // Physical movement verbs FIRST, perception verbs LAST
+  if (/\b(?:fl(?:y|ying|ew|ies))\b/.test(text) || /\b(?:soar(?:ed|ing|s)?)\b/.test(text)) return `${charName} soaring with arms spread wide`;
+  if (/\b(?:sw[ai]mm?(?:ing|s)?|swam)\b/.test(text)) return `${charName} swimming forward with legs kicking`;
+  if (/\b(?:hopp?(?:ed|ing|s)?)\b/.test(text)) return `${charName} hopping up and down excitedly`;
+  if (/\b(?:float(?:ed|ing|s)?|weightless)\b/.test(text)) return `${charName} floating weightlessly with limbs spread`;
+  if (/\b(?:r[au]n(?:ning|s)?)\b/.test(text)) return `${charName} running forward with legs in stride`;
+  if (/\b(?:walk(?:ed|ing|s)?)\b/.test(text)) return `${charName} walking forward with one foot ahead`;
+  if (/\b(?:jump(?:ed|ing|s)?|leap(?:ed|ing|s|t)?)\b/.test(text)) return `${charName} jumping up with legs off the ground`;
+  if (/\b(?:climb(?:ed|ing|s)?)\b/.test(text)) return `${charName} climbing upward with arms reaching high`;
+  if (/\b(?:danc(?:e[ds]?|ing))\b/.test(text)) return `${charName} dancing joyfully with arms raised`;
+  if (/\b(?:div(?:e[ds]?|ing)|dove)\b/.test(text)) return `${charName} diving downward arms first`;
+  if (/\b(?:sl(?:id[es]?|ide|iding))\b/.test(text)) return `${charName} sliding forward playfully`;
+  if (/\b(?:sp[iu]n(?:ning|s)?)\b/.test(text)) return `${charName} spinning around with arms out`;
+  if (/\b(?:skip(?:ped|ping|s)?)\b/.test(text)) return `${charName} skipping forward happily`;
+  if (/\b(?:march(?:ed|ing|es)?)\b/.test(text)) return `${charName} marching forward with big confident steps`;
+  if (/\b(?:sneak(?:ed|ing|s)?|snuck)\b/.test(text)) return `${charName} crouching and sneaking forward quietly`;
+  if (/\b(?:lumber(?:ed|ing|s)?)\b/.test(text)) return `${charName} lumbering forward with heavy steps`;
+  if (/\b(?:approach(?:ed|ing|es)?)\b/.test(text)) return `${charName} walking forward carefully with arms at sides`;
+  if (/\b(?:ventur(?:e[ds]?|ing))\b/.test(text)) return `${charName} walking forward looking around curiously`;
+  // Social/interactive verbs
+  if (/\b(?:play(?:ed|ing|s)?)\b/.test(text)) return `${charName} bouncing playfully mid-motion`;
+  if (/\b(?:explor(?:e[ds]?|ing))\b/.test(text)) return `${charName} walking forward looking around curiously`;
+  if (/\b(?:discover(?:ed|ing|s)?|found|stumbled)\b/.test(text)) return `${charName} leaning forward curiously reaching out`;
+  if (/\b(?:wav(?:e[ds]?|ing))\b/.test(text)) return `${charName} waving one arm up high`;
+  if (/\bwelcom(?:e[ds]?|ing)\b/.test(text) || text.includes('greeted')) return `${charName} waving happily with one arm raised`;
+  if (/\b(?:laugh(?:ed|ing|s|ter)?)\b/.test(text)) return `${charName} laughing with head tilted back happily`;
+  if (/\b(?:hugg?(?:ed|ing|s)?)\b/.test(text)) return `${charName} hugging with arms wrapped warmly`;
+  if (/\b(?:cheer(?:ed|ing|s)?)\b/.test(text)) return `${charName} cheering with both arms raised high`;
+  if (/\b(?:lead(?:ing|s)?|led)\b/.test(text)) return `${charName} walking forward confidently arm raised`;
+  if (/\b(?:guid(?:e[ds]?|ing))\b/.test(text)) return `${charName} steering forward with arms out confidently`;
+  if (/\b(?:sl(?:eep|ept)(?:ing|s)?)\b/.test(text)) return `${charName} curled up sleeping peacefully`;
+  if (/\b(?:s[au]ng|sing(?:ing|s)?)\b/.test(text)) return `${charName} singing happily with mouth open wide`;
+  if (/\b(?:bounc(?:e[ds]?|ing))\b/.test(text)) return `${charName} bouncing up mid-jump`;
+  // Perception/state verbs — LAST (weakest visual cues)
+  if (/\b(?:look(?:ed|ing|s)?|gaz(?:e[ds]?|ing)|marvel)\b/.test(text)) return `${charName} looking upward with wide eyes in awe`;
+  if (/\b(?:spot(?:ted|ting|s)?)\b/.test(text)) return `${charName} looking up with wide surprised eyes pointing forward`;
+  if (/\b(?:notic(?:e[ds]?|ing))\b/.test(text)) return `${charName} looking up with wide surprised eyes pointing forward`;
+  if (/\b(?:land(?:ed|ing|s)?|arriv(?:ed|ing|es?))\b/.test(text)) return `${charName} landing with feet touching down`;
+  if (/\b(?:point(?:ed|ing|s)?)\b/.test(text)) return `${charName} pointing forward excitedly`;
+  if (/\b(?:eat(?:ing|s|en)?|ate)\b/.test(text)) return `${charName} sitting down eating happily`;
+  if (/\b(?:read(?:ing|s)?)\b/.test(text)) return `${charName} sitting and holding a book`;
 
   // Priority 3: Emotion-based pose
-  if (text.includes('excit') || text.includes('thrill')) return `${charName} jumping excitedly with arms raised`;
-  if (text.includes('wonder') || text.includes('amaz')) return `${charName} gazing upward in wonder`;
+  if (/\bexcit(?:ed|edly|ement|ing)\b/.test(text) || text.includes('thrill')) return `${charName} jumping excitedly with arms raised`;
+  if (/\bwonder(?:ing|s)?\b/.test(text) && !text.includes('wonderful')) return `${charName} gazing upward in wonder`;
+  if (/\bamazed?\b/.test(text)) return `${charName} gazing upward in wonder`;
   if (text.includes('curious')) return `${charName} leaning forward curiously`;
-  if (text.includes('happy') || text.includes('joy')) return `${charName} bouncing joyfully mid-jump`;
+  if (/\bhapp(?:y|ily|iness)\b/.test(text) || /\bjoy(?:ful|fully|ous|ously)?\b/.test(text)) return `${charName} bouncing joyfully mid-jump`;
   if (text.includes('brave') || text.includes('courage')) return `${charName} standing tall with a determined pose`;
+  if (/\bworried\b/.test(text) || /\bnervous\b/.test(text) || /\bscar(?:ed|y)\b/.test(text) || /\bafraid\b/.test(text)) return `${charName} standing nervously with a worried expression`;
 
   return `${charName} standing with one arm waving happily`;
 }

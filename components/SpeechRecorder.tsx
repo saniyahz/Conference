@@ -1,11 +1,14 @@
 'use client'
 
 import { useState, useRef, useEffect } from 'react'
-import { Mic, MicOff, Play, Trash2, Keyboard, Loader2, Square } from 'lucide-react'
+import { Mic, MicOff, Play, Trash2, Keyboard, Loader2, Square, Check } from 'lucide-react'
 import BeaverMascot from './BeaverMascot'
 
+export type AgeGroup = '3-5' | '6-8' | '9-12'
+export type GenerationMode = 'storybook' | 'movie'
+
 interface SpeechRecorderProps {
-  onComplete: (text: string, authorName: string) => void
+  onComplete: (text: string, authorName: string, ageGroup: AgeGroup, mode: GenerationMode) => void
 }
 
 export default function SpeechRecorder({ onComplete }: SpeechRecorderProps) {
@@ -17,6 +20,7 @@ export default function SpeechRecorder({ onComplete }: SpeechRecorderProps) {
   const [recordingTime, setRecordingTime] = useState(0)
   const [audioLevel, setAudioLevel] = useState(0)
   const [isMicWarmingUp, setIsMicWarmingUp] = useState(false)
+  const [ageGroup, setAgeGroup] = useState<AgeGroup>('3-5')
   const mediaRecorderRef = useRef<MediaRecorder | null>(null)
   const audioChunksRef = useRef<Blob[]>([])
   const streamRef = useRef<MediaStream | null>(null)
@@ -217,7 +221,7 @@ export default function SpeechRecorder({ onComplete }: SpeechRecorderProps) {
 
   const handleSubmit = () => {
     if (transcription.trim()) {
-      onComplete(transcription.trim(), authorName.trim() || 'Young Author')
+      onComplete(transcription.trim(), authorName.trim() || 'Young Author', ageGroup, 'storybook')
     }
   }
 
@@ -241,24 +245,24 @@ export default function SpeechRecorder({ onComplete }: SpeechRecorderProps) {
   return (
     <div className="space-y-6">
       <div className="text-center">
-        <h2 className="text-3xl font-bold text-teal-700 mb-2">
+        <h2 className="text-3xl font-bold text-zinc-800 mb-2 tracking-tight">
           What story shall we create today?
         </h2>
-        <p className="text-gray-600 text-lg mb-6">
+        <p className="text-zinc-500 text-lg mb-6">
           Press the microphone and tell me your idea!
         </p>
       </div>
 
       {/* Show typing option if voice isn't working */}
       {showTypeOption && !transcription && !isRecording && (
-        <div className="bg-teal-50 border-2 border-teal-300 rounded-xl p-4 text-center">
-          <p className="text-teal-800 font-semibold mb-2">
+        <div className="bg-zinc-50 border border-zinc-200 rounded-xl p-4 text-center">
+          <p className="text-zinc-700 font-semibold mb-2">
             Having trouble? You can also type your story!
           </p>
           <div className="flex gap-3 justify-center">
             <button
               onClick={() => setShowTypeOption(false)}
-              className="px-4 py-2 bg-gray-200 text-gray-700 rounded-lg hover:bg-gray-300 font-semibold"
+              className="px-4 py-2 bg-zinc-200 text-zinc-700 rounded-xl hover:bg-zinc-300 font-medium active:scale-[0.98]"
             >
               Try Recording Again
             </button>
@@ -267,7 +271,7 @@ export default function SpeechRecorder({ onComplete }: SpeechRecorderProps) {
                 setShowTypeOption(false)
                 setTranscription('')
               }}
-              className="px-4 py-2 bg-teal-500 text-white rounded-lg hover:bg-teal-600 font-semibold flex items-center gap-2"
+              className="px-4 py-2 bg-emerald-600 text-white rounded-xl hover:bg-emerald-700 font-medium flex items-center gap-2 active:scale-[0.98]"
             >
               <Keyboard className="w-5 h-5" />
               Type Instead
@@ -293,12 +297,12 @@ export default function SpeechRecorder({ onComplete }: SpeechRecorderProps) {
           <button
             onClick={isRecording ? stopRecording : startRecording}
             disabled={isProcessing}
-            className={`relative p-8 rounded-full transition-all shadow-xl border-4 border-white
+            className={`relative p-8 rounded-full shadow-[0_20px_40px_-15px_rgba(0,0,0,0.1)] border-4 border-white active:scale-[0.98]
               ${isRecording
                 ? 'bg-red-500 hover:bg-red-600 animate-pulse scale-110'
                 : isProcessing
-                  ? 'bg-gray-400 cursor-wait'
-                  : 'bg-teal-500 hover:bg-teal-600 hover:scale-110'
+                  ? 'bg-zinc-400 cursor-wait'
+                  : 'bg-emerald-600 hover:bg-emerald-700 hover:scale-105'
               }`}
             aria-label={isRecording ? "Stop recording" : "Start recording"}
           >
@@ -328,7 +332,7 @@ export default function SpeechRecorder({ onComplete }: SpeechRecorderProps) {
               </span>
             </div>
           ) : (
-            <p className="mt-4 text-gray-500 text-sm">
+            <p className="mt-4 text-zinc-400 text-sm">
               {isProcessing ? 'Processing...' : 'Tap to record'}
             </p>
           )}
@@ -336,13 +340,13 @@ export default function SpeechRecorder({ onComplete }: SpeechRecorderProps) {
           {/* Audio level indicator */}
           {isRecording && (
             <div className="w-48 mt-3">
-              <div className="h-3 bg-gray-200 rounded-full overflow-hidden">
+              <div className="h-3 bg-zinc-200 rounded-full overflow-hidden">
                 <div
-                  className="h-full bg-gradient-to-r from-green-400 via-yellow-400 to-red-500 transition-all duration-100"
+                  className="h-full bg-emerald-500 transition-all duration-100"
                   style={{ width: `${audioLevel}%` }}
                 />
               </div>
-              <p className="text-xs text-gray-500 mt-1 text-center">
+              <p className="text-xs text-zinc-400 mt-1 text-center">
                 {audioLevel > 30 ? 'Great! I can hear you!' : 'Speak a bit louder'}
               </p>
             </div>
@@ -362,8 +366,8 @@ export default function SpeechRecorder({ onComplete }: SpeechRecorderProps) {
 
       {/* Tips - shown when not recording */}
       {!isRecording && !transcription && (
-        <div className="bg-gradient-to-r from-teal-50 to-green-50 border-2 border-teal-200 rounded-xl p-4 max-w-md mx-auto text-center">
-          <p className="text-teal-700 font-semibold">
+        <div className="bg-zinc-50 border border-zinc-200 rounded-xl p-4 max-w-md mx-auto text-center">
+          <p className="text-zinc-600 font-medium">
             Tell me about an adventure you'd like to read about!
           </p>
         </div>
@@ -371,9 +375,9 @@ export default function SpeechRecorder({ onComplete }: SpeechRecorderProps) {
 
       {/* Transcription Display & Manual Input */}
       <div className="mt-6">
-        <div className="bg-teal-50 p-6 rounded-xl border-2 border-teal-200">
+        <div className="bg-zinc-50 p-6 rounded-xl border border-zinc-200">
           <div className="flex justify-between items-center mb-2">
-            <h3 className="font-semibold text-teal-800">Your Story Ideas:</h3>
+            <h3 className="font-semibold text-zinc-700">Your Story Ideas:</h3>
             {transcription && (
               <button
                 onClick={clearTranscription}
@@ -387,23 +391,23 @@ export default function SpeechRecorder({ onComplete }: SpeechRecorderProps) {
 
           {/* Editable textarea */}
           <textarea
-            className="w-full p-4 border-2 border-teal-300 rounded-xl focus:border-teal-500 focus:outline-none text-lg min-h-[120px] resize-none"
+            className="w-full p-4 border border-zinc-200 rounded-xl focus:border-emerald-500 focus:ring-2 focus:ring-emerald-500/20 focus:outline-none text-lg min-h-[120px] resize-none bg-white"
             placeholder="Your story ideas will appear here... You can also type directly!
 
 Example: A brave little bunny who goes on an adventure to find a magical rainbow..."
             value={transcription}
             onChange={(e) => setTranscription(e.target.value)}
           />
-          <p className="text-xs text-gray-500 mt-2">
+          <p className="text-xs text-zinc-400 mt-2">
             Tip: You can record multiple times to add more ideas, or type directly!
           </p>
         </div>
 
         {/* Author Name Input */}
         {transcription && (
-          <div className="mt-6 bg-yellow-50 p-6 rounded-xl border-2 border-yellow-200">
-            <label htmlFor="authorName" className="block text-sm font-semibold text-yellow-800 mb-2">
-              Your Name (Story Author):
+          <div className="mt-6 flex flex-col gap-2">
+            <label htmlFor="authorName" className="text-sm font-medium text-zinc-700">
+              Your Name (Story Author)
             </label>
             <input
               id="authorName"
@@ -411,12 +415,50 @@ Example: A brave little bunny who goes on an adventure to find a magical rainbow
               value={authorName}
               onChange={(e) => setAuthorName(e.target.value)}
               placeholder="Enter your name here..."
-              className="w-full px-4 py-3 border-2 border-yellow-300 rounded-lg focus:border-yellow-500 focus:outline-none text-gray-700"
+              className="w-full px-4 py-3 border border-zinc-200 rounded-xl focus:border-emerald-500 focus:ring-2 focus:ring-emerald-500/20 focus:outline-none text-zinc-700 bg-white"
               maxLength={50}
             />
-            <p className="text-xs text-gray-500 mt-2">This will appear as the author on your story book!</p>
+            <p className="text-xs text-zinc-400">This will appear as the author on your story book!</p>
           </div>
         )}
+
+        {/* Age Group Selector */}
+        {transcription && (
+          <div className="mt-6">
+            <label className="text-sm font-medium text-zinc-700 mb-3 block">
+              Child's Age Group
+            </label>
+            <div className="grid grid-cols-3 gap-3">
+              {([
+                { value: '3-5' as AgeGroup, emoji: '🐣', label: 'Little Ones', sub: 'Ages 3-5' },
+                { value: '6-8' as AgeGroup, emoji: '🌟', label: 'Growing Up', sub: 'Ages 6-8' },
+                { value: '9-12' as AgeGroup, emoji: '🚀', label: 'Big Kids', sub: 'Ages 9-12' },
+              ]).map(opt => (
+                <button
+                  key={opt.value}
+                  onClick={() => setAgeGroup(opt.value)}
+                  className={`relative p-4 rounded-xl border-2 text-center transition-all active:scale-[0.98] ${
+                    ageGroup === opt.value
+                      ? 'border-emerald-500 bg-emerald-50 shadow-md'
+                      : 'border-zinc-200 bg-white hover:border-zinc-300 hover:bg-zinc-50'
+                  }`}
+                >
+                  {ageGroup === opt.value && (
+                    <div className="absolute top-2 right-2">
+                      <Check className="w-4 h-4 text-emerald-600" />
+                    </div>
+                  )}
+                  <div className="text-2xl mb-1">{opt.emoji}</div>
+                  <div className={`text-sm font-semibold ${ageGroup === opt.value ? 'text-emerald-700' : 'text-zinc-700'}`}>
+                    {opt.label}
+                  </div>
+                  <div className="text-xs text-zinc-400">{opt.sub}</div>
+                </button>
+              ))}
+            </div>
+          </div>
+        )}
+
 
         {/* Submit button */}
         {transcription && (
@@ -424,7 +466,7 @@ Example: A brave little bunny who goes on an adventure to find a magical rainbow
             <button
               onClick={handleSubmit}
               disabled={!transcription.trim()}
-              className="px-8 py-4 bg-emerald-500 text-white rounded-full hover:bg-emerald-600 disabled:bg-gray-400 disabled:cursor-not-allowed font-bold text-lg flex items-center gap-2 transform hover:scale-105 transition-all shadow-lg"
+              className="px-8 py-4 bg-emerald-600 text-white rounded-xl hover:bg-emerald-700 disabled:bg-zinc-300 disabled:cursor-not-allowed font-semibold text-lg flex items-center gap-2 active:scale-[0.98] shadow-[0_20px_40px_-15px_rgba(0,0,0,0.1)]"
             >
               <Play className="w-6 h-6" />
               Create My Story!

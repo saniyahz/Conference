@@ -4,16 +4,29 @@ import { useState } from 'react'
 import { useSession } from 'next-auth/react'
 import { useRouter } from 'next/navigation'
 import Link from 'next/link'
-import { Check, X, BookOpen, Loader2, Sparkles, Crown, Star } from 'lucide-react'
-import { PLANS, PlanType } from '@/lib/subscription'
+import {
+  Check,
+  BookOpen,
+  Loader2,
+  Sparkles,
+  Crown,
+  Star,
+  School,
+  Users,
+  Zap,
+} from 'lucide-react'
+import {
+  PARENT_PLANS,
+  SCHOOL_PLANS,
+  type PlanType,
+} from '@/lib/subscription'
 
 export default function PricingPage() {
   const { data: session } = useSession()
   const router = useRouter()
   const [isLoading, setIsLoading] = useState<string | null>(null)
-  const [billingCycle, setBillingCycle] = useState<'monthly' | 'yearly'>('monthly')
 
-  const handleSubscribe = async (plan: PlanType) => {
+  const handleSubscribe = async (plan: PlanType, billingCycle: 'monthly' | 'yearly' = 'monthly') => {
     if (plan === 'free') {
       router.push('/auth/signup')
       return
@@ -48,308 +61,314 @@ export default function PricingPage() {
     }
   }
 
-  const getPrice = (plan: PlanType) => {
-    const planDetails = PLANS[plan]
-    if (billingCycle === 'yearly') {
-      return planDetails.pricing.yearly
-    }
-    return planDetails.pricing.monthly
-  }
-
-  const getMonthlyEquivalent = (plan: PlanType) => {
-    const planDetails = PLANS[plan]
-    if (billingCycle === 'yearly') {
-      return planDetails.pricing.yearlyPerMonth
-    }
-    return planDetails.pricing.monthly
-  }
-
   return (
-    <div className="min-h-screen p-4 md:p-8 bg-gradient-to-br from-purple-100 via-pink-100 to-blue-100">
+    <div className="min-h-[100dvh] p-4 md:p-8">
       <div className="max-w-6xl mx-auto">
+
         {/* Header */}
-        <div className="text-center mb-8">
-          <Link href="/" className="inline-flex items-center gap-2 mb-4 text-purple-600 hover:text-purple-700">
+        <div className="text-center mb-10">
+          <Link href="/" className="inline-flex items-center gap-2 mb-4 text-emerald-600 hover:text-emerald-700">
             <BookOpen className="w-8 h-8" />
-            <span className="text-2xl font-bold">Kids Story Creator</span>
+            <span className="text-2xl font-bold">Benny&apos;s Story Time</span>
           </Link>
-          <h1 className="text-4xl md:text-5xl font-bold text-purple-800 mb-4">
+          <h1 className="text-4xl md:text-5xl font-bold text-zinc-800 mb-3 tracking-tight">
             Choose Your Plan
           </h1>
-          <p className="text-xl text-gray-700 mb-8">
+          <p className="text-xl text-zinc-500">
             Start creating magical stories today!
           </p>
-
-          {/* Billing Toggle */}
-          <div className="inline-flex items-center gap-4 bg-white rounded-full p-1 shadow-md">
-            <button
-              onClick={() => setBillingCycle('monthly')}
-              className={`px-6 py-2 rounded-full font-semibold transition-all ${
-                billingCycle === 'monthly'
-                  ? 'bg-purple-600 text-white'
-                  : 'text-gray-600 hover:text-purple-600'
-              }`}
-            >
-              Monthly
-            </button>
-            <button
-              onClick={() => setBillingCycle('yearly')}
-              className={`px-6 py-2 rounded-full font-semibold transition-all flex items-center gap-2 ${
-                billingCycle === 'yearly'
-                  ? 'bg-purple-600 text-white'
-                  : 'text-gray-600 hover:text-purple-600'
-              }`}
-            >
-              Yearly
-              <span className={`text-xs px-2 py-0.5 rounded-full ${
-                billingCycle === 'yearly'
-                  ? 'bg-green-400 text-green-900'
-                  : 'bg-green-100 text-green-700'
-              }`}>
-                Save 33%
-              </span>
-            </button>
-          </div>
         </div>
 
-        {/* Pricing Cards */}
-        <div className="grid md:grid-cols-3 gap-6 max-w-5xl mx-auto">
-          {/* Free Plan */}
-          <div className="bg-white rounded-2xl shadow-xl p-8 border-2 border-gray-200 flex flex-col">
+        {/* Parent Plans — Asymmetric: featured plan is larger */}
+        <div className="grid md:grid-cols-[1fr_1fr_1.15fr] gap-6 max-w-5xl mx-auto">
+
+          {/* Free */}
+          <div className="bg-white rounded-2xl shadow-[0_20px_40px_-15px_rgba(0,0,0,0.05)] p-8 border border-zinc-200 flex flex-col">
             <div className="flex items-center gap-2 mb-2">
-              <Star className="w-6 h-6 text-gray-400" />
-              <h3 className="text-2xl font-bold text-gray-800">Free</h3>
+              <Star className="w-6 h-6 text-zinc-400" />
+              <h3 className="text-2xl font-bold text-zinc-800">Free</h3>
             </div>
-            <p className="text-gray-600 mb-4">{PLANS.free.description}</p>
+            <p className="text-zinc-400 text-sm mb-4">Try the magic</p>
             <div className="mb-6">
-              <span className="text-4xl font-bold text-purple-800">$0</span>
-              <span className="text-gray-600">/forever</span>
+              <span className="text-4xl font-bold text-zinc-800">$0</span>
+              <span className="text-zinc-400 ml-1">forever</span>
             </div>
-            <ul className="space-y-3 mb-4 flex-grow">
-              {PLANS.free.features.map((feature, i) => (
-                <li key={i} className="flex items-start gap-2">
-                  <Check className="w-5 h-5 text-green-500 flex-shrink-0 mt-0.5" />
-                  <span className="text-gray-700">{feature}</span>
-                </li>
-              ))}
+            <ul className="space-y-3 mb-8 flex-grow">
+              <li className="flex items-start gap-2">
+                <Check className="w-5 h-5 text-emerald-500 flex-shrink-0 mt-0.5" />
+                <span className="text-zinc-600">1 free story</span>
+              </li>
+              <li className="flex items-start gap-2">
+                <Check className="w-5 h-5 text-emerald-500 flex-shrink-0 mt-0.5" />
+                <span className="text-zinc-600">PDF download &amp; audio</span>
+              </li>
             </ul>
-            {/* What's NOT included */}
-            <div className="border-t border-gray-200 pt-4 mb-6">
-              <p className="text-xs text-gray-500 uppercase font-semibold mb-2">Not included:</p>
-              <ul className="space-y-2">
-                <li className="flex items-start gap-2">
-                  <X className="w-5 h-5 text-red-400 flex-shrink-0 mt-0.5" />
-                  <span className="text-gray-500 text-sm">No audio read-aloud</span>
-                </li>
-                <li className="flex items-start gap-2">
-                  <X className="w-5 h-5 text-red-400 flex-shrink-0 mt-0.5" />
-                  <span className="text-gray-500 text-sm">No PDF downloads</span>
-                </li>
-                <li className="flex items-start gap-2">
-                  <X className="w-5 h-5 text-red-400 flex-shrink-0 mt-0.5" />
-                  <span className="text-gray-500 text-sm">No print discount</span>
-                </li>
-              </ul>
-            </div>
             <button
               onClick={() => handleSubscribe('free')}
-              className="w-full py-3 border-2 border-purple-600 text-purple-600 rounded-lg hover:bg-purple-50 font-semibold transition-all"
+              className="w-full py-3 border border-emerald-500 text-emerald-600 rounded-xl hover:bg-emerald-50 font-medium active:scale-[0.98]"
             >
               Get Started Free
             </button>
           </div>
 
-          {/* Basic Plan */}
-          <div className="bg-white rounded-2xl shadow-xl p-8 border-2 border-purple-400 flex flex-col">
+          {/* Plus */}
+          <div className="bg-white rounded-2xl shadow-[0_20px_40px_-15px_rgba(0,0,0,0.05)] p-8 border border-zinc-200 flex flex-col">
             <div className="flex items-center gap-2 mb-2">
-              <Sparkles className="w-6 h-6 text-purple-500" />
-              <h3 className="text-2xl font-bold text-gray-800">Basic</h3>
+              <Sparkles className="w-6 h-6 text-emerald-500" />
+              <h3 className="text-2xl font-bold text-zinc-800">Plus</h3>
             </div>
-            <p className="text-gray-600 mb-4">{PLANS.basic.description}</p>
-            <div className="mb-2">
-              <span className="text-4xl font-bold text-purple-800">
-                ${billingCycle === 'yearly' ? getMonthlyEquivalent('basic').toFixed(2) : getPrice('basic').toFixed(2)}
+            <p className="text-zinc-400 text-sm mb-4">Great for regular storytelling</p>
+            <div className="mb-1">
+              <span className="text-4xl font-bold text-zinc-800">
+                ${PARENT_PLANS.plus.pricing.monthly.toFixed(2)}
               </span>
-              <span className="text-gray-600">/month</span>
-            </div>
-            {billingCycle === 'yearly' && (
-              <p className="text-sm text-gray-500 mb-4">
-                Billed ${getPrice('basic').toFixed(2)} annually
-              </p>
-            )}
-            {billingCycle === 'monthly' && <div className="mb-4"></div>}
-            <ul className="space-y-3 mb-4 flex-grow">
-              {PLANS.basic.features.map((feature, i) => (
-                <li key={i} className="flex items-start gap-2">
-                  <Check className="w-5 h-5 text-green-500 flex-shrink-0 mt-0.5" />
-                  <span className="text-gray-700">{feature}</span>
-                </li>
-              ))}
-              {billingCycle === 'yearly' && (
-                <li className="flex items-start gap-2">
-                  <Check className="w-5 h-5 text-green-500 flex-shrink-0 mt-0.5" />
-                  <span className="text-gray-700 font-semibold text-green-700">Save 33% vs monthly</span>
-                </li>
-              )}
-            </ul>
-            {/* What's NOT included */}
-            <div className="border-t border-gray-200 pt-4 mb-6">
-              <p className="text-xs text-gray-500 uppercase font-semibold mb-2">Upgrade for:</p>
-              <ul className="space-y-2">
-                <li className="flex items-start gap-2">
-                  <X className="w-5 h-5 text-orange-400 flex-shrink-0 mt-0.5" />
-                  <span className="text-gray-500 text-sm">Unlimited stories (10/mo limit)</span>
-                </li>
-                <li className="flex items-start gap-2">
-                  <X className="w-5 h-5 text-orange-400 flex-shrink-0 mt-0.5" />
-                  <span className="text-gray-500 text-sm">Unlimited library (25 limit)</span>
-                </li>
-                <li className="flex items-start gap-2">
-                  <X className="w-5 h-5 text-orange-400 flex-shrink-0 mt-0.5" />
-                  <span className="text-gray-500 text-sm">30% print discount (only 15%)</span>
-                </li>
-              </ul>
+              <span className="text-zinc-400 ml-1">/month</span>
             </div>
             <button
-              onClick={() => handleSubscribe('basic')}
-              disabled={isLoading === 'basic'}
-              className="w-full py-3 bg-purple-600 text-white rounded-lg hover:bg-purple-700 font-semibold disabled:bg-gray-400 flex items-center justify-center gap-2 transition-all"
+              onClick={() => handleSubscribe('plus', 'yearly')}
+              className="text-sm text-emerald-600 hover:text-emerald-800 hover:underline mb-6 text-left"
             >
-              {isLoading === 'basic' ? (
-                <>
-                  <Loader2 className="w-5 h-5 animate-spin" />
-                  Processing...
-                </>
+              or ${PARENT_PLANS.plus.pricing.yearlyPerMonth.toFixed(2)}/mo billed yearly (save {PARENT_PLANS.plus.pricing.yearlySavingsPercent}%)
+            </button>
+            <ul className="space-y-3 mb-8 flex-grow">
+              <li className="flex items-start gap-2">
+                <Check className="w-5 h-5 text-emerald-500 flex-shrink-0 mt-0.5" />
+                <span className="text-zinc-600">7 books per month</span>
+              </li>
+              <li className="flex items-start gap-2">
+                <Check className="w-5 h-5 text-emerald-500 flex-shrink-0 mt-0.5" />
+                <span className="text-zinc-600">PDF download &amp; audio</span>
+              </li>
+              <li className="flex items-start gap-2">
+                <Check className="w-5 h-5 text-emerald-500 flex-shrink-0 mt-0.5" />
+                <span className="text-zinc-600">25% off printing</span>
+              </li>
+            </ul>
+            <button
+              onClick={() => handleSubscribe('plus')}
+              disabled={isLoading === 'plus'}
+              className="w-full py-3 bg-emerald-600 text-white rounded-xl hover:bg-emerald-700 font-medium disabled:bg-zinc-300 flex items-center justify-center gap-2 active:scale-[0.98]"
+            >
+              {isLoading === 'plus' ? (
+                <><Loader2 className="w-5 h-5 animate-spin" /> Processing...</>
               ) : (
-                'Choose Basic'
+                'Choose Plus'
               )}
             </button>
           </div>
 
-          {/* Premium Plan */}
-          <div className="bg-gradient-to-br from-purple-600 to-pink-600 text-white rounded-2xl shadow-xl p-8 flex flex-col relative overflow-hidden">
-            <div className="absolute top-4 right-4 bg-yellow-400 text-yellow-900 text-xs font-bold px-3 py-1 rounded-full">
+          {/* Unlimited — Featured */}
+          <div className="bg-zinc-900 text-white rounded-2xl shadow-[0_20px_40px_-15px_rgba(0,0,0,0.15)] p-8 flex flex-col relative overflow-hidden">
+            <div className="absolute top-4 right-4 bg-emerald-500 text-white text-xs font-bold px-3 py-1 rounded-full">
               BEST VALUE
             </div>
             <div className="flex items-center gap-2 mb-2">
-              <Crown className="w-6 h-6 text-yellow-300" />
-              <h3 className="text-2xl font-bold">Premium</h3>
+              <Crown className="w-6 h-6 text-emerald-400" />
+              <h3 className="text-2xl font-bold">Unlimited</h3>
             </div>
-            <p className="text-white/90 mb-4">{PLANS.premium.description}</p>
-            <div className="mb-2">
+            <p className="text-zinc-400 text-sm mb-4">Unlimited creativity for families</p>
+            <div className="mb-1">
               <span className="text-4xl font-bold">
-                ${billingCycle === 'yearly' ? getMonthlyEquivalent('premium').toFixed(2) : getPrice('premium').toFixed(2)}
+                ${PARENT_PLANS.unlimited.pricing.monthly.toFixed(2)}
               </span>
-              <span className="text-white/90">/month</span>
-            </div>
-            {billingCycle === 'yearly' && (
-              <p className="text-sm text-white/70 mb-4">
-                Billed ${getPrice('premium').toFixed(2)} annually
-              </p>
-            )}
-            {billingCycle === 'monthly' && <div className="mb-4"></div>}
-            <ul className="space-y-3 mb-4 flex-grow">
-              {PLANS.premium.features.map((feature, i) => (
-                <li key={i} className="flex items-start gap-2">
-                  <Check className="w-5 h-5 text-green-300 flex-shrink-0 mt-0.5" />
-                  <span className="text-white">{feature}</span>
-                </li>
-              ))}
-              {billingCycle === 'yearly' && (
-                <li className="flex items-start gap-2">
-                  <Check className="w-5 h-5 text-green-300 flex-shrink-0 mt-0.5" />
-                  <span className="text-yellow-300 font-semibold">Save 33% vs monthly</span>
-                </li>
-              )}
-            </ul>
-            {/* Everything included message */}
-            <div className="border-t border-white/20 pt-4 mb-6">
-              <div className="bg-white/10 rounded-lg p-3 text-center">
-                <p className="text-white font-semibold text-sm">
-                  ✨ Everything included - no limits!
-                </p>
-              </div>
+              <span className="text-zinc-400 ml-1">/month</span>
             </div>
             <button
-              onClick={() => handleSubscribe('premium')}
-              disabled={isLoading === 'premium'}
-              className="w-full py-3 bg-white text-purple-600 rounded-lg hover:bg-gray-100 font-semibold disabled:bg-gray-400 flex items-center justify-center gap-2 transition-all"
+              onClick={() => handleSubscribe('unlimited', 'yearly')}
+              className="text-sm text-zinc-400 hover:text-white hover:underline mb-6 text-left"
             >
-              {isLoading === 'premium' ? (
-                <>
-                  <Loader2 className="w-5 h-5 animate-spin" />
-                  Processing...
-                </>
+              or ${PARENT_PLANS.unlimited.pricing.yearlyPerMonth.toFixed(2)}/mo billed yearly (save {PARENT_PLANS.unlimited.pricing.yearlySavingsPercent}%)
+            </button>
+            <ul className="space-y-3 mb-8 flex-grow">
+              <li className="flex items-start gap-2">
+                <Check className="w-5 h-5 text-emerald-400 flex-shrink-0 mt-0.5" />
+                <span>Unlimited books</span>
+              </li>
+              <li className="flex items-start gap-2">
+                <Check className="w-5 h-5 text-emerald-400 flex-shrink-0 mt-0.5" />
+                <span>PDF download &amp; audio</span>
+              </li>
+              <li className="flex items-start gap-2">
+                <Check className="w-5 h-5 text-emerald-400 flex-shrink-0 mt-0.5" />
+                <span>35% off printing</span>
+              </li>
+            </ul>
+            <button
+              onClick={() => handleSubscribe('unlimited')}
+              disabled={isLoading === 'unlimited'}
+              className="w-full py-3 bg-emerald-500 text-white rounded-xl hover:bg-emerald-600 font-medium disabled:bg-zinc-600 flex items-center justify-center gap-2 active:scale-[0.98]"
+            >
+              {isLoading === 'unlimited' ? (
+                <><Loader2 className="w-5 h-5 animate-spin" /> Processing...</>
               ) : (
-                'Go Premium'
+                'Go Unlimited'
               )}
             </button>
           </div>
         </div>
 
-        {/* Print Pricing Info */}
-        <div className="mt-12 max-w-3xl mx-auto bg-white rounded-2xl shadow-xl p-8">
-          <h3 className="text-2xl font-bold text-purple-800 mb-4 text-center">
-            Professional Book Printing
-          </h3>
-          <p className="text-gray-700 text-center mb-6">
-            Turn your digital stories into beautiful printed hardcover books!
-          </p>
-          <div className="grid md:grid-cols-3 gap-4">
-            <div className="text-center p-4 bg-gray-50 rounded-lg">
-              <p className="font-semibold text-gray-800 mb-1">Free Plan</p>
-              <p className="text-2xl font-bold text-purple-800">$20</p>
-              <p className="text-sm text-gray-600">per book</p>
+        {/* School Plans */}
+        <div className="mt-16 max-w-5xl mx-auto">
+          <div className="text-center mb-8">
+            <h2 className="text-3xl font-bold text-zinc-800 flex items-center justify-center gap-2 tracking-tight">
+              <School className="w-7 h-7 text-emerald-600" />
+              School Plans
+            </h2>
+            <p className="text-zinc-500 mt-2">School-wide access with shared book pools</p>
+          </div>
+
+          <div className="grid md:grid-cols-[1fr_1.15fr_1fr] gap-6">
+
+            {/* Library Starter */}
+            <div className="bg-white rounded-2xl shadow-[0_20px_40px_-15px_rgba(0,0,0,0.05)] p-8 border border-zinc-200 flex flex-col">
+              <div className="flex items-center gap-2 mb-2">
+                <School className="w-6 h-6 text-emerald-500" />
+                <h3 className="text-2xl font-bold text-zinc-800">Starter</h3>
+              </div>
+              <p className="text-zinc-400 text-sm mb-4">Get your school started</p>
+              <div className="mb-1">
+                <span className="text-4xl font-bold text-zinc-800">
+                  ${SCHOOL_PLANS.library_starter.pricing.monthly}
+                </span>
+                <span className="text-zinc-400 ml-1">/month</span>
+              </div>
+              <button
+                onClick={() => handleSubscribe('library_starter', 'yearly')}
+                className="text-sm text-emerald-600 hover:text-emerald-800 hover:underline mb-6 text-left"
+              >
+                or ${SCHOOL_PLANS.library_starter.pricing.yearlyPerMonth.toFixed(0)}/mo billed yearly (save ~{SCHOOL_PLANS.library_starter.pricing.yearlySavingsPercent}%)
+              </button>
+              <ul className="space-y-3 mb-8 flex-grow">
+                <li className="flex items-start gap-2">
+                  <Check className="w-5 h-5 text-emerald-500 flex-shrink-0 mt-0.5" />
+                  <span className="text-zinc-600">Up to 250 students</span>
+                </li>
+                <li className="flex items-start gap-2">
+                  <Check className="w-5 h-5 text-emerald-500 flex-shrink-0 mt-0.5" />
+                  <span className="text-zinc-600">500 books/month</span>
+                </li>
+                <li className="flex items-start gap-2">
+                  <Check className="w-5 h-5 text-emerald-500 flex-shrink-0 mt-0.5" />
+                  <span className="text-zinc-600">Admin dashboard</span>
+                </li>
+              </ul>
+              <button
+                onClick={() => handleSubscribe('library_starter')}
+                disabled={isLoading === 'library_starter'}
+                className="w-full py-3 bg-emerald-600 text-white rounded-xl hover:bg-emerald-700 font-medium disabled:bg-zinc-300 flex items-center justify-center gap-2 active:scale-[0.98]"
+              >
+                {isLoading === 'library_starter' ? (
+                  <><Loader2 className="w-5 h-5 animate-spin" /> Processing...</>
+                ) : (
+                  'Get Started'
+                )}
+              </button>
             </div>
-            <div className="text-center p-4 bg-purple-50 rounded-lg">
-              <p className="font-semibold text-gray-800 mb-1">Basic Plan</p>
-              <p className="text-2xl font-bold text-purple-800">$17</p>
-              <p className="text-sm text-green-600 font-medium">15% off</p>
+
+            {/* Library Plus — Featured */}
+            <div className="bg-zinc-900 text-white rounded-2xl shadow-[0_20px_40px_-15px_rgba(0,0,0,0.15)] p-8 flex flex-col relative overflow-hidden">
+              <div className="absolute top-4 right-4 bg-emerald-500 text-white text-xs font-bold px-3 py-1 rounded-full">
+                MOST POPULAR
+              </div>
+              <div className="flex items-center gap-2 mb-2">
+                <Users className="w-6 h-6 text-emerald-400" />
+                <h3 className="text-2xl font-bold">Plus</h3>
+              </div>
+              <p className="text-zinc-400 text-sm mb-4">For growing schools</p>
+              <div className="mb-1">
+                <span className="text-4xl font-bold">
+                  ${SCHOOL_PLANS.library_plus.pricing.monthly}
+                </span>
+                <span className="text-zinc-400 ml-1">/month</span>
+              </div>
+              <button
+                onClick={() => handleSubscribe('library_plus', 'yearly')}
+                className="text-sm text-zinc-400 hover:text-white hover:underline mb-6 text-left"
+              >
+                or ${SCHOOL_PLANS.library_plus.pricing.yearlyPerMonth.toFixed(0)}/mo billed yearly (save ~{SCHOOL_PLANS.library_plus.pricing.yearlySavingsPercent}%)
+              </button>
+              <ul className="space-y-3 mb-8 flex-grow">
+                <li className="flex items-start gap-2">
+                  <Check className="w-5 h-5 text-emerald-400 flex-shrink-0 mt-0.5" />
+                  <span>Up to 750 students</span>
+                </li>
+                <li className="flex items-start gap-2">
+                  <Check className="w-5 h-5 text-emerald-400 flex-shrink-0 mt-0.5" />
+                  <span>1,500 books/month</span>
+                </li>
+                <li className="flex items-start gap-2">
+                  <Check className="w-5 h-5 text-emerald-400 flex-shrink-0 mt-0.5" />
+                  <span>Everything in Starter</span>
+                </li>
+              </ul>
+              <button
+                onClick={() => handleSubscribe('library_plus')}
+                disabled={isLoading === 'library_plus'}
+                className="w-full py-3 bg-emerald-500 text-white rounded-xl hover:bg-emerald-600 font-medium disabled:bg-zinc-600 flex items-center justify-center gap-2 active:scale-[0.98]"
+              >
+                {isLoading === 'library_plus' ? (
+                  <><Loader2 className="w-5 h-5 animate-spin" /> Processing...</>
+                ) : (
+                  'Choose Plus'
+                )}
+              </button>
             </div>
-            <div className="text-center p-4 bg-gradient-to-br from-purple-100 to-pink-100 rounded-lg">
-              <p className="font-semibold text-gray-800 mb-1">Premium Plan</p>
-              <p className="text-2xl font-bold text-purple-800">$14</p>
-              <p className="text-sm text-green-600 font-medium">30% off</p>
+
+            {/* Library Max */}
+            <div className="bg-white rounded-2xl shadow-[0_20px_40px_-15px_rgba(0,0,0,0.05)] p-8 border border-zinc-200 flex flex-col">
+              <div className="flex items-center gap-2 mb-2">
+                <Zap className="w-6 h-6 text-emerald-600" />
+                <h3 className="text-2xl font-bold text-zinc-800">Max</h3>
+              </div>
+              <p className="text-zinc-400 text-sm mb-4">Full-scale access</p>
+              <div className="mb-1">
+                <span className="text-4xl font-bold text-zinc-800">
+                  ${SCHOOL_PLANS.library_max.pricing.monthly}
+                </span>
+                <span className="text-zinc-400 ml-1">/month</span>
+              </div>
+              <button
+                onClick={() => handleSubscribe('library_max', 'yearly')}
+                className="text-sm text-emerald-600 hover:text-emerald-800 hover:underline mb-6 text-left"
+              >
+                or ${SCHOOL_PLANS.library_max.pricing.yearlyPerMonth.toFixed(0)}/mo billed yearly (save ~{SCHOOL_PLANS.library_max.pricing.yearlySavingsPercent}%)
+              </button>
+              <ul className="space-y-3 mb-8 flex-grow">
+                <li className="flex items-start gap-2">
+                  <Check className="w-5 h-5 text-emerald-500 flex-shrink-0 mt-0.5" />
+                  <span className="text-zinc-600">Up to 1,500 students</span>
+                </li>
+                <li className="flex items-start gap-2">
+                  <Check className="w-5 h-5 text-emerald-500 flex-shrink-0 mt-0.5" />
+                  <span className="text-zinc-600">3,500 books/month</span>
+                </li>
+                <li className="flex items-start gap-2">
+                  <Check className="w-5 h-5 text-emerald-500 flex-shrink-0 mt-0.5" />
+                  <span className="text-zinc-600">Everything in Plus</span>
+                </li>
+              </ul>
+              <button
+                onClick={() => handleSubscribe('library_max')}
+                disabled={isLoading === 'library_max'}
+                className="w-full py-3 bg-emerald-600 text-white rounded-xl hover:bg-emerald-700 font-medium disabled:bg-zinc-300 flex items-center justify-center gap-2 active:scale-[0.98]"
+              >
+                {isLoading === 'library_max' ? (
+                  <><Loader2 className="w-5 h-5 animate-spin" /> Processing...</>
+                ) : (
+                  'Choose Max'
+                )}
+              </button>
             </div>
           </div>
-          <p className="text-center text-gray-500 text-sm mt-4">
-            + shipping costs based on your location
-          </p>
         </div>
 
-        {/* FAQ Section */}
-        <div className="mt-12 max-w-3xl mx-auto">
-          <h3 className="text-2xl font-bold text-purple-800 mb-6 text-center">
-            Frequently Asked Questions
-          </h3>
-          <div className="space-y-4">
-            <div className="bg-white rounded-xl p-6 shadow-md">
-              <h4 className="font-semibold text-gray-800 mb-2">Can I try before subscribing?</h4>
-              <p className="text-gray-600">
-                Yes! Create your first story for free. You can experience the full magic before deciding on a plan.
-              </p>
-            </div>
-            <div className="bg-white rounded-xl p-6 shadow-md">
-              <h4 className="font-semibold text-gray-800 mb-2">What happens to my stories if I cancel?</h4>
-              <p className="text-gray-600">
-                Your saved stories remain in your library. You can still view and download them, but creating new stories will be limited to the free plan.
-              </p>
-            </div>
-            <div className="bg-white rounded-xl p-6 shadow-md">
-              <h4 className="font-semibold text-gray-800 mb-2">Can I upgrade or downgrade anytime?</h4>
-              <p className="text-gray-600">
-                Absolutely! You can change your plan at any time. Upgrades take effect immediately, and downgrades apply at the end of your billing period.
-              </p>
-            </div>
-          </div>
-        </div>
-
-        <div className="mt-8 text-center space-y-2">
-          <Link href="/" className="text-purple-600 hover:text-purple-700 font-semibold block">
-            ← Back to Home
+        {/* Footer Links */}
+        <div className="mt-10 text-center space-y-2">
+          <Link href="/" className="text-zinc-500 hover:text-zinc-700 font-medium block">
+            &larr; Back to Home
           </Link>
-          <Link href="/terms" className="text-purple-500 hover:text-purple-700 text-sm underline">
-            Terms & Conditions
+          <Link href="/terms" className="text-zinc-400 hover:text-zinc-600 text-sm underline">
+            Terms &amp; Conditions
           </Link>
         </div>
       </div>

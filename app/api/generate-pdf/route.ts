@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import jsPDF from 'jspdf'
 import { Story } from '@/app/page'
+import { renderGamePage } from '@/lib/gamePageRenderer'
 
 // Helper function to convert image URL to base64
 async function getImageAsBase64(url: string): Promise<string> {
@@ -17,7 +18,11 @@ async function getImageAsBase64(url: string): Promise<string> {
 
 export async function POST(request: NextRequest) {
   try {
-    const { story }: { story: Story } = await request.json()
+    const { story, characterBible, sceneCards } = await request.json() as {
+      story: Story
+      characterBible?: any
+      sceneCards?: any[]
+    }
 
     if (!story || !story.title || !story.pages) {
       return NextResponse.json(
@@ -38,23 +43,23 @@ export async function POST(request: NextRequest) {
     const margin = 20
     const contentWidth = pageWidth - 2 * margin
 
-    // ========== COVER PAGE (WHITE BACKGROUND FOR PRINTING) ==========
-    // Cream/off-white background
-    pdf.setFillColor(255, 253, 250)
+    // ========== COVER PAGE (WARM BEIGE AESTHETIC) ==========
+    // Warm beige/parchment background
+    pdf.setFillColor(253, 246, 227) // #FDF6E3 — warm beige
     pdf.rect(0, 0, pageWidth, pageHeight, 'F')
 
-    // Decorative border
-    pdf.setDrawColor(88, 28, 135) // Purple
+    // Decorative border — warm brown tone
+    pdf.setDrawColor(139, 90, 43) // Warm brown
     pdf.setLineWidth(2)
     pdf.roundedRect(15, 15, pageWidth - 30, pageHeight - 30, 3, 3, 'S')
 
     // Inner decorative border
-    pdf.setDrawColor(180, 160, 200) // Light purple
+    pdf.setDrawColor(200, 170, 120) // Soft gold
     pdf.setLineWidth(0.5)
     pdf.roundedRect(18, 18, pageWidth - 36, pageHeight - 36, 2, 2, 'S')
 
-    // Title area
-    pdf.setTextColor(88, 28, 135)
+    // Title area — warm brown text
+    pdf.setTextColor(101, 67, 33) // Dark warm brown
     pdf.setFontSize(32)
     pdf.setFont('helvetica', 'bold')
 
@@ -65,7 +70,7 @@ export async function POST(request: NextRequest) {
     })
 
     // Decorative line under title
-    pdf.setDrawColor(88, 28, 135)
+    pdf.setDrawColor(200, 170, 120) // Soft gold
     pdf.setLineWidth(1)
     pdf.line(40, titleStartY + (titleLines.length * 14) + 10, pageWidth - 40, titleStartY + (titleLines.length * 14) + 10)
 
@@ -79,7 +84,7 @@ export async function POST(request: NextRequest) {
     const authorY = pageHeight / 2 + 20
     pdf.setFontSize(18)
     pdf.setFont('helvetica', 'bold')
-    pdf.setTextColor(88, 28, 135)
+    pdf.setTextColor(139, 90, 43) // Warm brown
     pdf.text('Written by:', pageWidth / 2, authorY, { align: 'center' })
 
     pdf.setFontSize(22)
@@ -104,16 +109,82 @@ export async function POST(request: NextRequest) {
     })
     pdf.text(today, pageWidth / 2, pageHeight - 25, { align: 'center' })
 
+    // ========== COPYRIGHT / DISCLAIMER PAGE ==========
+    pdf.addPage()
+
+    // Warm beige background
+    pdf.setFillColor(253, 246, 227)
+    pdf.rect(0, 0, pageWidth, pageHeight, 'F')
+
+    // Simple elegant border
+    pdf.setDrawColor(200, 170, 120)
+    pdf.setLineWidth(0.5)
+    pdf.roundedRect(18, 18, pageWidth - 36, pageHeight - 36, 2, 2, 'S')
+
+    // Title
+    pdf.setTextColor(101, 67, 33)
+    pdf.setFontSize(16)
+    pdf.setFont('helvetica', 'bold')
+    pdf.text('About This Book', pageWidth / 2, pageHeight / 2 - 50, { align: 'center' })
+
+    // Decorative line
+    pdf.setDrawColor(218, 165, 32)
+    pdf.setLineWidth(0.5)
+    pdf.line(60, pageHeight / 2 - 42, pageWidth - 60, pageHeight / 2 - 42)
+
+    // Disclaimer text
+    pdf.setTextColor(100, 100, 100)
+    pdf.setFontSize(10)
+    pdf.setFont('helvetica', 'normal')
+
+    const disclaimerText = [
+      `"${story.title}" by ${story.author || 'Young Author'}`,
+      `Created on ${today}`,
+      '',
+      'This is a work of fiction generated with the assistance of artificial intelligence.',
+      'All characters, names, places, events, and storylines in this book are entirely',
+      'fictional and are products of creative imagination and AI generation.',
+      '',
+      'Any resemblance to actual persons, living or deceased, actual events,',
+      'or real locations is purely coincidental and unintentional.',
+      '',
+      'The creators and publishers of this book bear no responsibility for any',
+      'interpretations, opinions, or feelings that may arise from reading this content.',
+      'This story is intended purely for entertainment and educational purposes.',
+      '',
+      'All illustrations were generated using AI image generation technology.',
+      '',
+      'Created with Kids Story Creator',
+    ]
+
+    const disclaimerStartY = pageHeight / 2 - 30
+    disclaimerText.forEach((line, index) => {
+      if (line === `"${story.title}" by ${story.author || 'Young Author'}`) {
+        pdf.setFont('helvetica', 'bold')
+        pdf.setTextColor(50, 50, 50)
+      } else if (line === `Created on ${today}`) {
+        pdf.setFont('helvetica', 'italic')
+        pdf.setTextColor(100, 100, 100)
+      } else if (line === 'Created with Kids Story Creator') {
+        pdf.setFont('helvetica', 'italic')
+        pdf.setTextColor(139, 90, 43)
+      } else {
+        pdf.setFont('helvetica', 'normal')
+        pdf.setTextColor(100, 100, 100)
+      }
+      pdf.text(line, pageWidth / 2, disclaimerStartY + (index * 6), { align: 'center' })
+    })
+
     // ========== STORY PAGES (PROFESSIONAL BOOK FORMAT) ==========
     for (let i = 0; i < story.pages.length; i++) {
       pdf.addPage()
 
-      // White/cream background for printing
-      pdf.setFillColor(255, 253, 250)
+      // Warm beige background
+      pdf.setFillColor(253, 246, 227)
       pdf.rect(0, 0, pageWidth, pageHeight, 'F')
 
-      // Simple elegant border
-      pdf.setDrawColor(88, 28, 135) // Purple
+      // Simple elegant border — warm brown
+      pdf.setDrawColor(200, 170, 120) // Soft gold
       pdf.setLineWidth(1)
       pdf.roundedRect(15, 15, pageWidth - 30, pageHeight - 30, 2, 2, 'S')
 
@@ -123,10 +194,14 @@ export async function POST(request: NextRequest) {
       pdf.setFont('helvetica', 'normal')
       pdf.text(`${i + 1}`, pageWidth / 2, pageHeight - 20, { align: 'center' })
 
-      // IMAGE AREA (Top half of page)
-      const imageY = 30
-      const maxImageHeight = 110
-      const maxImageWidth = contentWidth
+      // IMAGE AREA (Top portion of page)
+      // Kontext generates 3:4 aspect ratio images (width:height = 3:4).
+      // Use portrait rectangle that fits within the content width while
+      // leaving enough room below for story text (at least ~70mm).
+      const imageY = 25
+      const imageWidth = 110  // mm — fits nicely within A4 content width (170mm)
+      const imageHeight = Math.round(imageWidth * (4 / 3)) // 3:4 ratio → ~147mm tall
+      const imageX = margin + (contentWidth - imageWidth) / 2 // Center horizontally
 
       const imageUrl = story.pages[i].imageUrl
       if (imageUrl && typeof imageUrl === 'string' && imageUrl.trim() !== '') {
@@ -134,22 +209,7 @@ export async function POST(request: NextRequest) {
           // Convert image URL to base64 so jsPDF can use it
           const imageBase64 = await getImageAsBase64(imageUrl)
 
-          // DALL-E images are 1024x1024 (square), so maintain aspect ratio
-          // Calculate dimensions to fit within max width/height while preserving aspect
-          const aspectRatio = 1 // DALL-E images are square
-          let imageWidth = maxImageWidth
-          let imageHeight = maxImageWidth / aspectRatio
-
-          // If height exceeds max, scale down based on height
-          if (imageHeight > maxImageHeight) {
-            imageHeight = maxImageHeight
-            imageWidth = imageHeight * aspectRatio
-          }
-
-          // Center the image horizontally if it's smaller than max width
-          const imageX = margin + (maxImageWidth - imageWidth) / 2
-
-          // Add the image
+          // Add the image (3:4 portrait, centered)
           pdf.addImage(
             imageBase64,
             'PNG',
@@ -166,34 +226,34 @@ export async function POST(request: NextRequest) {
           pdf.setLineWidth(0.5)
           pdf.roundedRect(imageX, imageY, imageWidth, imageHeight, 2, 2, 'S')
         } catch (error) {
-          // Light placeholder box - use max dimensions since image failed to load
-          pdf.setFillColor(245, 245, 250)
-          pdf.roundedRect(margin, imageY, maxImageWidth, maxImageHeight, 2, 2, 'F')
+          // Light placeholder box — same size as real images
+          pdf.setFillColor(245, 237, 215)
+          pdf.roundedRect(imageX, imageY, imageWidth, imageHeight, 2, 2, 'F')
           pdf.setDrawColor(200, 200, 200)
           pdf.setLineWidth(0.5)
-          pdf.roundedRect(margin, imageY, maxImageWidth, maxImageHeight, 2, 2, 'S')
+          pdf.roundedRect(imageX, imageY, imageWidth, imageHeight, 2, 2, 'S')
 
           pdf.setTextColor(150, 150, 150)
           pdf.setFontSize(12)
           pdf.setFont('helvetica', 'italic')
-          pdf.text('[Illustration will appear here]', pageWidth / 2, imageY + maxImageHeight / 2, { align: 'center' })
+          pdf.text('[Illustration will appear here]', pageWidth / 2, imageY + imageHeight / 2, { align: 'center' })
         }
       } else {
-        // Decorative placeholder when no image (light and printable)
-        pdf.setFillColor(245, 245, 250)
-        pdf.roundedRect(margin, imageY, maxImageWidth, maxImageHeight, 2, 2, 'F')
+        // Decorative placeholder when no image — same size as real images
+        pdf.setFillColor(245, 237, 215)
+        pdf.roundedRect(imageX, imageY, imageWidth, imageHeight, 2, 2, 'F')
         pdf.setDrawColor(200, 200, 200)
         pdf.setLineWidth(0.5)
-        pdf.roundedRect(margin, imageY, maxImageWidth, maxImageHeight, 2, 2, 'S')
+        pdf.roundedRect(imageX, imageY, imageWidth, imageHeight, 2, 2, 'S')
 
         pdf.setTextColor(150, 150, 150)
         pdf.setFontSize(12)
         pdf.setFont('helvetica', 'italic')
-        pdf.text('[Illustration will appear here]', pageWidth / 2, imageY + maxImageHeight / 2, { align: 'center' })
+        pdf.text('[Illustration will appear here]', pageWidth / 2, imageY + imageHeight / 2, { align: 'center' })
       }
 
-      // TEXT AREA (Bottom half - uses remaining space efficiently)
-      const textY = imageY + maxImageHeight + 15
+      // TEXT AREA (Below image - uses remaining space)
+      const textY = imageY + imageHeight + 8
       const textAreaHeight = pageHeight - textY - 35 // Leave room for page number
 
       // Story text - larger font and better spacing for kids
@@ -222,17 +282,17 @@ export async function POST(request: NextRequest) {
     if (story.originalPrompt) {
       pdf.addPage()
 
-      // Cream background
-      pdf.setFillColor(255, 253, 250)
+      // Warm beige background
+      pdf.setFillColor(253, 246, 227)
       pdf.rect(0, 0, pageWidth, pageHeight, 'F')
 
       // Decorative border
-      pdf.setDrawColor(88, 28, 135)
+      pdf.setDrawColor(139, 90, 43)
       pdf.setLineWidth(1.5)
       pdf.roundedRect(15, 15, pageWidth - 30, pageHeight - 30, 2, 2, 'S')
 
       // Header with speech bubble icon
-      pdf.setTextColor(88, 28, 135)
+      pdf.setTextColor(101, 67, 33)
       pdf.setFontSize(24)
       pdf.setFont('helvetica', 'bold')
       pdf.text('The Original Story Idea', pageWidth / 2, 45, { align: 'center' })
@@ -248,48 +308,64 @@ export async function POST(request: NextRequest) {
       pdf.setLineWidth(1)
       pdf.line(50, 65, pageWidth - 50, 65)
 
-      // Quote box background
-      pdf.setFillColor(250, 245, 255)
-      pdf.roundedRect(25, 80, pageWidth - 50, 100, 5, 5, 'F')
-      pdf.setDrawColor(180, 160, 200)
+      // Calculate prompt text layout FIRST so we can size the box dynamically
+      pdf.setFontSize(13)
+      pdf.setFont('helvetica', 'normal')
+      const promptLines = pdf.splitTextToSize(story.originalPrompt, contentWidth - 50)
+      const lineHeight = 7
+      const promptTextHeight = promptLines.length * lineHeight
+      // Box: 15px top padding + text + 15px bottom padding
+      const boxHeight = Math.max(60, promptTextHeight + 35)
+      // Cap to available page space (leave room for footer)
+      const maxBoxHeight = pageHeight - 80 - 45 // 80 = box top, 45 = footer space
+      const finalBoxHeight = Math.min(boxHeight, maxBoxHeight)
+
+      // Quote box background — warm parchment (dynamically sized)
+      pdf.setFillColor(245, 237, 215)
+      pdf.roundedRect(25, 80, pageWidth - 50, finalBoxHeight, 5, 5, 'F')
+      pdf.setDrawColor(200, 170, 120)
       pdf.setLineWidth(0.5)
-      pdf.roundedRect(25, 80, pageWidth - 50, 100, 5, 5, 'S')
+      pdf.roundedRect(25, 80, pageWidth - 50, finalBoxHeight, 5, 5, 'S')
 
       // Opening quote mark
-      pdf.setTextColor(88, 28, 135)
+      pdf.setTextColor(139, 90, 43)
       pdf.setFontSize(48)
       pdf.setFont('helvetica', 'bold')
       pdf.text('"', 35, 105)
 
-      // The original prompt text
+      // The original prompt text — render ALL lines that fit
       pdf.setTextColor(50, 50, 50)
-      pdf.setFontSize(14)
+      pdf.setFontSize(13)
       pdf.setFont('helvetica', 'normal')
-      const promptLines = pdf.splitTextToSize(story.originalPrompt, contentWidth - 40)
       let promptY = 100
+      const maxPromptY = 80 + finalBoxHeight - 15 // stop 15px before box bottom
       promptLines.forEach((line: string) => {
-        if (promptY < 170) {
+        if (promptY < maxPromptY) {
           pdf.text(line, 45, promptY)
-          promptY += 8
+          promptY += lineHeight
         }
       })
 
-      // Closing quote mark
-      pdf.setTextColor(88, 28, 135)
+      // Closing quote mark — positioned right after the last line of text
+      pdf.setTextColor(139, 90, 43)
       pdf.setFontSize(48)
       pdf.setFont('helvetica', 'bold')
-      pdf.text('"', pageWidth - 45, promptY + 5)
+      pdf.text('"', pageWidth - 45, Math.min(promptY + 5, 80 + finalBoxHeight - 5))
 
-      // Footer message
+      // Footer message — positioned below the quote box
+      const footerY = 80 + finalBoxHeight + 18
       pdf.setTextColor(100, 100, 100)
       pdf.setFontSize(11)
       pdf.setFont('helvetica', 'italic')
-      pdf.text('This magical story grew from this wonderful idea!', pageWidth / 2, 200, { align: 'center' })
+      pdf.text('This magical story grew from this wonderful idea!', pageWidth / 2, footerY, { align: 'center' })
 
       // Small beaver emoji placeholder text
       pdf.setFontSize(10)
-      pdf.text('Created with Kids Story Creator', pageWidth / 2, 215, { align: 'center' })
+      pdf.text('Created with Kids Story Creator', pageWidth / 2, footerY + 15, { align: 'center' })
     }
+
+    // ========== GAME / ACTIVITY PAGE ==========
+    renderGamePage(pdf, story, characterBible, sceneCards)
 
     // ========== BACK COVER ==========
     pdf.addPage()
@@ -321,6 +397,13 @@ export async function POST(request: NextRequest) {
     pdf.setFont('helvetica', 'normal')
     pdf.setTextColor(200, 200, 200)
     pdf.text(`Created: ${today}`, pageWidth / 2, pageHeight / 2 + 55, { align: 'center' })
+
+    // Disclaimer on back cover
+    pdf.setFontSize(7)
+    pdf.setFont('helvetica', 'normal')
+    pdf.setTextColor(160, 140, 180)
+    pdf.text('This is a work of fiction. All characters, events, and illustrations are AI-generated.', pageWidth / 2, pageHeight - 18, { align: 'center' })
+    pdf.text('Any resemblance to real persons or events is purely coincidental.', pageWidth / 2, pageHeight - 13, { align: 'center' })
 
     // Decorative stars on back cover
     const stars = [

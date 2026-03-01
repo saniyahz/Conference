@@ -10,40 +10,47 @@
  * - Same fingerprint used on EVERY page prompt
  */
 export type CharacterBible = {
-  character_id: string;
+  // Core identity
+  id?: string;             // e.g. "riri" — used by normalizeScene & createCharacterCanon
+  character_id?: string;   // legacy alias
   name: string;
-  character_type: 'human' | 'animal' | 'object' | 'creature' | 'other';
+  character_type?: 'human' | 'animal' | 'object' | 'creature' | 'other';
+  gender?: 'girl' | 'boy';  // Explicit gender for human characters
   species?: string;  // For animals: "rhinoceros", "rabbit", etc.
-  age: string;
+  age?: string;
+
+  // Immutable text description (createCharacterCanon builds this)
+  description?: string;
 
   // NEW: Visual fingerprint - precise, consistent descriptors
-  visual_fingerprint: string[];  // e.g. ["cute baby rhinoceros", "light gray skin", "big teal eyes"]
+  visual_fingerprint?: string[];  // e.g. ["cute baby rhinoceros", "light gray skin", "big teal eyes"]
   outfit?: string;  // e.g. "simple blue space helmet"
+  accessories?: string;  // Identity-defining accessories: "glasses", "red hat", etc.
 
   // Legacy appearance (kept for backward compatibility)
-  appearance: {
+  appearance?: {
     skin_tone: string;  // or fur color for animals
     eyes: string;
     hair: string;       // or fur description for animals
     face_features: string;
   };
-  signature_outfit: string;
-  personality: string[];
+  signature_outfit?: string;
+  personality?: string[];
 
   // NEW: Style object for consistent rendering
-  style: {
+  style?: {
     base: string;      // e.g. "children's picture book illustration"
     render: string[];  // e.g. ["clean lines", "vibrant colors", "soft shading"]
     aspect: string;    // e.g. "square"
   };
 
-  art_style: {
+  art_style?: {
     medium: string;
     genre: string;
     mood: string;
     line_detail: string;
   };
-  consistency_rules: string[];
+  consistency_rules?: string[];
 };
 
 /**
@@ -69,11 +76,30 @@ export type PageSceneCard = {
   key_objects: string[];
   mood: string;              // e.g. "wonder, playful"
 
-  // Camera/composition
-  camera: {
+  // Camera/composition — string (normalizeScene) or object (structured)
+  camera: string | {
     shot_type: "wide" | "medium" | "close-up";
     composition_notes: string;
   };
+
+  // ── Extended fields used by normalizeScene / assembleImagePrompt ──
+  sceneType?: string;
+  mainCharacter?: {
+    id?: string;
+    position: string;
+    visibility: string;
+    action: string;
+  };
+  supportingElements?: Array<{
+    type: string;
+    count: number;
+    position: string;
+  }>;
+  environment?: {
+    setting: string;
+    elements: string[];
+  };
+  exclusions?: string[];
 
   // Legacy fields (for backward compatibility)
   main_action?: string;

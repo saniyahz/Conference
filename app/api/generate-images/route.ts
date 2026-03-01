@@ -1,37 +1,28 @@
 /**
- * Image generation API route — plate → inpaint → accept gate pipeline.
+ * Image generation API route — Flux Kontext Pro pipeline.
  *
- * OLD: plain txt2img → whatever SDXL invents gets shipped (person, mouse, cat)
- * NEW: plate (background) → inpaint (character only) → BLIP score → accept gate
- *      → rejected images return "" → caller shows placeholder
+ * ARCHITECTURE (SIMPLIFIED — GPT writes image prompts directly):
+ *   1. Extract character identity from CharacterBible
+ *   2. Get/generate character reference image
+ *   3. For each page: take GPT's IMAGE_PROMPT → append safety cues → ONE Kontext call
+ *   4. Return image URLs
+ *
+ * The old pipeline had 6 layers of regex transformation between GPT's story
+ * output and the final Flux prompt — losing information at every step.
+ * Now GPT writes complete Flux-ready prompts directly. This file went from
+ * ~1700 lines to ~500 lines.
  *
  * API contract:
- *   POST { imagePrompts, negativePrompts?, seed?, seeds?, characterBible?, sceneCards? }
- *   →    { imageUrls, seed, seeds }
- *
- * The imagePrompts are used for scene classification only.
- * The actual prompts are built by the pipeline (plate = setting, inpaint = character).
- *
- * If characterBible is provided (from generate-story), character identity is
- * extracted from it. Otherwise falls back to generic animal detection from prompt text.
- *
- * If sceneCards are provided, per-page must_include items are used for:
- *   1. Plate prompt — scene objects (rockets, dolphins, etc.) baked into background
- *   2. Scoring — BLIP caption checked for scene objects, not just character
+ *   POST { imagePrompts, seed?, seeds?, characterBible? }
+ *   →    { imageUrls, videoUrls: [], seed, seeds }
  */
 
 import { NextRequest, NextResponse } from "next/server";
 import Replicate from "replicate";
-import sharp from "sharp";
-import { CharacterBible, PageSceneCard } from "@/lib/visual-types";
-// ── Pipeline imports ──
-import { generatePlate, generateInpaintCharacter } from "@/src/lib/imageGeneration";
-import { makeRiriZoneMaskDataUrl, makeRiriZoneLargeMaskDataUrl, makeRiriZoneExtraLargeMaskDataUrl } from "@/src/lib/maskGenerator";
-import { resolveSceneSetting, enforceMustInclude, classifyScene } from "@/src/lib/sceneSettings";
-import { scoreCandidate, CandidateResult, ScoreOptions, getSettingKeywords, deriveSettingKeywordsFromText } from "@/src/lib/candidateScoring";
-import { cacheAnchorEmbedding, getClipEmbedding } from "@/src/lib/clipScoring";
-import { buildMultiCharPlateNegative } from "@/src/lib/negativePrompts";
-import { lookupCharacter, saveAssets, sanitizeForKids, KID_FRIENDLY_STYLE, isInLibrary } from "@/lib/characterLibrary";
+import { CharacterBible } from "@/lib/visual-types";
+import { generateKontextImage, getCharacterRefUrl } from "@/src/lib/kontextGeneration";
+import { validateContent, sanitizeText } from "@/lib/contentSafety";
+import { lookupCharacter, saveAssets, sanitizeForKids } from "@/lib/characterLibrary";
 
 const replicate = new Replicate({
   auth: process.env.REPLICATE_API_TOKEN,
@@ -39,17 +30,14 @@ const replicate = new Replicate({
 
 // ─── CONFIG ──────────────────────────────────────────────────────────────
 
-const CANDIDATES_PER_ROUND = 4;
-const SEED_STRIDE = 29;
-// Minimum score to accept from rounds 1-2. If the best accepted candidate
-// scores below this, continue to the next round for better options.
-// Set to 8: BLIP-confirmed rhinos get base 6 + bonuses (cartoon +1, full body +2 = 9+).
-// DINO+CLIP override images get base 6 + CLIP/DINO contributions = 9-11.
-// DINO-only images (score 3-5) won't trigger early exit — keep trying.
-const MIN_ROUND_ACCEPT = 8;
-// Bounded page concurrency. With sequential candidates + early-accept,
-// each page has ~1-2 active Replicate calls at a time. Running 2 pages
-// concurrently means ~2-4 simultaneous requests — well within rate limits.
+/**
+ * Max concurrent page generations.
+ *
+ * Set to 1 (sequential) to prevent cascading 429 rate-limit failures.
+ * With <$5 Replicate credit, the rate limit is 6 req/min with burst of 1.
+ * Sequential generation is only ~30s slower (60s → 90s for 10 pages) but
+ * eliminates 429 cascading failures entirely.
+ */
 const PAGE_CONCURRENCY = 2;
 
 // ─── CHARACTER IDENTITY ─────────────────────────────────────────────────
@@ -57,1111 +45,424 @@ const PAGE_CONCURRENCY = 2;
 interface CharacterIdentity {
   name: string;
   species: string;
-  mustInclude: string[];
-  inpaintPrompt: string;
+  /** Short description for Kontext prompts */
+  description: string;
+  /** Visual fingerprint tokens */
+  visualTokens: string[];
+  /** Hair description (e.g., "long black curly hair") */
+  hair: string;
+  /** Outfit description (e.g., "colorful dress and a small backpack") */
+  outfit: string;
+  /** Gender hint for human characters: "girl", "boy", or "" */
+  genderHint: string;
+  /** Age description for human characters (e.g., "6 years old") */
+  age: string;
+  /** Explicit skin tone for human characters (e.g., "brown skin", "dark brown skin") */
+  skinTone: string;
+  /** Concise hair cue for reinforcement at prompt end (e.g., "short brown bob cut hair") */
+  hairCue: string;
+  /** Identity-defining accessories like glasses, hats, bows (e.g., "glasses", "red hat") */
+  accessories: string;
 }
 
 /**
- * Extract character identity from CharacterBible (if provided) or fall back to defaults.
- * This makes the pipeline work for ANY animal character, not just Riri.
- *
- * Species extraction priority:
- *   1. bible.species          ("rhinoceros")
- *   2. bible.character_type   ("Rhinoceros" — often set instead of species)
- *   3. bible.visual_fingerprint text scan (look for animal words)
- *   4. bible.name scan        ("Riri the Rhinoceros")
- *   5. Fallback: "animal"
+ * Extract character identity from CharacterBible.
+ * Simplified vs SDXL version — Kontext doesn't need token-budget optimization.
  */
 function extractCharacterIdentity(bible?: CharacterBible): CharacterIdentity {
   if (!bible) {
     return {
       name: "Character",
       species: "animal",
-      mustInclude: ["animal"],
-      inpaintPrompt: "children's picture book illustration, bold outlines, flat vibrant colors, cartoon animal character, full body",
+      description: "a cute cartoon animal character",
+      visualTokens: ["cartoon animal", "big expressive eyes", "friendly smile"],
+      hair: "",
+      outfit: "",
+      genderHint: "",
+      age: "",
+      skinTone: "",
+      hairCue: "",
+      accessories: "",
     };
   }
 
   const name = bible.name || "Character";
+  const isHuman = bible.character_type === "human";
 
-  // Extract species from multiple fields (character_type is often "Rhinoceros" while species is undefined)
+  // Extract species for non-human characters
   let species = bible.species || "";
-  if (!species && bible.character_type) {
-    // character_type can be the union literal ("animal") or the actual type name ("Rhinoceros")
+  if (!species && !isHuman && bible.character_type) {
     const ct = String(bible.character_type);
     if (!["human", "animal", "object", "creature", "other"].includes(ct.toLowerCase())) {
-      species = ct.toLowerCase(); // "Rhinoceros" → "rhinoceros"
+      species = ct.toLowerCase();
     }
   }
-  if (!species) {
-    // Scan visual fingerprint for species hints
+  if (!species && !isHuman) {
     const fpText = (bible.visual_fingerprint || []).join(" ").toLowerCase();
-    const animalMatch = fpText.match(/\b(rhinoceros|rhino|elephant|giraffe|lion|tiger|bear|rabbit|penguin|fox|deer|owl|dolphin|whale|turtle|frog|monkey|panda|zebra|hippo|koala)\b/);
+    const animalMatch = fpText.match(/\b(rhinoceros|rhino|elephant|giraffe|lion|tiger|bear|rabbit|penguin|fox|deer|owl|dolphin|whale|turtle|frog|monkey|panda|zebra|hippo|koala|unicorn|dragon|dog|cat|puppy|kitten)\b/);
     if (animalMatch) species = animalMatch[1];
   }
-  if (!species) {
-    // Scan name: "Riri the Rhinoceros"
-    const nameMatch = name.toLowerCase().match(/\b(rhinoceros|rhino|elephant|giraffe|lion|tiger|bear|rabbit|penguin|fox|deer|owl|dolphin|whale|turtle|frog|monkey|panda|zebra|hippo|koala)\b/);
+  if (!species && !isHuman) {
+    const nameMatch = name.toLowerCase().match(/\b(rhinoceros|rhino|elephant|giraffe|lion|tiger|bear|rabbit|penguin|fox|deer|owl|dolphin|whale|turtle|frog|monkey|panda|zebra|hippo|koala|unicorn|dragon|dog|cat|puppy|kitten)\b/);
     if (nameMatch) species = nameMatch[1];
   }
-  if (!species) species = "animal";
+  if (!species && !isHuman) species = "animal";
 
-  console.log(`[Identity] Extracted species: "${species}" from bible (name="${name}", character_type="${bible.character_type}", species_field="${bible.species}")`);
+  // Extract hair and outfit from bible
+  const hair = bible.appearance?.hair || "";
+  // Remove leading "wearing" if present — we add it ourselves in prompts
+  let outfit = bible.signature_outfit || bible.outfit || "";
+  outfit = outfit.replace(/^wearing\s+/i, "").trim();
 
-  // Build IDENTITY-FOCUSED inpaint prompt — character appearance ONLY.
-  // NO scene words (moon, forest, beach) — scene belongs in the plate only.
-  // This is the key to identity lock: same prompt tokens every page → same character.
-  //
-  // CRITICAL DESIGN RULES (learned from distortion bugs):
-  //   1. Keep prompt UNDER 50 tokens — SDXL silently ignores tokens past ~77.
-  //      Character identity tokens MUST be in positions 1-30 for maximum weight.
-  //   2. NO negative-in-positive — "no hat", "not unicorn horn", "no text" etc.
-  //      CONFUSE SDXL (it sees "hat", "unicorn horn", "text" as positive signals).
-  //      All exclusions belong in the NEGATIVE prompt only.
-  //   3. NO "small" / "baby" / "tiny" — these push SDXL toward chibi/toy
-  //      renderings that don't look like the actual animal species.
-  //   4. Deduplicate — speciesVisuals and visual_fingerprint often overlap.
-  //      Use ONLY the species-specific visual block (more precise) plus
-  //      non-overlapping fingerprint details (eye color, etc.).
-  //
-  // TOKEN BUDGET (~45 tokens):
-  //   Tokens 1-6:   Character opener (species name, cartoon)
-  //   Tokens 7-22:  Species-specific anatomy (distinguishing features)
-  //   Tokens 22-28: Non-overlapping visual fingerprint (eye color, etc.)
-  //   Tokens 28-30: Framing ("full body")
-  //   Tokens 30-38: Pose (injected per-page in runCandidateRound)
-  //   Tokens 38-45: Art style (short)
+  // Detect gender for human characters — use bible.gender field (set by createCharacterBible)
+  // NEVER default to "child" — always pick girl or boy for clear visual rendering
+  let genderHint = "";
+  if (isHuman) {
+    if (bible.gender === 'girl' || bible.gender === 'boy') {
+      genderHint = bible.gender;
+    } else {
+      // Fallback: check name against common names
+      const nameLower = name.toLowerCase().split(/\s+/)[0];
+      const GIRL_NAMES = new Set(['anya','aanya','emma','olivia','sophia','mia','ella','aria','luna','bella','zara','sara','anna','lily','rose','chloe','grace','violet','hazel','ivy','nora','aurora','isla','stella','clara','alice','eva','maya','layla','amira','aisha','fatima','hana','priya','meera','anaya','zoya','raya','jasmine','yasmin','amara','nina','lena','mara','kira','lara','diana','natasha','elena','anya','sakura','yuki','valentina','camila','lucia','naomi','ruby','daisy','poppy','iris','jade','fiona','molly','freya','charlotte','amelia','harper','avery','riley','zoey','mila','aubrey','hannah','addison','ellie','paisley','audrey','skylar','claire','lucy','samantha','caroline','aaliyah','gabriella','gianna','isabelle','valentina','nova','vivian','delilah','sophie','josephine','willow','cora','kaylee','lydia','arianna','peyton','melanie','brielle','isla','katherine','madeline','wren','juniper','maeve','esme','beatrice','diya','riya','siya','myra','kiara','anika','kavya','saanvi','aadhya','mahira','inaya','ayesha','zahra','safiya','noura']);
+      const BOY_NAMES = new Set(['max','leo','jack','james','oliver','noah','liam','adam','omar','ali','ryan','ben','sam','dan','tom','jake','luke','finn','kai','zain','amir','hassan','rami','tariq','yusuf','ethan','mason','logan','alex','henry','charlie','theo','oscar','archie','teddy','toby','freddie','alfie','harry','william','lucas','benjamin','theodore','levi','alexander','sebastian','aiden','owen','samuel','nathan','matthew','david','joseph','carter','wyatt','john','jayden','dylan','grayson','caleb','isaac','andrew','thomas','joshua','ezra','hudson','charles','christopher','jaxon','maverick','josiah','isaiah','george','edward','arthur','freddy','tommy','mohammed','muhammad','mohammad','mohamad','mohamed','mehmet','mustafa','abdallah','abdullah','yousef','ismail','idris','jamal','malik','hussein','arjun','dev','rahul','rohan','vivek','aditya','krishna','aarav','vihaan','kabir','hiro','mateo','santiago','diego','carlos','miguel']);
 
-  // Species-specific STRUCTURAL anatomy — SPECIES IDENTITY FIRST, then cartoon style.
-  // The #1 job of this block is making SDXL generate the RIGHT ANIMAL.
-  // Each entry leads with the species' most distinctive feature (rhino=horn,
-  // elephant=trunk, giraffe=long neck) so SDXL doesn't drift to a generic animal.
-  //
-  // COLOR-NEUTRAL: No color tokens — colors come from bible visual_fingerprint.
-  const speciesStructure: Record<string, string> = {
-    'rhinoceros': 'rhinoceros with large prominent horn on nose, thick gray skin, wide barrel-shaped body, four thick sturdy legs',
-    'rhino': 'rhinoceros with large prominent horn on nose, thick gray skin, wide barrel-shaped body, four thick sturdy legs',
-    'elephant': 'elephant with long trunk, large floppy ears, round body, four thick legs, cartoon style',
-    'giraffe': 'giraffe with very long neck, spotted pattern, four long legs, cartoon style',
-    'lion': 'lion with big fluffy mane around face, muscular body, tufted tail, cartoon style',
-    'tiger': 'tiger with bold stripes, round face, long striped tail, cartoon style',
-    'bear': 'bear with round ears, thick fluffy fur, big round body, big paws, cartoon style',
-    'rabbit': 'rabbit with two long upright ears, round fluffy tail, soft fur, pink nose, cartoon style',
-    'penguin': 'penguin with round belly, orange beak, two small flippers, cartoon style',
-  };
-  const structureLock = speciesStructure[species.toLowerCase()] || species;
-
-  // Use bible's visual_fingerprint as the PRIMARY appearance source.
-  // This is where colors, eye details, expression, and unique markings live.
-  // Only filter out entries that are EXACTLY the bare species name.
-  // Previously the filter was too aggressive — it stripped "cute cartoon rhinoceros",
-  // "round cheeks", and other identity-critical tokens.
-  const bibleAppearance = (bible.visual_fingerprint || [])
-    .map(s => s.trim())
-    .filter(s => {
-      if (!s) return false;
-      const lower = s.toLowerCase();
-      // Only skip bare species name (e.g. "rhinoceros" alone)
-      if (lower === species.toLowerCase()) return false;
-      // Skip entries that are ONLY "cartoon <species>" or "cute cartoon <species>" with no extra detail
-      if (lower === `cartoon ${species.toLowerCase()}`) return false;
-      if (lower === `cute cartoon ${species.toLowerCase()}`) return false;
-      return true;
-    })
-    .join(", ");
-
-  // KID-FRIENDLY SAFETY: Sanitize appearance text for custom/non-library characters.
-  // A kid saying "scary monster with sharp teeth" gets softened to "silly creature with big smile".
-  const { cleaned: safeBibleAppearance, wasModified: wasSanitized } = sanitizeForKids(bibleAppearance);
-  if (wasSanitized) {
-    console.log(`[Safety] Sanitized appearance: "${bibleAppearance}" → "${safeBibleAppearance}"`);
-  }
-
-  // Framing — "full body centered prominently" tells SDXL to render the character
-  // large and centered. Without "centered prominently", SDXL often renders tiny
-  // characters (bbox 3-7%) that fail the RULE 4 minimum size check.
-  const framing = "full body large centered prominently in frame";
-
-  // PROMPT STRUCTURE (within SDXL's 77-token window):
-  //   Tokens 1-6:   ART STYLE FIRST — forces consistent cartoon rendering
-  //   Tokens 7-12:  Character opener (species + name)
-  //   Tokens 13-22: Bible appearance (colors, eyes, expression)
-  //   Tokens 23-34: Species structure (shape, proportions)
-  //   Tokens 34-36: Framing
-  //   Tokens 36-42: Pose (injected per-page in runCandidateRound)
-  //
-  // CRITICAL: Style tokens MUST be at the FRONT. When they were at the end
-  // (tokens 36-45), SDXL inconsistently rendered realistic vs cartoon rhinos.
-  // Moving "children's picture book illustration" to token 1 ensures SDXL
-  // always renders in cartoon style regardless of the plate background.
-  const inpaintPrompt = [
-    "children's picture book illustration, bold outlines, flat vibrant colors",  // Tokens 1-6: STYLE FIRST — "flat" pushes SDXL away from realism
-    `cartoon ${species} character named ${name}`,  // Tokens 7-12: species + name — "cartoon" style, species identity CLEAR
-    safeBibleAppearance,                             // Tokens 13-22: bible colors/eyes/expression (kid-safe)
-    structureLock,                                   // Tokens 23-34: structural anatomy (no colors)
-    framing,                                         // Tokens 34-36: framing
-  ].filter(Boolean).join(", ");
-
-  return {
-    name,
-    species,
-    mustInclude: [species, name],
-    inpaintPrompt,
-  };
-}
-
-// ─── ACTION → POSE MAPPING ──────────────────────────────────────────────
-
-/**
- * Convert a scene card action (e.g. "Riri flying") into an SDXL-friendly
- * pose descriptor (e.g. "leaping through air with arms spread").
- *
- * These pose descriptors REPLACE the old static "centered in frame" token
- * in the inpaint prompt. They go right after "full body" so SDXL renders
- * the character in a distinct pose each page instead of identical standing.
- *
- * RULES:
- *   - Keep pose to 4-8 tokens (token budget is tight)
- *   - Describe BODY POSITION, not narrative ("climbing upward" not "exploring a cave")
- *   - Avoid scene words (moon, forest, ocean) — those are in the plate
- */
-function actionToPose(action: string): string {
-  const lower = action.toLowerCase();
-
-  // Extract the verb from "CharacterName verbing..." pattern
-  const verbMatch = lower.match(
-    /\b(flying|soaring|swimming|running|walking|jumping|leaping|climbing|dancing|playing|exploring|sleeping|eating|reading|waving|hugging|blasting|landing|cheering|floating|gazing|discovering|looking|bouncing|riding|diving|sliding|crawling|reaching|sitting|hiding|splashing|twirling|spinning|skipping|marching|tiptoeing|sneaking|peeking|pointing|standing|exclaiming|leading)\b/
-  );
-
-  if (verbMatch) {
-    const verb = verbMatch[1];
-    const poseMap: Record<string, string> = {
-      'flying':      'soaring with arms spread wide',
-      'soaring':     'soaring with arms spread wide',
-      'swimming':    'swimming forward with legs kicking',
-      'running':     'running forward with legs in stride',
-      'walking':     'walking forward with one foot ahead',
-      'jumping':     'jumping up with legs off the ground',
-      'leaping':     'leaping through the air',
-      'climbing':    'climbing upward with arms reaching high',
-      'dancing':     'dancing joyfully with arms raised',
-      'playing':     'bouncing playfully mid-motion',
-      'exploring':   'walking forward looking around curiously',
-      'sleeping':    'curled up sleeping peacefully',
-      'eating':      'sitting down eating happily',
-      'reading':     'sitting and holding a book',
-      'waving':      'waving one arm up high',
-      'hugging':     'arms wrapped in a warm hug',
-      'blasting':    'bracing excitedly arms in the air',
-      'landing':     'touching down feet on the ground',
-      'cheering':    'both arms raised high celebrating',
-      'floating':    'floating weightlessly limbs spread',
-      'gazing':      'looking upward in wonder',
-      'discovering': 'leaning forward reaching out curiously',
-      'looking':     'looking upward with awe',
-      'bouncing':    'bouncing mid-jump',
-      'riding':      'sitting and riding forward',
-      'diving':      'diving downward arms first',
-      'sliding':     'sliding forward playfully',
-      'splashing':   'splashing in water joyfully',
-      'twirling':    'spinning around with arms out',
-      'spinning':    'spinning around with arms out',
-      'skipping':    'skipping forward happily',
-      'marching':    'marching forward with big steps',
-      'tiptoeing':   'tiptoeing carefully forward',
-      'sneaking':    'crouching and sneaking forward',
-      'peeking':     'peeking around curiously',
-      'pointing':    'pointing forward excitedly',
-      'standing':    'standing with a friendly wave',
-      'exclaiming':  'arms raised in excitement',
-      'leading':     'walking forward confidently',
-      'sitting':     'sitting down comfortably',
-      'hiding':      'crouching down hiding',
-      'crawling':    'crawling forward on all fours',
-      'reaching':    'reaching forward with one arm',
-    };
-    return poseMap[verb] || `${verb} actively`;
-  }
-
-  // Check for compound action phrases
-  if (lower.includes('blast off') || lower.includes('blasted off') || lower.includes('taking off'))
-    return 'bracing excitedly arms in the air';
-  if (lower.includes('climbed inside') || lower.includes('climbing inside'))
-    return 'stepping forward into an opening';
-  if (lower.includes('soared over') || lower.includes('flew over'))
-    return 'soaring with arms spread wide';
-  if (lower.includes('landed safely') || lower.includes('safe landing'))
-    return 'touching down feet on the ground';
-
-  // Fallback: produce a mild pose variation instead of static standing
-  // Use a rotating set based on a simple hash of the action string
-  const fallbackPoses = [
-    'standing with one arm waving',
-    'walking forward happily',
-    'looking around curiously',
-    'pointing forward excitedly',
-    'bouncing with excitement',
-  ];
-  let hash = 0;
-  for (let i = 0; i < action.length; i++) hash = ((hash << 5) - hash + action.charCodeAt(i)) | 0;
-  return fallbackPoses[Math.abs(hash) % fallbackPoses.length];
-}
-
-// ─── SCENE OBJECT EXTRACTION ────────────────────────────────────────────
-
-/**
- * HIGH-SALIENCE OBJECTS — BLIP can reliably detect these in captions.
- * These are large, prominent objects that BLIP's 1-sentence caption will mention.
- * Small props (magic wand, flag, crown) are NEVER mentioned by BLIP.
- *
- * Only objects in this set are enforced by Gate 5C.
- * Other objects still go into the plate prompt but aren't scoring gates.
- */
-const HIGH_SALIENCE_OBJECTS = new Set([
-  // Large animals (BLIP reliably detects these)
-  "dolphins", "dolphin", "whale", "lion", "lions", "bear", "dragon",
-  "unicorn", "elephant", "turtle", "shark", "octopus",
-  "moon rabbits", "moon rabbit", "rabbit", "bunny",
-  // Large vehicles/structures
-  "rocket ship", "rocket", "spaceship", "boat", "sailboat", "airplane",
-  // Large nature features
-  "rainbow", "waterfall", "river",
-  // Large objects
-  "treasure chest",
-  // NOTE: "moon" and "stars" intentionally EXCLUDED — they are settings, not objects.
-  // BLIP rarely mentions them, and they pollute every page of a space story.
-]);
-
-/**
- * ANIMAL TERMS — used to split scene objects into animal vs non-animal.
- *
- * Solo pages: animals are FILTERED from the plate (plate = environment only).
- * Multi-char pages: animals are INCLUDED in the plate (they're secondary actors).
- *
- * The main character is NEVER in the plate — always added via inpaint.
- */
-const PLATE_ANIMAL_FILTER = new Set([
-  "rabbit", "rabbits", "bunny", "bunnies",
-  "moon rabbit", "moon rabbits", "moon bunny", "moon bunnies",
-  "dolphin", "dolphins", "whale", "whales",
-  "butterfly", "butterflies", "bird", "birds",
-  "fish", "fishes", "owl", "owls", "fox", "foxes",
-  "lion", "lions", "bear", "bears", "dragon", "dragons",
-  "unicorn", "unicorns", "turtle", "turtles",
-  "fairies", "fairy", "aliens", "alien",
-  "dog", "cat", "puppy", "kitten",
-  "octopus", "shark", "sharks",
-  "friends",  // "friends" is never visual
-]);
-
-/**
- * VISUAL_NOUN_WHITELIST — only these nouns survive as "key objects".
- * Anything not in this list (or a substring match) is dropped.
- * This prevents junk tokens like "the", "his", "friends" from
- * being treated as required visual objects.
- */
-const VISUAL_NOUN_WHITELIST = new Set([
-  // Vehicles
-  "rocket ship", "rocket", "spaceship", "boat", "sailboat", "airplane", "vehicle",
-  // Animals / creatures
-  "dolphins", "dolphin", "whale", "butterflies", "butterfly", "fish", "birds", "bird",
-  "moon rabbits", "moon rabbit", "moon bunnies", "moon bunny", "lions", "lion",
-  "dragon", "unicorn", "fairies", "fairy", "aliens", "alien", "robot",
-  "turtle", "octopus", "shark", "owl", "fox", "bear", "rabbit", "bunny",
-  "dog", "cat", "puppy", "kitten",
-  // Nature objects
-  "rainbow", "waterfall", "river", "stream", "flowers", "flower",
-  "trees", "tree", "forest", "cave",
-  // Celestial
-  "moon", "stars", "star", "planets", "planet", "sun", "craters", "crater",
-  // Items
-  "treasure chest", "treasure", "crown", "flag", "telescope", "map",
-  "balloons", "balloon", "magic wand", "book", "helmet",
-  // Settings (these help plate prompt, not scoring)
-  "ocean", "sea", "beach", "mountain", "desert", "snow", "lake",
-]);
-
-/**
- * STOPWORDS — always removed from extracted items.
- */
-const STOPWORDS = new Set([
-  "the", "a", "an", "and", "or", "of", "to", "in", "on", "with", "for",
-  "is", "it", "its", "his", "her", "my", "their", "our", "this", "that",
-  "at", "by", "from", "was", "were", "be", "been", "being",
-  "full", "body", "cute", "colorful", "playful", "friendly", "magical",
-  "small", "big", "large", "little", "golden", "bright",
-]);
-
-/**
- * Clean a raw must-include item:
- * 1. Lowercase + strip punctuation
- * 2. Remove stopwords
- * 3. Check against visual noun whitelist
- * Returns the cleaned term if it's a real visual noun, or null.
- */
-function cleanSceneItem(raw: string): string | null {
-  const lower = raw.toLowerCase().replace(/[^\w\s]/g, " ").replace(/\s+/g, " ").trim();
-  if (!lower) return null;
-
-  // Direct whitelist match (before stripping — "rocket ship", "moon rabbits")
-  if (VISUAL_NOUN_WHITELIST.has(lower)) return lower;
-
-  // Strip stopwords and adjectives
-  const words = lower.split(" ").filter((w) => !STOPWORDS.has(w) && w.length > 1);
-  if (words.length === 0) return null;
-
-  const cleaned = words.join(" ");
-  if (!cleaned) return null;
-
-  // Check cleaned form against whitelist
-  if (VISUAL_NOUN_WHITELIST.has(cleaned)) return cleaned;
-
-  // Check if any individual word matches whitelist
-  for (const word of words) {
-    if (VISUAL_NOUN_WHITELIST.has(word)) return word;
-    // Plural check: "dolphins" → "dolphin"
-    if (word.endsWith("s") && VISUAL_NOUN_WHITELIST.has(word.slice(0, -1))) return word;
-  }
-
-  // "friends" is not visual — only specific animal groups pass
-  if (cleaned === "friends" || cleaned === "family") return null;
-
-  return null;
-}
-
-/**
- * Extract scene objects from a PageSceneCard's must_include / key_objects,
- * filtering out character-identity items AND junk tokens.
- *
- * These objects (rocket, dolphins, rainbow, etc.) go into:
- *   1. Plate prompt — so the background contains them
- *   2. Scoring — so BLIP caption is checked for them
- */
-function extractSceneObjects(
-  card: PageSceneCard | undefined,
-  identity: CharacterIdentity
-): string[] {
-  if (!card) return [];
-
-  const identityLower = new Set(
-    identity.mustInclude.map((s) => s.toLowerCase())
-  );
-  const isCharacterItem = (item: string): boolean => {
-    const lower = item.toLowerCase();
-    if (identityLower.has(lower)) return true;
-    if (lower.includes(identity.name.toLowerCase())) return true;
-    if (lower.includes(identity.species.toLowerCase()) && (lower.includes("full body") || lower.includes("the "))) return true;
-    return false;
-  };
-
-  const seen = new Set<string>();
-  const objects: string[] = [];
-
-  const addItem = (raw: string) => {
-    if (isCharacterItem(raw)) return;
-    const cleaned = cleanSceneItem(raw);
-    if (cleaned && !seen.has(cleaned)) {
-      seen.add(cleaned);
-      objects.push(cleaned);
+      if (GIRL_NAMES.has(nameLower)) genderHint = 'girl';
+      else if (BOY_NAMES.has(nameLower)) genderHint = 'boy';
+      else {
+        // Last resort: check appearance text for gender signals
+        const allText = [hair, outfit, bible.appearance?.face_features || ""].join(" ").toLowerCase();
+        if (/\bdress\b|\bskirt\b|\bponytail\b|\bbraids?\b|\bbow\b|\bprincess\b|\btiara\b|\btutu\b|\bpigtails?\b/i.test(allText)) genderHint = 'girl';
+        else if (/\bshort\s+hair\b|\bcrew\s*cut\b|\boveralls\b|\bbaseball\s+cap\b/i.test(allText)) genderHint = 'boy';
+        else genderHint = 'boy'; // Default to boy — safer than girl (avoids adding feminine features/eyelashes that cause earrings)
+      }
     }
-  };
-
-  // From must_include (e.g., "colorful rocket ship", "playful dolphins")
-  const mustItems = (card.must_include && card.must_include.length > 0)
-    ? card.must_include
-    : ((card as any).required_elements || []);
-  for (const item of mustItems) addItem(item);
-
-  // From key_objects (e.g., "rocket ship", "rainbow")
-  if (card.key_objects) {
-    for (const obj of card.key_objects) addItem(obj);
+    species = genderHint;
+    console.log(`[Identity] Gender from bible: "${bible.gender}" → genderHint: "${genderHint}"`);
   }
 
-  console.log(`[SceneObjects] Extracted from card (cleaned): [${objects.join(", ")}]`);
-  return objects;
-}
+  // Extract age for human characters — used to enforce child proportions in prompts
+  const age = isHuman ? (bible.age || "6 years old") : "";
 
-// ─── STYLE HINTS DERIVATION ─────────────────────────────────────────────
-
-/**
- * Derive style hints from the SCENE SETTING TEXT (not the classifier).
- * This prevents contamination where a "Forest scene" gets moon-style hints
- * because the classifier matched "moon_surface" from story text mentioning "moon".
- *
- * The style hints control the visual atmosphere of the plate — colors, lighting,
- * terrain textures. They MUST match the setting, not the classifier category.
- */
-function deriveStyleHintsFromSetting(settingText: string): string {
-  const lower = settingText.toLowerCase();
-
-  const hintGroups: [string[], string][] = [
-    // Specific compound settings first — ORDER MATTERS (first match wins)
-    [["cockpit", "inside a rocket", "inside the rocket", "interior of a rocket", "pilot seat"], "interior cockpit, control panels, glowing buttons, windows showing stars outside, warm cabin lighting, spaceship interior, bright instrument lights"],
-    [["waterfall", "cascade"], "flowing water, mist, rocks, lush vegetation, dappled sunlight"],
-    [["rocket", "spaceship", "blast", "launch", "liftoff"], "blue sky, white clouds, rocket trail, bright colors"],
-    [["underwater"], "deep blue water, coral, bubbles, ocean light, fish"],
-    // Water
-    [["ocean", "sea", "beach", "shore", "wave", "coast"], "waves, blue water, sandy beach, bright sky, horizon"],
-    [["lake", "pond"], "still water, reflections, reeds, soft light"],
-    [["river", "stream", "creek"], "clear water, smooth stones, gentle current, green banks"],
-    // Nature
-    [["forest", "tree", "wood", "jungle", "clearing"], "lush greens, dappled sunlight, tall trees, vibrant nature"],
-    [["garden", "flower", "meadow", "bloom"], "flowers, vibrant colors, green grass, butterflies, warm light"],
-    [["mountain", "hill", "cliff", "peak"], "elevated terrain, wide sky, distant peaks, rocky outcrops"],
-    [["desert", "sand", "dune"], "golden sand, warm tones, wide sky, gentle shadows"],
-    [["cave", "cavern", "underground", "grotto"], "rocky walls, soft glow, stalactites, mysterious atmosphere"],
-    [["savannah", "grassland", "plain", "prairie"], "golden grass, warm light, wide horizon, scattered trees"],
-    // Space/celestial — recognizable moon/space, bright enough for kids' book
-    [["moon", "crater", "lunar"], "gray rocky moon surface, round craters, bright Earth visible in starry sky, starlight, well-lit foreground, soft blue glow"],
-    [["space", "star", "planet", "galaxy", "cosmos", "orbit"], "colorful starry sky, bright planets, colorful nebula, well-lit foreground, vivid colors"],
-    // Sky/weather
-    [["sky", "cloud", "flying", "soar"], "blue sky, white fluffy clouds, bright sunlight"],
-    [["night", "starlit", "starry", "dark"], "deep blue night sky, bright glowing stars, moonlight, soft warm glow, well-lit foreground"],
-    [["rain", "storm", "thunder"], "rain, overcast, puddles, glistening surfaces"],
-    [["snow", "ice", "winter", "arctic", "frozen"], "white snow, soft blue shadows, crisp sky"],
-    // Indoor/village
-    [["indoor", "room", "interior", "cozy", "inside"], "cozy interior, warm lighting, furniture, soft colors"],
-    [["village", "town", "house", "home", "building"], "colorful buildings, paths, warm atmosphere, friendly scene"],
-  ];
-
-  for (const [keywords, hints] of hintGroups) {
-    if (keywords.some(kw => lower.includes(kw))) return hints;
+  // Extract skin tone for human characters — needs to be EXPLICIT and STRONG
+  // to prevent Flux from defaulting to pale/light skin.
+  let skinTone = "";
+  if (isHuman) {
+    const rawSkinTone = (bible.appearance?.skin_tone || "").toLowerCase();
+    if (rawSkinTone.includes('deep brown') || rawSkinTone.includes('dark brown') || rawSkinTone.includes('dark skin')) {
+      skinTone = 'dark brown skin, dark brown complexion';
+    } else if (rawSkinTone.includes('light-brown') || rawSkinTone.includes('light brown') || rawSkinTone.includes('warm light')) {
+      // Neutral default — don't over-strengthen to avoid pushing Flux too dark
+      skinTone = 'warm light-brown skin';
+    } else if (rawSkinTone.includes('brown') || rawSkinTone.includes('caramel') || rawSkinTone.includes('warm brown')) {
+      skinTone = 'brown skin, brown complexion';
+    } else if (rawSkinTone.includes('tan') || rawSkinTone.includes('olive')) {
+      skinTone = 'tan olive skin';
+    } else if (rawSkinTone.includes('fair') || rawSkinTone.includes('pale') || rawSkinTone.includes('light')) {
+      skinTone = 'fair light skin';
+    } else if (rawSkinTone) {
+      skinTone = rawSkinTone;
+    }
+    console.log(`[Identity] Skin tone from bible: "${rawSkinTone}" → strengthened: "${skinTone}"`);
   }
 
-  return "bright colors, friendly atmosphere";
-}
+  // Extract identity-defining accessories (glasses, hats, bows, etc.)
+  const accessories = bible.accessories || "";
 
-// ─── ROCKET/SKY SCENE DETECTION ─────────────────────────────────────────
+  console.log(`[Identity] Extracted species: "${species}" (name="${name}", type="${bible.character_type}", gender="${genderHint}", hair="${hair}", outfit="${outfit}", age="${age}", skinTone="${skinTone}", accessories="${accessories}")`);
 
-/**
- * Detect if a scene setting is a "rocket in sky/space" scene.
- * These scenes produce plates where a giant rocket fills the frame,
- * leaving no room for the character in the inpaint mask region.
- *
- * Fix: rewrite plate to show rocket SMALL in background with ground foreground.
- */
-function isRocketSkyScene(setting: string): boolean {
-  const lower = setting.toLowerCase();
-  const hasRocket = /\brocket\b|\bspaceship\b|\bblast\w*\s+off\b|\blaunch\b|\bliftoff\b/.test(lower);
-  const hasSky = /\bsky\b|\bspace\b|\bflying\b|\bcloud\b|\bsoar\b|\bair\b/.test(lower);
-  return hasRocket && hasSky;
-}
+  // Build visual tokens from bible
+  const visualTokens = (bible.visual_fingerprint || [])
+    .map(s => s.trim())
+    .filter(Boolean);
 
-/**
- * Rewrite a rocket/sky plate prompt to keep rocket visible but not frame-filling.
- * The original "Rocket ship blasting off into space" fills the entire frame
- * with rocket → inpaint mask overlaps with rocket → character can't render.
- *
- * Fix: place rocket clearly visible in upper portion of frame, character space
- * in lower/center. Rocket must be large enough for BLIP to caption it.
- */
-function rewriteRocketPlatePrompt(
-  styleHints: string,
-  sceneObjects: string[]
-): string {
-  // Filter out "rocket ship"/"rocket" from scene objects — it's already in the rewritten prompt
-  const otherObjects = sceneObjects.filter(o => !/rocket|spaceship/i.test(o));
-  // SHORTENED: Keep under ~50 tokens so setting stays in SDXL's attention window.
-  // Rocket is placed SMALL in background so the character mask area has clear ground.
-  const parts = [
-    "wide scene, bright green meadow in lower half, small colorful rocket ship in upper sky with flame trail",
-  ];
-  if (otherObjects.length > 0) parts.push(otherObjects.join(", "));
-  const shortHints = styleHints.split(", ").slice(0, 4).join(", ");
-  parts.push(shortHints);
-  parts.push("children's picture book illustration, bold outlines, flat vibrant colors, well-lit");
-  parts.push("no characters, no animals, no people, no text");
-  return parts.join(", ");
-}
+  // Sanitize for kids
+  const rawDescription = visualTokens.join(", ");
+  const { cleaned: safeDescription } = sanitizeForKids(rawDescription);
 
-// ─── PLATE PROMPT BUILDER ───────────────────────────────────────────────
-
-/**
- * Build plate prompt with scene objects baked in.
- * Scene objects (rockets, dolphins, rainbows) appear in the plate
- * BEFORE character inpainting. The main character is NEVER in the plate.
- *
- * For multi-character pages: secondary actors (dolphins, rabbits) ARE in the plate.
- * For solo pages: no animals at all in the plate.
- */
-function buildPlatePrompt(
-  setting: string,
-  styleHints: string,
-  sceneObjects: string[],
-  mainSpecies: string,
-  hasSecondaryActors: boolean
-): string {
-  // CRITICAL: Setting MUST be in tokens 1-20 (highest SDXL attention).
-  // Previously, appending ~40 tokens of style AFTER setting pushed the scene
-  // description past SDXL's effective attention window, causing wrong backgrounds.
-  //
-  // New structure:
-  //   Tokens 1-20:  SETTING (highest attention) — "Moon surface with craters and starry sky"
-  //   Tokens 20-35: SCENE OBJECTS — "rocket ship, dolphins"
-  //   Tokens 35-50: STYLE HINTS — scene-specific atmosphere
-  //   Tokens 50-65: ART STYLE — shortened to essentials only
-  //   Tokens 65-77: EXCLUSIONS
-  const parts = [setting];
-  if (sceneObjects.length > 0) parts.push(sceneObjects.join(", "));
-  // Shortened style hints: only first 6 comma-separated terms to save tokens
-  const shortHints = styleHints.split(", ").slice(0, 6).join(", ");
-  parts.push(shortHints);
-  // Shortened art style: removed redundant terms to stay under 77 tokens
-  parts.push("children's picture book illustration, bold outlines, flat vibrant colors, well-lit");
-  if (hasSecondaryActors) {
-    parts.push(`no ${mainSpecies}, no people, no text`);
+  // Build a concise character description for Kontext prompts
+  let description: string;
+  if (isHuman) {
+    const genderWord = genderHint || "girl";
+    const hairDesc = hair ? `, ${hair}` : "";
+    const outfitDesc = outfit ? `, wearing ${outfit}` : "";
+    const accessoryDesc = accessories ? `, wearing ${accessories}` : "";
+    const ageCue = age ? `, ${age}` : ", young child";
+    const genderCue = genderWord === 'girl' ? ', feminine features, cute girl face' : ', boyish features, young boy face';
+    const skinCue = skinTone ? `, ${skinTone}` : "";
+    description = `a cute cartoon ${genderWord} named ${name}${ageCue}, small childlike body${skinCue}${genderCue}, ${safeDescription}${hairDesc}${accessoryDesc}${outfitDesc}`;
   } else {
-    parts.push("no characters, no animals, no people, no text");
+    description = `a cute cartoon ${species} named ${name}, ${safeDescription}`;
   }
-  return parts.join(", ");
+
+  // Build a concise hair cue for prompt reinforcement
+  const hairCue = isHuman && hair ? hair : "";
+  if (hairCue) {
+    console.log(`[Identity] Hair cue for reinforcement: "${hairCue}"`);
+  }
+  if (accessories) {
+    console.log(`[Identity] Accessories cue for reinforcement: "${accessories}"`);
+  }
+
+  return { name, species, description, visualTokens, hair, outfit, genderHint, age, skinTone, hairCue, accessories };
 }
 
-// ─── SINGLE PAGE: PLATE → INPAINT → SCORE → ACCEPT ─────────────────────
+// ─── SINGLE PAGE GENERATION (SIMPLIFIED) ─────────────────────────────────
+//
+// NEW ARCHITECTURE: GPT writes complete IMAGE_PROMPT directly for each page.
+// This function's only job: take GPT's prompt → append safety cues → send to Flux.
+// No more regex extraction, pose mapping, scene card parsing, or keyword soup.
+//
 
+/**
+ * Generate a single page illustration from GPT's IMAGE_PROMPT.
+ *
+ * GPT writes complete Flux-ready prompts including character description,
+ * pose, background, and art style. We only add:
+ *   1. Child safety word replacements (worried → curious)
+ *   2. Species guard (prevent character type drift)
+ *   3. Skin tone reinforcement (prevent Flux lightening)
+ *   4. Hair reinforcement (prevent style changes across pages)
+ *   5. No-text guard
+ */
 async function generateOnePage(
-  pagePrompt: string,
+  imagePrompt: string,
   pageIndex: number,
   seed: number,
   identity: CharacterIdentity,
-  customNegative?: string,
-  pageSceneCard?: PageSceneCard,
-  clipAnchorEmbedding?: number[],
-  anchorBuffer?: Buffer | null
-): Promise<{ url: string; accepted: boolean; caption: string; score: number }> {
+  referenceImageUrl?: string,
+  additionalIdentities?: CharacterIdentity[],
+): Promise<{ url: string; accepted: boolean }> {
   console.log(`\n${"=".repeat(60)}`);
   console.log(`[Page ${pageIndex + 1}] Character: ${identity.name} (${identity.species})`);
-
-  // ── 0. Extract page action for pose variation ──
-  const pageAction = pageSceneCard?.action || "";
-  if (pageAction) {
-    console.log(`[Page ${pageIndex + 1}] Action: "${pageAction}" → Pose: "${actionToPose(pageAction)}"`);
+  if (additionalIdentities?.length) {
+    console.log(`[Page ${pageIndex + 1}] Additional characters: ${additionalIdentities.map(id => id.name).join(', ')}`);
   }
 
-  // ── 1. Determine scene setting ──
-  const cardSetting = pageSceneCard?.setting;
-  const cardObjects = extractSceneObjects(pageSceneCard, identity);
+  const isHumanChar = identity.genderHint !== "";
 
-  // Classifier only for the category tag (dark scene detection)
-  const classifierMatch = classifyScene(pagePrompt);
-  const sceneCategory = classifierMatch?.key ?? "generic";
-
-  let sceneSetting: string;
-  let styleHints: string;
-  const isGenericSetting = !cardSetting || cardSetting === "Storybook scene" || cardSetting === "colorful storybook scene";
-  if (!isGenericSetting) {
-    sceneSetting = cardSetting;
-    styleHints = deriveStyleHintsFromSetting(sceneSetting);
-    console.log(`[Page ${pageIndex + 1}] Using CARD setting: "${sceneSetting}" (classifier tag: ${sceneCategory})`);
-    console.log(`[Page ${pageIndex + 1}] Style hints (from card): "${styleHints}"`);
-  } else {
-    sceneSetting = "colorful storybook landscape with bright green grass and blue sky";
-    styleHints = "bright colors, cheerful atmosphere, vibrant greens, blue sky, warm sunlight";
-    console.log(`[Page ${pageIndex + 1}] Generic card setting ("${cardSetting ?? "none"}") → bright storybook landscape`);
-    console.log(`[Page ${pageIndex + 1}] Style hints: "${styleHints}"`);
-  }
-
-  console.log(`[Page ${pageIndex + 1}] Scene objects (card): [${cardObjects.join(", ")}]`);
-
-  // ── 2. Prepare plate objects ──
-  // EVERY page uses plate→inpaint. This is the key to identity lock:
-  //   plate = scene + secondary actors (no main character)
-  //   inpaint = main character only (same prompt every page)
-  //
-  // For multi-character pages: secondary actors (dolphins, rabbits, etc.)
-  // go INTO the plate so they appear in the background/midground.
-  // Riri is always inpainted on top via the consistent mask+prompt.
-  const animalObjects = cardObjects.filter((obj) => PLATE_ANIMAL_FILTER.has(obj.toLowerCase()));
-  const nonAnimalObjects = cardObjects.filter((obj) => !PLATE_ANIMAL_FILTER.has(obj.toLowerCase()));
-
-  // Filter supporting characters to specific visual actors only.
-  // "friends", "family", "his", "the" are NOT visual actors.
-  const VISUAL_ACTORS = new Set([
-    "dog", "cat", "birds", "rabbit", "bear", "fox", "owl", "butterflies",
-    "fish", "dolphins", "whale", "shark", "turtle", "octopus",
-    "dragon", "unicorn", "fairies", "aliens", "robot", "lions",
-  ]);
-  const filteredSupportingChars = (pageSceneCard?.supporting_characters ?? [])
-    .filter((ch) => VISUAL_ACTORS.has(ch.toLowerCase()));
-
-  const hasSecondaryActors = animalObjects.length > 0 || filteredSupportingChars.length > 0;
-
-  let plateObjects: string[];
-  if (hasSecondaryActors) {
-    // Multi-character: include ALL objects (including secondary animals) in plate.
-    // Riri is inpainted on top — secondary actors stay in background.
-    plateObjects = [...cardObjects];
-    // Add supporting chars not already in cardObjects
-    for (const ch of filteredSupportingChars) {
-      if (!plateObjects.some(o => o.toLowerCase() === ch.toLowerCase())) {
-        plateObjects.push(ch);
-      }
-    }
-    console.log(`[Page ${pageIndex + 1}] MULTI-CHAR plate: secondary actors [${[...animalObjects, ...filteredSupportingChars].join(", ")}]`);
-  } else {
-    // Solo page: no animals in plate (environment only)
-    plateObjects = nonAnimalObjects;
-  }
-
-  // ── 3. ALL pages: PLATE → INPAINT → SCORE (identity lock) ──
-  console.log(`========== PAGE ${pageIndex + 1}: PLATE → INPAINT → SCORE ==========`);
-
-  // Rocket/sky scenes: rocket fills the frame → no room for character.
-  // Rewrite plate to show rocket small in background with ground foreground.
-  const rocketSky = isRocketSkyScene(sceneSetting);
-  let platePrompt: string;
-  if (rocketSky && !hasSecondaryActors) {
-    platePrompt = rewriteRocketPlatePrompt(styleHints, plateObjects);
-    console.log(`[Page ${pageIndex + 1}] ROCKET-SKY REWRITE: rocket moved to background, ground foreground added`);
-  } else {
-    platePrompt = buildPlatePrompt(sceneSetting, styleHints, plateObjects, identity.species, hasSecondaryActors);
-  }
-  console.log(`[Page ${pageIndex + 1}] Plate prompt: "${platePrompt}"`);
-
-  // Multi-char plates use a special negative that allows secondary actors
-  const plateNegative = hasSecondaryActors
-    ? buildMultiCharPlateNegative(identity.species)
-    : undefined;
-
-  const plateUrl = await generatePlate(replicate, platePrompt, seed, pageIndex, undefined, 0.80, undefined, plateNegative);
-  if (!plateUrl) {
-    console.error(`[Page ${pageIndex + 1}] PLATE FAILED`);
-    return { url: "", accepted: false, caption: "", score: -999 };
-  }
-  console.log(`[Page ${pageIndex + 1}] Plate OK: ${plateUrl.substring(0, 60)}...`);
-
-  // Build masks (same position/size every page → identity lock)
-  const [initialMask, escalatedMask, extraLargeMask] = await Promise.all([
-    makeRiriZoneMaskDataUrl(1024),
-    makeRiriZoneLargeMaskDataUrl(1024),
-    makeRiriZoneExtraLargeMaskDataUrl(1024),
-  ]);
-
-  // Score options — derive setting keywords from the CARD setting text, NOT the
-  // generic fallback. The fallback contains "blue sky" which triggers the sky keyword
-  // group, causing wrong scoring for generic/storybook pages.
-  const settingKeywords = isGenericSetting ? [] : deriveSettingKeywordsFromText(sceneSetting);
-  console.log(`[Page ${pageIndex + 1}] Setting keywords: [${settingKeywords.slice(0, 6).join(", ")}${settingKeywords.length > 6 ? "..." : ""}]${isGenericSetting ? " (generic — skipped)" : ""}`);
-
-  // Only INANIMATE objects go into required scoring — living creatures (rabbit, dolphins,
-  // lions) can't survive inpainting at any useful strength. BLIP also omits secondary
-  // actors from its 1-sentence caption. Enforcing them causes 80%+ reject rate.
-  const INANIMATE_SCORABLE = new Set([
-    "rocket ship", "rocket", "spaceship", "boat", "sailboat", "airplane",
-    "rainbow", "waterfall", "river", "treasure chest",
-  ]);
-  const requiredObjects = cardObjects.filter((obj) => INANIMATE_SCORABLE.has(obj.toLowerCase()));
-  console.log(`[Page ${pageIndex + 1}] Required objects for scoring: [${requiredObjects.join(", ")}]`);
-
-  const scoreOpts: ScoreOptions = {
-    mustInclude: [...identity.mustInclude],
-    requireMustIncludeCount: 1,
-    settingKeywords,
-    keyObjects: requiredObjects,
-    // Allow expected secondary actors (lions, dolphins, etc.) in Rule 2.
-    // Without this, "a rhinoceros and a lion in a forest" gets rejected even
-    // when lions ARE the expected scene element.
-    allowedAnimals: animalObjects,
-    // CLIP identity scoring: compare each candidate to the anchor image.
-    // This enforces visual consistency — Riri must look similar across all pages.
-    cachedAnchorEmbedding: clipAnchorEmbedding,
-    // DINO detection: secondary confirmation that rhinoceros is in the image.
-    // Rescues images where BLIP misidentifies the species but rhino IS there.
-    enableDetection: true,
-  };
-
-  const inpaintMustInclude = [...identity.mustInclude, ...cardObjects];
-
-  // Multi-char pages start with bigger masks — secondary actors in the plate
-  // compete with Riri for visual space. Bigger mask = more room for Riri.
-  const round1Mask = hasSecondaryActors ? escalatedMask : initialMask;
-  const round2Mask = hasSecondaryActors ? extraLargeMask : escalatedMask;
-
-  // Large secondary animals (lions, bears) can dominate the plate
-  // and compete with the rhino for visual space.
-  // Give them 2 multi-char rounds (was 1, which meant they NEVER appeared).
-  // The solo fallback still happens if both rounds fail.
-  const LARGE_ANIMALS = new Set(["lions", "lion", "bear", "bears", "dragon", "dragons"]);
-  const hasLargeSecondary = hasSecondaryActors && animalObjects.some(a => LARGE_ANIMALS.has(a.toLowerCase()));
-  const multiCharMaxRounds = hasLargeSecondary ? 2 : 3;
-  if (hasLargeSecondary) {
-    console.log(`[Page ${pageIndex + 1}] LARGE secondary animals detected — will fast-track to solo plate after 1 round`);
-  }
-
-  // Track the best accepted candidate across ALL rounds.
-  // Rounds 1-2 require score >= MIN_ROUND_ACCEPT to return early.
-  // If the best is below that threshold, continue to the next round.
-  // After all rounds, return the overall best (even if marginal).
-  let overallBest: CandidateResult | null = null;
-
-  function pickBest(candidates: CandidateResult[], current: CandidateResult | null): CandidateResult | null {
-    const accepted = candidates.filter((r) => r.accepted).sort((a, b) => b.score - a.score);
-    if (accepted.length > 0 && (!current || accepted[0].score > current.score)) {
-      return accepted[0];
-    }
-    return current;
-  }
-
-  // Round 1
-  console.log(`[Page ${pageIndex + 1}] Round 1: ${CANDIDATES_PER_ROUND} candidates${hasSecondaryActors ? " (multi-char: escalated mask + high strength)" : ""}...`);
-  const round1 = await runCandidateRound(
-    plateUrl, round1Mask, seed, CANDIDATES_PER_ROUND, pageIndex,
-    scoreOpts, inpaintMustInclude, sceneSetting, identity, sceneCategory,
-    false, hasSecondaryActors, cardObjects, pageAction, anchorBuffer || null,
-    animalObjects
-  );
-  overallBest = pickBest(round1, overallBest);
-  if (overallBest && overallBest.score >= MIN_ROUND_ACCEPT) {
-    console.log(`[Page ${pageIndex + 1}] ACCEPTED from round 1: score=${overallBest.score}`);
-    return overallBest;
-  }
-  if (overallBest) {
-    console.log(`[Page ${pageIndex + 1}] Round 1 best score=${overallBest.score} < ${MIN_ROUND_ACCEPT} — continuing for better match`);
-  }
-
-  if (multiCharMaxRounds >= 2) {
-    // Round 2: escalated mask (or extra-large for multi-char)
-    console.log(`[Page ${pageIndex + 1}] Round 2: ${hasSecondaryActors ? "EXTRA-LARGE" : "ESCALATED"} mask...`);
-    const round2 = await runCandidateRound(
-      plateUrl, round2Mask, seed + CANDIDATES_PER_ROUND * SEED_STRIDE, CANDIDATES_PER_ROUND, pageIndex,
-      scoreOpts, inpaintMustInclude, sceneSetting, identity, sceneCategory,
-      false, hasSecondaryActors, cardObjects, pageAction, anchorBuffer || null,
-      animalObjects
-    );
-    overallBest = pickBest(round2, overallBest);
-    if (overallBest && overallBest.score >= MIN_ROUND_ACCEPT) {
-      console.log(`[Page ${pageIndex + 1}] ACCEPTED from round 2: score=${overallBest.score}`);
-      return overallBest;
-    }
-    if (overallBest) {
-      console.log(`[Page ${pageIndex + 1}] Round 2 best score=${overallBest.score} < ${MIN_ROUND_ACCEPT} — continuing for better match`);
-    }
-  }
-
-  if (multiCharMaxRounds >= 3) {
-    // Round 3: extra-large mask + high strength — accept anything
-    console.log(`[Page ${pageIndex + 1}] Round 3: EXTRA-LARGE mask + high strength...`);
-    const round3 = await runCandidateRound(
-      plateUrl, extraLargeMask, seed + CANDIDATES_PER_ROUND * SEED_STRIDE * 2, CANDIDATES_PER_ROUND, pageIndex,
-      scoreOpts, inpaintMustInclude, sceneSetting, identity, sceneCategory, true, hasSecondaryActors, cardObjects, pageAction, anchorBuffer || null,
-      animalObjects
-    );
-    overallBest = pickBest(round3, overallBest);
-    if (overallBest) {
-      console.log(`[Page ${pageIndex + 1}] ACCEPTED from round 3: score=${overallBest.score}`);
-      return overallBest;
-    }
-  }
-
-  // Solo plate fallback: secondary actors (dolphins, lions) in the plate
-  // compete with the rhino for visual dominance.
-  // Fix: regenerate a SOLO plate (no secondary actors) and try again.
-  // Also try this when earlier rounds only found marginal accepts.
-  if (hasSecondaryActors && (!overallBest || overallBest.score < MIN_ROUND_ACCEPT)) {
-    console.log(`[Page ${pageIndex + 1}] SOLO PLATE FALLBACK (no secondary actors)...`);
-    const soloPlatePrompt = buildPlatePrompt(sceneSetting, styleHints, nonAnimalObjects, identity.species, false);
-    console.log(`[Page ${pageIndex + 1}] Solo plate prompt: "${soloPlatePrompt.substring(0, 100)}..."`);
-
-    const soloPlateUrl = await generatePlate(replicate, soloPlatePrompt, seed + 5000, pageIndex);
-    if (soloPlateUrl) {
-      const soloRound = await runCandidateRound(
-        soloPlateUrl, extraLargeMask,
-        seed + CANDIDATES_PER_ROUND * SEED_STRIDE * 3, CANDIDATES_PER_ROUND, pageIndex,
-        scoreOpts, [...identity.mustInclude], sceneSetting, identity, sceneCategory,
-        true, false, nonAnimalObjects, pageAction, anchorBuffer || null,
-        []  // solo: no secondary animals to protect
-      );
-      overallBest = pickBest(soloRound, overallBest);
-      if (overallBest && overallBest.score >= MIN_ROUND_ACCEPT) {
-        console.log(`[Page ${pageIndex + 1}] ACCEPTED from solo fallback: score=${overallBest.score}`);
-        return overallBest;
-      }
-    }
-  }
-
-  // Return best from any round if we have one (even below MIN_ROUND_ACCEPT)
-  if (overallBest) {
-    console.log(`[Page ${pageIndex + 1}] Returning best across all rounds: score=${overallBest.score}`);
-    return overallBest;
-  }
-
-  // TXT2IMG FALLBACK: If plate→inpaint pipeline failed completely,
-  // generate a full scene with txt2img (character + objects + setting in one prompt).
-  // This sacrifices identity consistency but guarantees SOMETHING on the page.
-  console.log(`[Page ${pageIndex + 1}] TXT2IMG FALLBACK: generating full scene...`);
-  const fallbackPose = pageAction ? actionToPose(pageAction) : "standing happily";
-  const txt2imgPrompt = [
-    identity.inpaintPrompt,
-    fallbackPose,
-    cardObjects.length > 0 ? cardObjects.slice(0, 2).join(", ") : "",
-    sceneSetting.split(",")[0].trim(),
-  ].filter(Boolean).join(", ");
-  console.log(`[Page ${pageIndex + 1}] Txt2img prompt: "${txt2imgPrompt.substring(0, 120)}..."`);
-
-  const txt2imgUrl = await generatePlate(replicate, txt2imgPrompt, seed + 9000, pageIndex);
-  if (txt2imgUrl) {
-    // Score the txt2img result — it might have wrong animals or no rhino
-    const txt2imgResult = await scoreCandidate(replicate, txt2imgUrl, scoreOpts);
-    if (txt2imgResult.accepted) {
-      console.log(`[Page ${pageIndex + 1}] TXT2IMG FALLBACK ACCEPTED: score=${txt2imgResult.score}`);
-      return txt2imgResult;
-    }
-    console.log(`[Page ${pageIndex + 1}] Txt2img fallback rejected: ${txt2imgResult.rejectReason}`);
-    // Last resort: return the txt2img image anyway (better than empty)
-    console.warn(`[Page ${pageIndex + 1}] Using txt2img image as last resort (may not match character)`);
-    return { ...txt2imgResult, url: txt2imgUrl, accepted: false };
-  }
-
-  // Truly nothing worked
-  const totalTries = hasSecondaryActors
-    ? (multiCharMaxRounds * CANDIDATES_PER_ROUND + CANDIDATES_PER_ROUND + 1)
-    : (3 * CANDIDATES_PER_ROUND + 1);
-  console.warn(`[Page ${pageIndex + 1}] WARNING: No candidate accepted after ${totalTries} tries. Returning EMPTY.`);
-  return { url: "", accepted: false, caption: "", score: -999 };
-}
-
-// ─── ANCHOR COMPOSITING ─────────────────────────────────────────────────
-
-/**
- * Composite the anchor character image onto a plate background.
- *
- * WHY: SDXL generates each page from random noise — it has no memory of
- * previous pages. By pasting the anchor character INTO the plate before
- * inpainting, SDXL starts from actual character pixels instead of noise.
- * With lower prompt_strength (0.65), it preserves ~35% of the anchor's
- * shape/color/horn while adapting ~65% to the new pose and scene.
- *
- * HOW:
- *   1. Use the mask to extract only the character region from the anchor
- *   2. Composite the masked anchor over the plate
- *   3. Return as data URL for the SDXL inpaint API
- *
- * The result: SDXL sees the anchor character in the mask region and
- * preserves its identity while adapting the pose from the prompt.
- */
-async function compositeAnchorOntoPlate(
-  anchorBuffer: Buffer,
-  plateUrl: string,
-  maskDataUrl: string,
-  size: number = 1024
-): Promise<string | null> {
-  try {
-    // Fetch plate image
-    const plateResp = await fetch(plateUrl);
-    if (!plateResp.ok) return null;
-    const plateBuf = Buffer.from(await plateResp.arrayBuffer());
-
-    // Extract mask from data URL
-    const maskBase64 = maskDataUrl.split(",")[1];
-    if (!maskBase64) return null;
-    const maskBuf = Buffer.from(maskBase64, "base64");
-
-    // Convert mask to single-channel grayscale (white=character, black=background)
-    const maskGray = await sharp(maskBuf)
-      .resize(size, size)
-      .greyscale()
-      .toBuffer();
-
-    // Get anchor as raw RGB (3 channels)
-    const anchorRaw = await sharp(anchorBuffer)
-      .resize(size, size)
-      .removeAlpha()
-      .raw()
-      .toBuffer();
-
-    // Create RGBA buffer: anchor RGB + mask as alpha channel
-    // Where mask is white (255) → anchor visible (character region)
-    // Where mask is black (0) → anchor transparent (plate shows through)
-    const rgbaBuffer = Buffer.alloc(size * size * 4);
-    for (let i = 0; i < size * size; i++) {
-      rgbaBuffer[i * 4 + 0] = anchorRaw[i * 3 + 0]; // R
-      rgbaBuffer[i * 4 + 1] = anchorRaw[i * 3 + 1]; // G
-      rgbaBuffer[i * 4 + 2] = anchorRaw[i * 3 + 2]; // B
-      rgbaBuffer[i * 4 + 3] = maskGray[i];            // A from mask
-    }
-
-    // Create masked anchor PNG
-    const maskedAnchorPng = await sharp(rgbaBuffer, {
-      raw: { width: size, height: size, channels: 4 },
-    }).png().toBuffer();
-
-    // Composite: plate background + anchor character in mask region
-    const composited = await sharp(plateBuf)
-      .resize(size, size)
-      .composite([{ input: maskedAnchorPng, blend: "over" }])
-      .png({ compressionLevel: 6 })
-      .toBuffer();
-
-    const dataUrl = `data:image/png;base64,${composited.toString("base64")}`;
-    console.log(`[Composite] Success: ${Math.round(composited.length / 1024)}KB composited image`);
-    return dataUrl;
-  } catch (e) {
-    console.warn(`[Composite] Failed, falling back to plate-only:`, e);
-    return null;
-  }
-}
-
-/**
- * Fetch a remote image and return as a Buffer. Used to cache the anchor
- * image so we don't refetch it for every page.
- */
-async function fetchImageBuffer(url: string): Promise<Buffer | null> {
-  try {
-    const resp = await fetch(url);
-    if (!resp.ok) return null;
-    return Buffer.from(await resp.arrayBuffer());
-  } catch {
-    return null;
-  }
-}
-
-/**
- * FIXED inpaint strength for ALL pages and rounds.
- *
- * prompt_strength controls how much SDXL overwrites the ENTIRE image:
- *   - 0.90+: nearly full regen → plate composition destroyed, identity drift
- *   - 0.88: best balance — character renders prominently at bbox 9-15%,
- *           plate scene still visible at edges. Increased from 0.85 after
- *           production runs showed too many TINY CHARACTER rejections.
- *   - 0.85: marginal — bbox 3-7%, many pages needed Round 3 escalation.
- *   - 0.80: TOO LOW — character renders too small (bbox 1-7%).
- *   - 0.75: too low — frequently produced no character (just background)
- *   - 0.65: TOO LOW — no character at all (just flowers/butterflies)
- */
-const INPAINT_STRENGTH = 0.88;
-const INPAINT_STRENGTH_WITH_ANCHOR = 0.62;  // Lowered from 0.72 → 0.62: with anchor compositing, the rhino is already painted into the plate. A strength of 0.62 means SDXL only modifies 62% of pixel values — the pre-composited rhino shape/color STRONGLY persists. Previous 0.72 was obliterating the anchor, making SDXL regenerate the character from scratch. NOTE: The old comment about 0.65 being "too low" was WITHOUT anchor compositing. With anchor, 0.62 is optimal.
-const ROUND3_STRENGTH = 0.90;
-const ROUND3_STRENGTH_WITH_ANCHOR = 0.70;  // Lowered from 0.76 → 0.70: Round 3 still uses anchor but with slightly more freedom for difficult compositions
-
-async function runCandidateRound(
-  plateUrl: string,
-  maskDataUrl: string,
-  baseSeed: number,
-  count: number,
-  pageIndex: number,
-  scoreOpts: ScoreOptions,
-  mustInclude: string[],
-  settingContext: string,
-  identity: CharacterIdentity,
-  sceneCategory: string = "",
-  forceHighStrength: boolean = false,
-  isMultiChar: boolean = false,
-  sceneObjects: string[] = [],
-  pageAction: string = "",
-  anchorBuffer: Buffer | null = null,
-  allowedAnimals: string[] = []
-): Promise<CandidateResult[]> {
-  // ANCHOR COMPOSITING: If we have an anchor buffer, composite it onto the plate.
-  // This gives SDXL a visual starting point for the character → better consistency.
-  // Use lower prompt_strength so SDXL preserves the anchor character's identity.
-  let effectivePlateUrl: string = plateUrl;
-  let strength: number;
-
-  if (anchorBuffer) {
-    // ALWAYS composite anchor — even on Round 3.
-    // Previously Round 3 (forceHighStrength) skipped compositing entirely,
-    // generating from scratch. This caused character identity drift because
-    // SDXL had no visual reference. Now Round 3 keeps the anchor but uses
-    // higher strength (0.80 vs 0.72) for more aggressive regeneration.
-    const compositedUrl = await compositeAnchorOntoPlate(anchorBuffer, plateUrl, maskDataUrl);
-    if (compositedUrl) {
-      effectivePlateUrl = compositedUrl;
-      strength = forceHighStrength ? ROUND3_STRENGTH_WITH_ANCHOR : INPAINT_STRENGTH_WITH_ANCHOR;
-      console.log(`[Page ${pageIndex + 1}] Using ANCHOR-COMPOSITED plate (strength=${strength}) — character seeded from reference`);
+  // ── 1. Start with GPT's IMAGE_PROMPT (or build a minimal fallback) ──
+  let prompt = imagePrompt.trim();
+  if (!prompt) {
+    // Fallback: GPT didn't produce an IMAGE_PROMPT for this page
+    console.warn(`[Page ${pageIndex + 1}] No IMAGE_PROMPT from GPT — using identity fallback`);
+    if (isHumanChar) {
+      const genderWord = identity.genderHint || "girl";
+      prompt = `Text-free children's book illustration, WIDE SHOT. A small cute cartoon young ${genderWord}, ${identity.age || '6 years old'}, ${identity.skinTone || ''}, ${identity.hair || ''}, wearing ${identity.outfit || 'colorful clothes'}, is standing happily in a bright colorful storybook landscape with rolling green hills, a winding path, colorful wildflowers, butterflies, and a bright blue sky with fluffy clouds. The character is small in the frame, about one-third of the image, surrounded by the rich environment. Soft painterly style, warm colors, detailed background.`;
     } else {
-      strength = forceHighStrength ? ROUND3_STRENGTH : INPAINT_STRENGTH;
-      console.log(`[Page ${pageIndex + 1}] Anchor compositing failed, using plain plate (strength=${strength})`);
+      const outfitPart = identity.outfit ? `, wearing ${identity.outfit}` : "";
+      prompt = `Text-free children's book illustration, WIDE SHOT. A small cute cartoon ${identity.species}${outfitPart} is standing happily in a bright colorful meadow with tall wildflowers, a babbling brook, butterflies, and distant rolling hills under a bright blue sky with fluffy clouds. The character is small in the frame, about one-third of the image. Soft painterly style, warm colors, detailed background.`;
     }
+  }
+
+  console.log(`[Page ${pageIndex + 1}] GPT prompt: "${prompt.substring(0, 200)}..."`);
+
+  // ── 1b. Front-load critical cues (Flux weighs the beginning of the prompt most) ──
+  // Skin tone and composition MUST be near the start, not appended at the end.
+  if (isHumanChar && identity.skinTone) {
+    // Inject skin tone right after the character description in the prompt
+    // Replace "light warm skin" or "light skin" with the correct skin tone from bible
+    const skinLower = identity.skinTone.toLowerCase();
+    if (skinLower.includes('brown') || skinLower.includes('dark')) {
+      // Fix GPT's tendency to write "light warm skin" — replace with correct tone
+      prompt = prompt
+        .replace(/\blight warm skin\b/gi, identity.skinTone)
+        .replace(/\blight skin\b/gi, identity.skinTone)
+        .replace(/\bfair skin\b/gi, identity.skinTone)
+        .replace(/\bpale skin\b/gi, identity.skinTone)
+        .replace(/\bpeachy skin\b/gi, identity.skinTone)
+        .replace(/\blight complexion\b/gi, 'brown complexion')
+        .replace(/\bfair complexion\b/gi, 'brown complexion');
+    }
+  }
+
+  // ── 2. Content safety validation + word replacements ──
+  // First, validate against blocklist (skip the page if severely unsafe)
+  const contentCheck = validateContent(prompt);
+  if (!contentCheck.safe) {
+    console.warn(`[Page ${pageIndex + 1}] BLOCKED content in image prompt: "${contentCheck.matchedTerm}" — using identity fallback`);
+    if (isHumanChar) {
+      const genderWord = identity.genderHint || "girl";
+      prompt = `Text-free children's book illustration, WIDE SHOT. A small cute cartoon young ${genderWord}, ${identity.age || '6 years old'}, ${identity.skinTone || ''}, ${identity.hair || ''}, wearing ${identity.outfit || 'colorful clothes'}, is standing happily in a bright colorful park with swings, a sandbox, tall trees with golden leaves, and a bright blue sky. The character is small in the frame, about one-third of the image. Soft painterly style, warm colors, detailed background.`;
+    } else {
+      const outfitPart = identity.outfit ? `, wearing ${identity.outfit}` : "";
+      prompt = `Text-free children's book illustration, WIDE SHOT. A small cute cartoon ${identity.species}${outfitPart} is standing happily in a bright colorful meadow with wildflowers, a winding stream, butterflies, and distant mountains under a bright sky. The character is small in the frame, about one-third of the image. Soft painterly style, warm colors, detailed background.`;
+    }
+  }
+
+  // Sanitize sensitive terms (death → gentle alternative, etc.)
+  const { cleaned: sanitizedPrompt } = sanitizeText(prompt);
+  prompt = sanitizedPrompt;
+
+  // Replace fear/anxiety words with positive equivalents
+  prompt = prompt
+    .replace(/\bworried\b/gi, 'curious')
+    .replace(/\bscared\b/gi, 'surprised')
+    .replace(/\bterrified\b/gi, 'amazed')
+    .replace(/\bpanick(?:ed|ing|y)?\b/gi, 'excited')
+    .replace(/\bfrightened\b/gi, 'surprised')
+    .replace(/\banxious\b/gi, 'curious')
+    .replace(/\bafraid\b/gi, 'curious')
+    .replace(/\bnervous\b/gi, 'curious')
+    // Violence → peaceful
+    .replace(/\bfighting\b/gi, 'playing')
+    .replace(/\bweapons?\b/gi, 'toy')
+    .replace(/\bswords?\b/gi, 'magic wand')
+    .replace(/\bguns?\b/gi, 'water squirter')
+    .replace(/\bknife\b/gi, 'stick')
+    .replace(/\bknives\b/gi, 'sticks')
+    // Dark moods → cozy
+    .replace(/\bgloomy\b/gi, 'cozy')
+    .replace(/\bsinister\b/gi, 'mysterious')
+    .replace(/\bhaunted\b/gi, 'enchanted')
+    .replace(/\bcreepy\b/gi, 'quirky')
+    .replace(/\bscary\b/gi, 'surprising')
+    // Adult descriptors → child-appropriate
+    .replace(/\bsexy\b/gi, 'cute')
+    .replace(/\brevealing\b/gi, 'colorful')
+    // Remove genuinely dangerous visual elements
+    .replace(/\b(?:danger|emergency|wobbl|turbulence|crash(?:ing|ed|es)?|sink(?:ing|s)?)\b[^,.]*[,.]?/gi, '')
+    .replace(/\bimagin(?:es?|ing|ed)\s+(?:the\s+)?(?:airplane|plane|car|boat|ship|rocket)\s+(?:crash|splash|fall|sink|break|burn|explod)[^,.]*[,.]?/gi, '')
+    .replace(/,\s*,/g, ',')
+    .replace(/\s+/g, ' ')
+    .trim();
+
+  // ── 3-6. Suffix construction ──
+  // CRITICAL: Flux Kontext has an effective attention window of ~1200-1500 chars.
+  // GPT's IMAGE_PROMPT is already ~800-1000 chars for multi-character scenes.
+  // We MUST keep suffixes SHORT to stay within Flux's attention.
+  //
+  // Strategy: For MULTI-CHARACTER stories, use ultra-compact suffixes.
+  // For single-character stories, use the full verbose suffixes.
+  const genderLabel = identity.genderHint || "girl";
+  const hasMultipleMainChars = additionalIdentities && additionalIdentities.length > 0;
+
+  if (hasMultipleMainChars) {
+    // ═══════ MULTI-CHARACTER MODE — COMPACT SUFFIX ═══════
+    // GPT's prompt already describes each character in detail.
+    // We add ONLY the most critical reinforcements in minimal chars.
+
+    // Height chart: build a single compact height reference
+    const allChars = [
+      { name: identity.name, age: identity.age, gender: identity.genderHint },
+      ...additionalIdentities.map(id => ({ name: id.name, age: id.age, gender: id.genderHint }))
+    ];
+
+    // Sort by age descending for height chart
+    const sortedByAge = [...allChars].sort((a, b) => {
+      const ageA = parseFloat((a.age || '6').replace(/[^\d.]/g, '')) || 6;
+      const ageB = parseFloat((b.age || '6').replace(/[^\d.]/g, '')) || 6;
+      return ageB - ageA;
+    });
+
+    // Build compact height+gender chart: "HEIGHTS: Amalia(8,girl,tallest) > Jibreel(5,boy) = Iman(5,girl) > Hedaya(2,girl,tiny toddler)"
+    const heightParts: string[] = [];
+    let prevAge = -1;
+    for (const ch of sortedByAge) {
+      const ageNum = parseFloat((ch.age || '6').replace(/[^\d.]/g, '')) || 6;
+      const sizeHint = ageNum <= 3 ? ',tiny toddler' : ageNum >= 8 ? ',tallest' : '';
+      const connector = heightParts.length === 0 ? '' : (ageNum === prevAge ? ' = ' : ' > ');
+      heightParts.push(`${connector}${ch.name}(${Math.round(ageNum)},${ch.gender}${sizeHint})`);
+      prevAge = ageNum;
+    }
+    prompt += `. HEIGHTS: ${heightParts.join('')}`;
+
+    // Skin tone — one line for all
+    if (identity.skinTone) {
+      prompt += `. All same family, same skin: ${identity.skinTone}`;
+    }
+
+    // No-text + style in one compact line
+    prompt += '. No text/words/letters in image. Correct anatomy, no extra limbs';
+
   } else {
-    strength = forceHighStrength ? ROUND3_STRENGTH : INPAINT_STRENGTH;
-  }
+    // ═══════ SINGLE CHARACTER MODE — FULL SUFFIX ═══════
+    if (isHumanChar) {
+      const mentionsOtherPeople = /\b(?:friend|friends|boy|boys|worker|workers|people|children|kids|man|woman|lady|passengers?|attendant|teacher|parent|dad|mom|mother|father|sister|brother|classmate)\b/i.test(prompt);
+      const mentionsAdult = /\b(?:dad|father|mom|mother|parent|grandpa|grandma|grandfather|grandmother|uncle|aunt|teacher|adult)\b/i.test(prompt);
 
-  // IDENTITY-LOCKED inpaint prompt + POSE. NO per-page scene suffix.
-  //
-  // The mask covers ~72%×78% of the frame, leaving the top 17%, sides 14%,
-  // and bottom 5% of the plate visible. This means the plate's scene (moon,
-  // ocean, forest, etc.) is clearly visible around the character.
-  //
-  // CRITICAL: NO scene objects or setting context in the inpaint prompt.
-  // Previously, per-page suffixes like "rocket ship in background, Moon surface"
-  // vs "dolphins in background, Ocean with big waves" caused SDXL to render
-  // the character with different colors/styles per page. Removing ALL per-page
-  // varying tokens ensures the character identity is 100% IDENTICAL across pages.
-  // The plate provides scene context through the visible edges.
-  //
-  // STRUCTURE (within SDXL's 77-token window):
-  //   Tokens 1-35:  Character identity (LOCKED, same every page)
-  //   Tokens 35-42: Pose/action (VARIES per page — prevents static standing)
-  let compositePrompt = identity.inpaintPrompt;
+      if (mentionsAdult) {
+        prompt += `. Adults must be TALL with adult proportions, much taller than the child`;
+      }
 
-  // INJECT POSE: Replace "full body" with "full body, [pose]" to give each
-  // page a distinct character pose matching the story action.
-  // Without this, every page renders the same standing-in-center pose.
-  // Uses regex to handle "full body" at end of prompt (no trailing comma).
-  if (pageAction) {
-    const pose = actionToPose(pageAction);
-    compositePrompt = compositePrompt.replace(
-      /\bfull body\b/,
-      `full body, ${pose}`
-    );
-    console.log(`[Page ${pageIndex + 1}] Pose injection: "${pose}" (from action: "${pageAction}")`);
-  }
-
-  // NO scene suffix — the plate provides scene context through visible edges.
-  // Previously scene objects and setting context were appended here, but that
-  // caused character appearance to vary per page (SDXL shifted colors/style
-  // based on "ocean" vs "forest" vs "space" tokens).
-  console.log(`[Page ${pageIndex + 1}] Composite inpaint: "${compositePrompt.substring(0, 160)}..."`);
-
-  // SERIALIZE candidates (one at a time) to avoid Replicate 429 rate limiting.
-  // Low-credit accounts get burst=1 — parallel requests all get throttled.
-  // Sequential requests with natural processing time (~15-30s each) stay under the limit.
-  const results: CandidateResult[] = [];
-  for (let i = 0; i < count; i++) {
-    const seed = baseSeed + i * SEED_STRIDE;
-
-    console.log(`[Page ${pageIndex + 1}] Candidate ${i + 1}/${count} seed=${seed} [INPAINT strength=${strength}]`);
-
-    const url = await generateInpaintCharacter(
-      replicate, compositePrompt, effectivePlateUrl, maskDataUrl,
-      seed, pageIndex, settingContext, mustInclude, undefined, strength,
-      identity.species, allowedAnimals
-    );
-
-    if (!url) {
-      console.warn(`[Page ${pageIndex + 1}] Candidate ${i + 1} generation failed`);
-      continue;
+      if (mentionsOtherPeople) {
+        prompt += `. Main character is a young ${genderLabel} with ${identity.skinTone || 'matching skin tone'}`;
+      } else {
+        prompt += `. Only one young ${genderLabel} with ${identity.skinTone || 'matching skin tone'} in the scene, no other people`;
+      }
+    } else {
+      prompt += '. Only one character in the scene, no humans, no people, animal character only';
     }
 
-    const result = await scoreCandidate(replicate, url, scoreOpts);
-
-    console.log(
-      `[Page ${pageIndex + 1}] Candidate ${i + 1}: ` +
-      `${result.accepted ? "ACCEPTED" : "REJECTED"} score=${result.score}` +
-      (result.rejectReason ? ` reason="${result.rejectReason}"` : "")
-    );
-
-    results.push(result);
-
-    // Early exit: if this candidate was accepted WITH strong quality, skip remaining.
-    // Raised from 8 → 10: with increased CLIP weights, a score of 10+ means
-    // BLIP confirmed rhino AND CLIP shows good visual similarity to reference.
-    // Lower-scored accepts are marginal — worth trying more candidates.
-    if (result.accepted && result.score >= 10) {
-      console.log(`[Page ${pageIndex + 1}] Early accept (score=${result.score} >= 10) — skipping remaining candidates`);
-      break;
-    } else if (result.accepted) {
-      console.log(`[Page ${pageIndex + 1}] Accepted but marginal (score=${result.score} < 10) — trying more candidates`);
+    // Skin tone reinforcement (single char — more space to be verbose)
+    if (isHumanChar && identity.skinTone) {
+      const skinLower = identity.skinTone.toLowerCase();
+      if (skinLower.includes('dark brown') || skinLower.includes('deep brown')) {
+        prompt += `. CRITICAL: skin is ${identity.skinTone}, NOT white, NOT pale`;
+      } else {
+        prompt += `. Character must have ${identity.skinTone}`;
+      }
     }
+
+    // Hair reinforcement
+    if (isHumanChar && identity.hairCue) {
+      prompt += `. Character must have ${identity.hairCue}`;
+    }
+
+    // Accessories
+    if (identity.accessories) {
+      prompt += `. Must be wearing ${identity.accessories}`;
+    }
+
+    // Anti-limbs + composition + no-text
+    prompt += '. Correct anatomy, no extra limbs, no extra fingers';
+    prompt += '. WIDE SHOT, character small in frame, richly detailed environment';
+    prompt += '. No text, no words, no letters anywhere in the image';
+    prompt += '. Bright, cheerful, child-friendly storybook illustration';
   }
 
-  return results;
+  console.log(`[Page ${pageIndex + 1}] Final prompt (${prompt.length} chars): "${prompt.substring(0, 300)}..."`);
+
+  // ── 7. Generate with Kontext ──
+  const url = await generateKontextImage(replicate, {
+    prompt,
+    inputImageUrl: referenceImageUrl,
+    seed,
+    pageIndex,
+  });
+
+  if (!url) {
+    // Retry once with a simpler prompt (strip visual cues that might trigger safety filters)
+    console.warn(`[Page ${pageIndex + 1}] First attempt failed, retrying with simplified prompt...`);
+    const simplifiedPrompt = prompt
+      .replace(/feminine features, pretty eyelashes, cute girl face/g, '')
+      .replace(/boyish features, young boy face/g, '')
+      .replace(/\s{2,}/g, ' ')
+      .trim();
+    const retryUrl = await generateKontextImage(replicate, {
+      prompt: simplifiedPrompt,
+      inputImageUrl: referenceImageUrl,
+      seed: seed + 1,
+      pageIndex,
+      safetyTolerance: 4,  // Retry with slightly more permissive tolerance (capped by MAX_PAGE_SAFETY_TOLERANCE)
+    });
+    if (retryUrl) {
+      console.log(`[Page ${pageIndex + 1}] RETRY SUCCESS: ${retryUrl.substring(0, 80)}...`);
+      return { url: retryUrl, accepted: true };
+    }
+
+    console.error(`[Page ${pageIndex + 1}] GENERATION FAILED after retry`);
+    return { url: "", accepted: false };
+  }
+
+  console.log(`[Page ${pageIndex + 1}] SUCCESS: ${url.substring(0, 80)}...`);
+  return { url, accepted: true };
 }
 
 // ─── API ROUTE ───────────────────────────────────────────────────────────
 
 export async function POST(request: NextRequest) {
   try {
-    const { imagePrompts, negativePrompts, seed, seeds, characterBible, sceneCards } = await request.json();
+    const { imagePrompts, seed, seeds, characterBible, additionalCharacterBibles } = await request.json();
 
     if (!imagePrompts || !Array.isArray(imagePrompts)) {
       return NextResponse.json({ error: "Invalid image prompts provided" }, { status: 400 });
@@ -1170,162 +471,270 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: "Replicate API token not configured" }, { status: 500 });
     }
 
-    // Extract character identity from bible (species-aware)
+    const startTime = Date.now();
+
+    // ── Extract character identity (primary) ──
     const identity = extractCharacterIdentity(characterBible as CharacterBible | undefined);
     console.log(`[Book] Character: ${identity.name} (${identity.species})`);
-    console.log(`[Book] Inpaint prompt: "${identity.inpaintPrompt.substring(0, 80)}..."`);
+    console.log(`[Book] Description: "${identity.description}"`);
+
+    // ── Extract additional character identities (multi-character stories) ──
+    const additionalIdentities: CharacterIdentity[] = [];
+    if (additionalCharacterBibles && Array.isArray(additionalCharacterBibles)) {
+      for (const extraBible of additionalCharacterBibles) {
+        const extraIdentity = extractCharacterIdentity(extraBible as CharacterBible);
+        additionalIdentities.push(extraIdentity);
+        console.log(`[Book] Additional character: ${extraIdentity.name} (${extraIdentity.species})`);
+        console.log(`[Book]   Description: "${extraIdentity.description}"`);
+      }
+    }
 
     const storySeed = seed || Math.floor(Math.random() * 1000000);
     console.log(`[Book] Base seed: ${storySeed}, ${imagePrompts.length} pages`);
+    console.log(`[Book] Pipeline: FLUX KONTEXT PRO — GPT writes prompts directly (simplified)`);
+    if (additionalIdentities.length > 0) {
+      console.log(`[Book] Multi-character mode: ${1 + additionalIdentities.length} characters total`);
+    }
 
-    const imageUrls: string[] = [];
-    const usedSeeds: number[] = [];
+    // ── Get or generate character reference image ──
+    let referenceImageUrl: string | null = null;
 
-    // ── CHARACTER LIBRARY CHECK + ANCHOR GENERATION ──
-    // 1. Check if species is in the character library with cached assets
-    // 2. If cached → load from disk (0s instead of ~25s)
-    // 3. If not cached → generate from scratch, then SAVE for next time
-    let clipAnchorEmbedding: number[] = [];
-    let anchorImageBuffer: Buffer | null = null;
-
-    const libraryResult = lookupCharacter(identity.species);
-    const libraryHit = libraryResult?.hasAssets ?? false;
-
-    if (libraryResult && libraryHit) {
-      // ── FAST PATH: Library character with cached assets ──
-      console.log(`\n[Library] HIT: "${identity.species}" found with cached assets — skipping anchor generation`);
-
-      anchorImageBuffer = libraryResult.assets.refWhiteBuffer || libraryResult.assets.refNeutralBuffer;
-      if (anchorImageBuffer) {
-        console.log(`[Library] Loaded anchor buffer: ${Math.round(anchorImageBuffer.length / 1024)}KB`);
-      }
-
-      if (libraryResult.assets.clipEmbedding) {
-        clipAnchorEmbedding = libraryResult.assets.clipEmbedding;
-        console.log(`[Library] Loaded CLIP embedding: ${clipAnchorEmbedding.length} dims — identity scoring enabled`);
-      } else if (anchorImageBuffer) {
-        // Assets exist but no CLIP embedding — compute and save it
-        console.log(`[Library] No cached CLIP embedding — computing from anchor...`);
-        try {
-          const anchorDataUrl = `data:image/png;base64,${anchorImageBuffer.toString("base64")}`;
-          const emb = await getClipEmbedding(replicate, anchorDataUrl);
-          if (emb.length > 0) {
-            clipAnchorEmbedding = emb;
-            saveAssets(libraryResult.character.species, null, null, clipAnchorEmbedding);
-            console.log(`[Library] Computed and saved CLIP embedding: ${emb.length} dims`);
-          }
-        } catch (e) {
-          console.warn(`[Library] CLIP computation failed:`, e);
-        }
-      }
-    } else {
-      // ── GENERATE PATH: No cached assets — generate anchors from scratch ──
-      const librarySpecies = libraryResult ? libraryResult.character.species : null;
-      if (libraryResult) {
-        console.log(`\n[Library] "${identity.species}" in library but NO cached assets — generating and saving...`);
-      } else {
-        console.log(`\n[Library] MISS: "${identity.species}" not in library — generating anchors from scratch`);
-      }
-
-      try {
-        console.log(`[CLIP] Generating character reference images for anchor embedding...`);
-        const refPromptWhite = identity.inpaintPrompt + ", centered, solid white background";
-        const refPromptNeutral = identity.inpaintPrompt + ", centered, bright green grass and blue sky";
-
-        const [refUrlWhite, refUrlNeutral] = await Promise.all([
-          generatePlate(replicate, refPromptWhite, storySeed, 99),
-          generatePlate(replicate, refPromptNeutral, storySeed + 1, 98),
-        ]);
-
-        console.log(`[CLIP] Anchor white: ${refUrlWhite ? "OK" : "FAILED"}, neutral: ${refUrlNeutral ? "OK" : "FAILED"}`);
-
-        // Cache anchor image buffer for compositing
-        const bestAnchorUrl = refUrlWhite || refUrlNeutral;
-        let refWhiteBuffer: Buffer | null = null;
-        let refNeutralBuffer: Buffer | null = null;
-
-        if (refUrlWhite) {
-          refWhiteBuffer = await fetchImageBuffer(refUrlWhite);
-        }
-        if (refUrlNeutral) {
-          refNeutralBuffer = await fetchImageBuffer(refUrlNeutral);
-        }
-        anchorImageBuffer = refWhiteBuffer || refNeutralBuffer;
-        if (anchorImageBuffer) {
-          console.log(`[Anchor] Cached anchor image buffer: ${Math.round(anchorImageBuffer.length / 1024)}KB`);
-        }
-
-        // Compute CLIP embeddings
-        const anchorUrls = [refUrlWhite, refUrlNeutral].filter(Boolean) as string[];
-        if (anchorUrls.length > 0) {
-          const embeddings = await Promise.all(
-            anchorUrls.map(url => getClipEmbedding(replicate, url))
-          );
-          const validEmb = embeddings.filter(e => e.length > 0);
-
-          if (validEmb.length > 0) {
-            const dim = validEmb[0].length;
-            clipAnchorEmbedding = new Array(dim).fill(0);
-            for (const emb of validEmb) {
-              for (let d = 0; d < dim; d++) clipAnchorEmbedding[d] += emb[d];
-            }
-            for (let d = 0; d < dim; d++) clipAnchorEmbedding[d] /= validEmb.length;
-            console.log(`[CLIP] Anchor centroid ready (${dim} dims, averaged ${validEmb.length} embeddings) — identity scoring enabled`);
-          } else {
-            console.warn(`[CLIP] All anchor embeddings failed — identity scoring disabled`);
-          }
-        }
-
-        // SAVE to library for next time (library characters only)
-        if (librarySpecies) {
-          saveAssets(librarySpecies, refWhiteBuffer, refNeutralBuffer, clipAnchorEmbedding.length > 0 ? clipAnchorEmbedding : null);
-          console.log(`[Library] Saved generated assets for "${librarySpecies}" — next story will be instant`);
-        }
-      } catch (e) {
-        console.warn(`[CLIP] Anchor generation failed, proceeding without identity scoring:`, e);
+    // For human characters, don't use cached references — each human character looks unique
+    // (different hair, outfit, skin tone). For animals, species-level caching works fine.
+    const isHumanCharacter = identity.genderHint !== "";
+    const libraryResult = isHumanCharacter ? null : lookupCharacter(identity.species);
+    if (libraryResult?.hasAssets) {
+      // FAST PATH: Use cached reference image from library (animals only)
+      console.log(`\n[Library] HIT: "${identity.species}" — using cached reference image`);
+      const refBuffer = libraryResult.assets.refWhiteBuffer || libraryResult.assets.refNeutralBuffer;
+      referenceImageUrl = getCharacterRefUrl(refBuffer, identity.species);
+      if (referenceImageUrl) {
+        console.log(`[Library] Reference image loaded (${Math.round((refBuffer?.length || 0) / 1024)}KB)`);
       }
     }
 
-    // Generate pages with bounded concurrency
-    const results: Array<{ url: string; accepted: boolean }> = new Array(imagePrompts.length);
+    if (!referenceImageUrl) {
+      // GENERATE PATH: Create a clean reference image using Kontext txt2img.
+      console.log(`\n[Library] MISS: "${identity.species}" — generating character reference with Kontext...`);
+
+      const libChar = libraryResult?.character;
+      const simpleSpeciesName = identity.species === 'rhinoceros' ? 'rhino' : identity.species;
+      const isHumanRef = isHumanCharacter;
+      const ageDesc = identity.age || "6 years old";
+      const animalVisualDesc = identity.visualTokens.length > 0
+        ? identity.visualTokens.join(", ")
+        : `big expressive eyes, soft round cheeks, friendly smile`;
+      const animalOutfit = identity.outfit ? `, wearing ${identity.outfit}` : "";
+
+      const genderWord = identity.genderHint || 'girl';
+      const genderCuesRef = genderWord === 'girl'
+        ? 'feminine features, pretty eyelashes, cute girl face, clearly a girl'
+        : 'boyish features, young boy face, clearly a boy';
+      const skinToneRef = identity.skinTone || '';
+      const filteredVisualTokens = identity.visualTokens.length > 0
+        ? identity.visualTokens.filter(t => !t.toLowerCase().includes('skin')).join(", ")
+        : `big expressive brown eyes, soft cheeks, friendly smile`;
+      // IMPORTANT: Reference image composition directly affects ALL page images.
+      // Flux Kontext preserves the reference's layout — if the reference has a white bg
+      // and big character, pages will trend toward white bg and big character.
+      // Solution: Reference shows character SMALL in a simple colorful scene, with
+      // REALISTIC child proportions (not chibi/big-head), so pages inherit good composition.
+      //
+      // FOR MULTI-CHARACTER STORIES: Generate a GROUP reference showing ALL characters
+      // together with correct heights, genders, and outfits. This gives Flux a visual
+      // template for the entire cast — without this, only the primary character is
+      // consistent and all others drift wildly.
+      const hasMultiCharRef = isHumanRef && additionalCharacterBibles && additionalCharacterBibles.length > 0;
+
+      let refPrompt: string;
+      if (hasMultiCharRef) {
+        // ═══ GROUP REFERENCE IMAGE — all characters together ═══
+        // Build a compact group portrait showing all characters side-by-side
+        // with correct height ratios, genders, and distinguishing features.
+        interface GroupChar {
+          name: string;
+          age: string;
+          gender: string;
+          hair: string;
+          outfit: string;
+          skinTone: string;
+        }
+
+        const allCharsForRef: GroupChar[] = [
+          {
+            name: identity.name,
+            age: identity.age || '6 years old',
+            gender: genderWord,
+            hair: identity.hair || '',
+            outfit: identity.outfit || 'colorful clothes',
+            skinTone: identity.skinTone || 'warm skin',
+          },
+          ...(additionalCharacterBibles as CharacterBible[]).map((ab: CharacterBible) => ({
+            name: ab.name,
+            age: ab.age || '6 years old',
+            gender: ab.gender || 'girl',
+            hair: ab.appearance?.hair || '',
+            outfit: ab.signature_outfit || ab.outfit || 'colorful clothes',
+            skinTone: ab.appearance?.skin_tone || 'warm skin',
+          })),
+        ];
+
+        // Sort by age descending (tallest first) for the group portrait
+        allCharsForRef.sort((a, b) => {
+          const ageA = parseFloat(a.age.replace(/[^\d.]/g, '')) || 6;
+          const ageB = parseFloat(b.age.replace(/[^\d.]/g, '')) || 6;
+          return ageB - ageA;
+        });
+
+        // Build compact character descriptions
+        const charDescs = allCharsForRef.map((ch, idx) => {
+          const ageNum = parseFloat(ch.age.replace(/[^\d.]/g, '')) || 6;
+          const sizeWord = idx === 0 ? 'tallest' : (ageNum <= 3 ? 'tiny toddler' : 'shorter');
+          return `a ${sizeWord} cartoon ${ch.gender}, ${Math.round(ageNum)}yo, ${ch.hair}, wearing ${ch.outfit}`;
+        });
+
+        const skinDesc = allCharsForRef[0].skinTone;
+        refPrompt = [
+          `Children's picture book illustration of ${allCharsForRef.length} children standing side by side`,
+          `all with ${skinDesc}, same family`,
+          ...charDescs,
+          "standing together in a bright colorful meadow with green grass",
+          "full body visible head to toe, correct height differences based on age",
+          "soft painterly style, warm vibrant colors",
+          "no text, no watermarks",
+        ].join(". ");
+
+        console.log(`[Reference] GROUP mode: ${allCharsForRef.length} characters`);
+      } else if (isHumanRef) {
+        // ═══ SINGLE CHARACTER REFERENCE ═══
+        refPrompt = [
+          `Children's picture book illustration of a small cute cartoon young ${genderWord}`,
+          `${ageDesc}, realistic child proportions`,
+          skinToneRef ? `${skinToneRef}, NOT white skin, NOT pale skin` : '',
+          genderCuesRef,
+          filteredVisualTokens,
+          identity.hair ? identity.hair : "",
+          identity.accessories ? `wearing ${identity.accessories}` : "",
+          identity.outfit ? `wearing ${identity.outfit}` : "",
+          "standing in a bright colorful meadow with green grass and wildflowers",
+          "the character is small in the frame, about one-third of the image height",
+          "full body visible from head to toe",
+          "soft painterly style, warm vibrant colors, detailed background",
+          "no text, no watermarks",
+        ].filter(Boolean).join(", ");
+      } else {
+        // ═══ ANIMAL REFERENCE ═══
+        refPrompt = [
+          `Children's picture book illustration of a small cute cartoon ${simpleSpeciesName}`,
+          animalVisualDesc + animalOutfit,
+          "standing upright in a bright colorful meadow with green grass and wildflowers",
+          "the character is small in the frame, about one-third of the image height",
+          "full body visible from head to toe",
+          "soft painterly style, warm vibrant colors, detailed background",
+          "cute round proportions",
+          "no text, no watermarks",
+        ].join(", ");
+      }
+
+      console.log(`[Reference] Prompt: "${refPrompt.substring(0, 200)}..."`);
+
+      try {
+        let refUrl = await generateKontextImage(replicate, {
+          prompt: refPrompt,
+          seed: storySeed,
+          pageIndex: 99,
+          safetyTolerance: 4,  // Reference images: character portraits (capped by MAX_REF_SAFETY_TOLERANCE)
+        });
+
+        // If that failed, try an even simpler prompt
+        if (!refUrl) {
+          console.log(`[Reference] First attempt failed, trying simplified prompt...`);
+          const skinSimple = skinToneRef ? `, ${skinToneRef}` : '';
+          const accessorySimple = identity.accessories ? `, wearing ${identity.accessories}` : '';
+          const simplePrompt = isHumanRef
+            ? `cute cartoon young ${genderWord}, ${ageDesc}, small child${skinSimple}, ${genderCuesRef}${identity.hair ? ', ' + identity.hair : ''}${accessorySimple}, children's book illustration, friendly smile, big eyes, white background, full body, simple, colorful`
+            : `cute cartoon ${simpleSpeciesName}, children's book illustration, friendly smile, big eyes, white background, full body, simple, colorful`;
+          refUrl = await generateKontextImage(replicate, {
+            prompt: simplePrompt,
+            seed: storySeed + 1,
+            pageIndex: 99,
+            safetyTolerance: 5,  // Retry reference with more permissive (capped by MAX_REF_SAFETY_TOLERANCE)
+          });
+        }
+
+        if (refUrl) {
+          referenceImageUrl = refUrl;
+          console.log(`[Reference] Generated clean reference: ${refUrl.substring(0, 60)}...`);
+
+          // Cache for next time (animals only — human characters are unique)
+          if (!isHumanRef) {
+            try {
+              const resp = await fetch(refUrl);
+              if (resp.ok) {
+                const refBuffer = Buffer.from(await resp.arrayBuffer());
+                const speciesKey = libraryResult?.character.species || identity.species;
+                saveAssets(speciesKey, refBuffer, null, null);
+                console.log(`[Library] Cached reference for "${speciesKey}" — next story will be instant`);
+              }
+            } catch (e) {
+              console.warn(`[Library] Failed to cache reference:`, e);
+            }
+          } else {
+            console.log(`[Library] Skipping cache for human character — each character is unique`);
+          }
+        }
+      } catch (e) {
+        console.warn(`[Reference] Kontext reference generation failed:`, e);
+      }
+    }
+
+    if (referenceImageUrl) {
+      console.log(`[Book] Reference image ready — character consistency enabled`);
+    } else {
+      console.warn(`[Book] WARNING: No reference image — character consistency will be limited`);
+    }
+
+    // ── Generate pages with bounded concurrency ──
+    // No more precomputed poses, scene card processing, or visual scene extraction.
+    // GPT's IMAGE_PROMPT is the complete prompt — we just add safety cues.
+    const imageUrls: string[] = new Array(imagePrompts.length).fill("");
+    const usedSeeds: number[] = [];
     let nextIdx = 0;
 
-    const worker = async () => {
+    const imageWorker = async () => {
       while (nextIdx < imagePrompts.length) {
         const i = nextIdx++;
         const pageSeed = seeds?.[i] ?? storySeed + i * 1000;
-        const customNeg = negativePrompts?.[i];
         usedSeeds[i] = pageSeed;
 
-        const pageCard = sceneCards?.[i] as PageSceneCard | undefined;
         console.log(`\n========== GENERATING PAGE ${i + 1}/${imagePrompts.length} ==========`);
-        results[i] = await generateOnePage(
-          imagePrompts[i], i, pageSeed, identity, customNeg, pageCard,
-          clipAnchorEmbedding.length > 0 ? clipAnchorEmbedding : undefined,
-          anchorImageBuffer
+
+        const result = await generateOnePage(
+          imagePrompts[i], i, pageSeed, identity, referenceImageUrl || undefined, additionalIdentities
         );
+        imageUrls[i] = result.url;
       }
-    }
+    };
 
-    const workers = Array.from(
+    // Launch image workers
+    const imageWorkers = Array.from(
       { length: Math.min(PAGE_CONCURRENCY, imagePrompts.length) },
-      () => worker()
+      () => imageWorker()
     );
-    await Promise.all(workers);
 
-    // Build response
-    for (let i = 0; i < imagePrompts.length; i++) {
-      imageUrls.push(results[i]?.url || "");
-    }
+    await Promise.all(imageWorkers);
 
-    const successCount = imageUrls.filter((u) => u).length;
-    console.log(`\n========== IMAGE GENERATION COMPLETE ==========`);
-    console.log(`Accepted: ${successCount}/${imagePrompts.length} images`);
-    console.log(`Failed: ${imagePrompts.length - successCount} (returned empty URL — show placeholder)`);
+    // ── Build response ──
+    const imgSuccessCount = imageUrls.filter((u) => u).length;
+    const elapsed = ((Date.now() - startTime) / 1000).toFixed(1);
+    console.log(`\n========== GENERATION COMPLETE ==========`);
+    console.log(`Pipeline: FLUX KONTEXT PRO (GPT writes prompts directly)`);
+    console.log(`Images: ${imgSuccessCount}/${imagePrompts.length} succeeded`);
+    console.log(`Total time: ${elapsed}s`);
     console.log(`Seeds: ${usedSeeds.join(", ")}`);
     console.log(`==============================================\n`);
 
-    return NextResponse.json({ imageUrls, seed: storySeed, seeds: usedSeeds });
+    return NextResponse.json({ imageUrls, videoUrls: [], seed: storySeed, seeds: usedSeeds });
   } catch (error) {
     console.error("Error in image generation:", error);
     return NextResponse.json({ error: "Failed to generate images" }, { status: 500 });

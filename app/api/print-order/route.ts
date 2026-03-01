@@ -3,7 +3,13 @@ import { getServerSession } from 'next-auth'
 import { authOptions } from '@/lib/auth'
 import { prisma } from '@/lib/prisma'
 import { calculatePrintPrice, PRINT_BASE_PRICE } from '@/lib/subscriptions'
+import Stripe from 'stripe'
 
+const stripe = new Stripe(process.env.STRIPE_SECRET_KEY || '', {
+  apiVersion: '2023-10-16' as any,
+})
+
+// Create a print order + Stripe Checkout session
 export async function POST(request: NextRequest) {
   try {
     const session = await getServerSession(authOptions)
@@ -12,12 +18,34 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
     }
 
-    const { storyId, shippingAddress } = await request.json()
+    const {
+      storyId,
+      shippingName,
+      shippingAddress,
+      shippingCity,
+      shippingState,
+      shippingZip,
+      shippingCountry,
+      shippingCost,
+      shipmentMethodUid,
+    } = await request.json()
 
-    if (!storyId || !shippingAddress) {
+    if (!storyId || !shippingAddress || !shippingCity || !shippingCountry) {
       return NextResponse.json(
-        { error: 'Story ID and shipping address are required' },
+        { error: 'Story ID and shipping details are required' },
         { status: 400 }
+      )
+    }
+
+    // Verify story exists and belongs to user
+    const story = await prisma.story.findUnique({
+      where: { id: storyId },
+    })
+
+    if (!story || story.userId !== session.user.id) {
+      return NextResponse.json(
+        { error: 'Story not found' },
+        { status: 404 }
       )
     }
 
@@ -34,28 +62,85 @@ export async function POST(request: NextRequest) {
     }
 
     // Calculate price with discount
-    const totalPrice = calculatePrintPrice(subscription.plan as any)
-    const discount = PRINT_BASE_PRICE - totalPrice
+    const bookPrice = calculatePrintPrice(subscription.plan as any)
+    const discountAmount = PRINT_BASE_PRICE - bookPrice
+    const discountPercent = Math.round((discountAmount / PRINT_BASE_PRICE) * 100)
+    const finalShippingCost = shippingCost || 4.99
+    const totalPrice = bookPrice + finalShippingCost
 
-    // Create print order
+    // Create print order in DB
     const order = await prisma.printOrder.create({
       data: {
         userId: session.user.id,
         storyId,
+        storyTitle: story.title,
         status: 'pending',
         basePrice: PRINT_BASE_PRICE,
-        discount,
+        discountPercent,
+        discountAmount,
+        shippingCost: finalShippingCost,
         totalPrice,
-        shippingAddress,
+        shippingName: shippingName || null,
+        shippingAddress: shippingAddress || null,
+        shippingCity: shippingCity || null,
+        shippingState: shippingState || null,
+        shippingZip: shippingZip || null,
+        shippingCountry: shippingCountry || null,
       },
     })
 
-    // In a real app, you would integrate with a printing service API here
-    // For now, we'll just return the order details
+    // Create Stripe Checkout Session for one-time payment
+    const appUrl = process.env.NEXT_PUBLIC_APP_URL || 'http://localhost:3000'
+
+    const checkoutSession = await stripe.checkout.sessions.create({
+      mode: 'payment',
+      payment_method_types: ['card'],
+      line_items: [
+        {
+          price_data: {
+            currency: 'usd',
+            product_data: {
+              name: `Printed Book: ${story.title}`,
+              description: `8x8" hardcover photobook — ${story.title} by ${story.author || 'Young Author'}`,
+            },
+            unit_amount: Math.round(bookPrice * 100), // Convert to cents
+          },
+          quantity: 1,
+        },
+        {
+          price_data: {
+            currency: 'usd',
+            product_data: {
+              name: 'Shipping',
+              description: `Shipping to ${shippingCity}, ${shippingCountry}`,
+            },
+            unit_amount: Math.round(finalShippingCost * 100),
+          },
+          quantity: 1,
+        },
+      ],
+      metadata: {
+        type: 'print_order',
+        orderId: order.id,
+        storyId,
+        userId: session.user.id,
+        shipmentMethodUid: shipmentMethodUid || '',
+      },
+      success_url: `${appUrl}/print/${storyId}?success=true&orderId=${order.id}`,
+      cancel_url: `${appUrl}/print/${storyId}?cancelled=true&orderId=${order.id}`,
+    })
+
+    // Update order with Stripe session ID
+    await prisma.printOrder.update({
+      where: { id: order.id },
+      data: {
+        stripePaymentIntentId: checkoutSession.id,
+      },
+    })
 
     return NextResponse.json({
       order,
-      message: 'Print order created successfully. You will receive an email with payment instructions.',
+      checkoutUrl: checkoutSession.url,
     }, { status: 201 })
   } catch (error) {
     console.error('Error creating print order:', error)

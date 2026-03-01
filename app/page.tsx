@@ -2,14 +2,17 @@
 
 import { useState, useEffect, useCallback } from 'react'
 import { useRouter } from 'next/navigation'
-import SpeechRecorder from '@/components/SpeechRecorder'
+import SpeechRecorder, { AgeGroup, GenerationMode } from '@/components/SpeechRecorder'
 import StoryBook from '@/components/StoryBook'
 import LoadingSpinner from '@/components/LoadingSpinner'
-import { BookOpen, Sparkles } from 'lucide-react'
+import BeaverMascot from '@/components/BeaverMascot'
+import { BookOpen } from 'lucide-react'
+import { clientValidateContent } from '@/lib/blockedTerms'
 
 export type StoryPage = {
   text: string
   imageUrl?: string
+  videoUrl?: string   // Looping animation URL (mp4) for "Living Pictures" mode
 }
 
 export type Story = {
@@ -22,8 +25,12 @@ export type Story = {
 export default function Home() {
   const [step, setStep] = useState<'record' | 'generating' | 'generating-images' | 'book'>('record')
   const [story, setStory] = useState<Story | null>(null)
+  const [characterBible, setCharacterBible] = useState<any>(null)
+  const [sceneCards, setSceneCards] = useState<any[]>([])
   const [transcription, setTranscription] = useState<string>('')
   const [loadingMessage, setLoadingMessage] = useState('Creating your magical story...')
+  const [selectedAgeGroup, setSelectedAgeGroup] = useState<AgeGroup>('3-5')
+  const [selectedMode, setSelectedMode] = useState<GenerationMode>('storybook')
   const router = useRouter()
 
   const isGenerating = step === 'generating' || step === 'generating-images'
@@ -51,15 +58,18 @@ export default function Home() {
     router.push(href)
   }, [isGenerating, router])
 
-  const handleTranscriptionComplete = async (text: string, authorName: string) => {
+  const handleTranscriptionComplete = async (text: string, authorName: string, ageGroup: AgeGroup, mode: GenerationMode) => {
     setTranscription(text)
+    setSelectedAgeGroup(ageGroup)
+    setSelectedMode(mode)
 
-    // Check for inappropriate content early
-    const inappropriateWords = ['sex', 'sexy', 'nude', 'naked', 'porn', 'xxx', 'adult', 'erotic', 'nsfw']
-    const lowerText = text.toLowerCase()
-    const hasInappropriateContent = inappropriateWords.some(word => lowerText.includes(word))
-
-    if (hasInappropriateContent) {
+    // ─── CLIENT-SIDE CONTENT SAFETY ─────────────────────────────────
+    // Advisory check — gives immediate feedback. Server enforces the real rules.
+    // Uses comprehensive blocklist from lib/blockedTerms.ts (250+ terms across
+    // sexual, violence, profanity, slurs, substance, religious categories).
+    const blockedTerm = clientValidateContent(text)
+    if (blockedTerm) {
+      console.warn(`[CLIENT SAFETY] Blocked term detected: "${blockedTerm}"`)
       alert('This story idea contains content that isn\'t appropriate for a children\'s story app. Please try a different, kid-friendly idea! Think of fun adventures with animals, magical creatures, or everyday heroes.')
       return
     }
@@ -72,7 +82,7 @@ export default function Home() {
       const storyResponse = await fetch('/api/generate-story', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ prompt: text }),
+        body: JSON.stringify({ prompt: text, ageGroup }),
       })
 
       if (!storyResponse.ok) {
@@ -82,25 +92,27 @@ export default function Home() {
 
       const storyData = await storyResponse.json()
 
-      // Step 2: Generate images for the story
+      // Step 2: Generate images + videos in ONE overlapping pipeline
+      // Videos start generating as soon as each key-page image finishes,
+      // so image and video generation run in parallel — much faster than sequential.
       setStep('generating-images')
-      setLoadingMessage('Creating beautiful illustrations with quality checks... (this takes 5-8 minutes)')
+      setLoadingMessage('Creating beautiful illustrations...')
 
       const imagesResponse = await fetch('/api/generate-images', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
-          imagePrompts: storyData.imagePrompts,
-          negativePrompts: storyData.negativePrompts,
+          // GPT now writes complete image prompts directly — no more scene cards or visual scenes
+          imagePrompts: storyData.story?.pages?.map((p: any) => p.imagePrompt || '') || [],
+          characterBible: storyData.characterBible,
+          additionalCharacterBibles: storyData.additionalCharacterBibles,
           seed: storyData.seed,
           seeds: storyData.seeds,
-          characterBible: storyData.characterBible,
-          sceneCards: storyData.sceneCards,  // Per-page must-include objects for scoring
         }),
       })
 
       if (!imagesResponse.ok) {
-        // If images fail, continue with story but no images
+        // If pipeline fails, continue with story but no images
         setStory({
           ...storyData.story,
           author: authorName
@@ -109,31 +121,37 @@ export default function Home() {
         return
       }
 
-      const imagesData = await imagesResponse.json()
+      const mediaData = await imagesResponse.json()
 
-      // Debug: log received image URLs
-      console.log(`[Frontend] Received ${imagesData.imageUrls?.length ?? 0} image URLs from API`)
-      imagesData.imageUrls?.forEach((url: string, i: number) => {
-        console.log(`[Frontend] Page ${i + 1}: ${url ? url.substring(0, 80) + '...' : 'EMPTY'}`)
+      // Debug: log received media URLs
+      console.log(`[Frontend] Received ${mediaData.imageUrls?.length ?? 0} image URLs`)
+      console.log(`[Frontend] Received ${mediaData.videoUrls?.filter(Boolean).length ?? 0} video URLs`)
+      mediaData.imageUrls?.forEach((url: string, i: number) => {
+        const hasVideo = mediaData.videoUrls?.[i] ? ' + VIDEO' : ''
+        console.log(`[Frontend] Page ${i + 1}: ${url ? 'IMAGE' : 'EMPTY'}${hasVideo}`)
       })
 
-      // Step 3: Combine story with images
+      // Combine story with images and videos
       const storyWithImages = {
         ...storyData.story,
         author: authorName,
         pages: storyData.story.pages.map((page: any, index: number) => ({
           ...page,
-          imageUrl: imagesData.imageUrls[index] || undefined
+          imageUrl: mediaData.imageUrls[index] || undefined,
+          videoUrl: mediaData.videoUrls?.[index] || undefined,
         }))
       }
 
-      // Debug: verify all pages have imageUrl set
-      console.log(`[Frontend] Story pages with images:`)
+      // Debug: verify all pages have media set
+      console.log(`[Frontend] Story pages with media:`)
       storyWithImages.pages.forEach((p: any, i: number) => {
-        console.log(`[Frontend] Page ${i + 1} imageUrl: ${p.imageUrl ? 'SET' : 'MISSING'}`)
+        console.log(`[Frontend] Page ${i + 1} imageUrl: ${p.imageUrl ? 'SET' : 'MISSING'}, videoUrl: ${p.videoUrl ? 'SET' : 'MISSING'}`)
       })
 
       setStory(storyWithImages)
+      setCharacterBible(storyData.characterBible || null)
+      setSceneCards(storyData.sceneCards || [])
+
       setStep('book')
     } catch (error: any) {
       console.error('Error generating story:', error)
@@ -150,59 +168,57 @@ export default function Home() {
   }
 
   return (
-    <main className="min-h-screen p-4 md:p-8 bg-gradient-to-br from-teal-50 via-yellow-50 to-orange-50">
+    <main className="min-h-[100dvh] p-4 md:p-8">
       <div className="max-w-6xl mx-auto">
-        {/* Navigation - Bright kid-friendly colors */}
-        <div className="flex justify-between items-center mb-8 bg-white/90 backdrop-blur-sm border-2 border-teal-200 rounded-2xl shadow-lg p-4">
-          <div className="flex items-center gap-2">
-            <span className="text-3xl">🦫</span>
-            <span className="text-xl font-bold text-teal-700">Benny's Story Time</span>
+        {/* Navigation */}
+        <nav className="flex justify-between items-center mb-8 bg-white/80 backdrop-blur-sm border border-zinc-200 rounded-2xl shadow-[0_20px_40px_-15px_rgba(0,0,0,0.05)] p-4">
+          <div className="flex items-center gap-3">
+            <BeaverMascot greeting="" isRecording={false} isProcessing={false} size="tiny" />
+            <span className="text-xl font-semibold text-zinc-800 tracking-tight">Benny&apos;s Story Time</span>
           </div>
-          <div className="flex gap-3">
+          <div className="flex gap-2">
             <button
               onClick={() => guardedNavigate('/about')}
-              className="px-4 py-2 text-teal-600 hover:text-teal-800 font-semibold"
+              className="px-4 py-2 text-zinc-600 hover:text-zinc-900 font-medium rounded-lg hover:bg-zinc-100 active:scale-[0.98]"
             >
-              About Us
+              About
             </button>
             <button
               onClick={() => guardedNavigate('/pricing')}
-              className="px-4 py-2 text-teal-600 hover:text-teal-800 font-semibold"
+              className="px-4 py-2 text-zinc-600 hover:text-zinc-900 font-medium rounded-lg hover:bg-zinc-100 active:scale-[0.98]"
             >
               Pricing
             </button>
             <button
               onClick={() => guardedNavigate('/terms')}
-              className="px-4 py-2 text-teal-600 hover:text-teal-800 font-semibold"
+              className="px-4 py-2 text-zinc-600 hover:text-zinc-900 font-medium rounded-lg hover:bg-zinc-100 active:scale-[0.98]"
             >
               Terms
             </button>
             <button
               onClick={() => guardedNavigate('/dashboard')}
-              className="px-4 py-2 bg-teal-500 text-white rounded-lg hover:bg-teal-600 font-semibold flex items-center gap-2"
+              className="px-4 py-2 bg-emerald-600 text-white rounded-xl hover:bg-emerald-700 font-medium flex items-center gap-2 active:scale-[0.98]"
             >
               <BookOpen className="w-5 h-5" />
               My Library
             </button>
           </div>
-        </div>
+        </nav>
 
-        {/* Header - Cheerful and colorful */}
-        <div className="text-center mb-8">
-          <div className="flex items-center justify-center gap-3 mb-4">
-            <Sparkles className="w-10 h-10 text-yellow-500" />
-            <h1 className="text-4xl md:text-5xl font-bold bg-gradient-to-r from-teal-600 via-green-500 to-yellow-500 bg-clip-text text-transparent font-kids">
-              Create Magical Stories
-            </h1>
-            <Sparkles className="w-10 h-10 text-orange-500" />
-          </div>
-          <p className="text-lg text-teal-700">
-            Tell Benny your story ideas and watch them come to life!
+        {/* Hero */}
+        <div className="mb-8">
+          <h1 className="text-4xl md:text-6xl font-bold tracking-tighter leading-none text-zinc-900 mb-4">
+            Create{' '}
+            <span className="text-emerald-600">Magical</span>{' '}
+            Stories
+          </h1>
+          <p className="text-lg text-zinc-500 max-w-md">
+            Tell Benny your story ideas and watch them come to life as beautifully illustrated books.
           </p>
         </div>
 
-        {/* Main Content - Warm and inviting */}
-        <div className="bg-white/95 backdrop-blur-sm border-2 border-teal-100 rounded-3xl shadow-2xl p-6 md:p-10">
+        {/* Main Content */}
+        <div className="bg-white border border-zinc-200 rounded-2xl shadow-[0_20px_40px_-15px_rgba(0,0,0,0.05)] p-6 md:p-10">
           {step === 'record' && (
             <SpeechRecorder onComplete={handleTranscriptionComplete} />
           )}
@@ -211,11 +227,12 @@ export default function Home() {
             <LoadingSpinner
               message={loadingMessage}
               stage={step === 'generating' ? 'story' : 'images'}
+              prompt={transcription}
             />
           )}
 
           {step === 'book' && story && (
-            <StoryBook story={story} onReset={handleReset} />
+            <StoryBook story={story} onReset={handleReset} characterBible={characterBible} sceneCards={sceneCards} />
           )}
         </div>
       </div>

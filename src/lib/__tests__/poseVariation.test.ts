@@ -98,12 +98,18 @@ describe('generatePageSceneCard - action extraction produces pose descriptions',
 
   it('never returns an action without body pose detail', () => {
     // Test a set of common story sentences — all should produce descriptive actions
+    // Includes PAST TENSE verbs to test regex matching
     const texts = [
       'Riri was playing in the garden.',
       'Riri ran across the field.',
       'Riri saw amazing dolphins jumping.',
       'Riri looked at the beautiful stars.',
       'Riri explored the deep cave.',
+      'Riri danced with his friends.',
+      'Riri swam through the warm water.',
+      'Riri climbed up the big tree.',
+      'Riri jumped over the puddle.',
+      'Riri laughed at the funny clown.',
     ];
 
     for (const text of texts) {

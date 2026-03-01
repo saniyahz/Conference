@@ -13,7 +13,12 @@ const config: Config = {
         foreground: 'var(--foreground)',
       },
       fontFamily: {
-        'kids': ['Comic Sans MS', 'cursive'],
+        'kids': ['var(--font-outfit)', 'Outfit', 'sans-serif'],
+        'display': ['var(--font-outfit)', 'Outfit', 'sans-serif'],
+        'body': ['var(--font-outfit)', 'Outfit', 'sans-serif'],
+      },
+      transitionTimingFunction: {
+        'out-expo': 'cubic-bezier(0.16, 1, 0.3, 1)',
       },
     },
   },

@@ -104,7 +104,7 @@ export async function getClipEmbedding(
   for (const attempt of attempts) {
     try {
       const output = await replicate.run(
-        `${attempt.model}:${attempt.version}`,
+        `${attempt.model}:${attempt.version}` as `${string}/${string}:${string}`,
         {
           input: {
             inputs: imageUrl,

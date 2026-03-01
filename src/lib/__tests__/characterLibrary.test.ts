@@ -224,7 +224,7 @@ describe("buildBibleFromLibrary", () => {
     expect(bible.species).toBe("rhinoceros");
     expect(bible.character_type).toBe("animal");
     expect(bible.visual_fingerprint).toEqual(rhino.visualFingerprint);
-    expect(bible.style.base).toBe("children's picture book illustration");
+    expect(bible.style!.base).toBe("children's picture book illustration");
   });
 
   it("allows custom name override", () => {
@@ -260,7 +260,7 @@ describe("buildBibleFromLibrary", () => {
     const elephant = LIBRARY_CHARACTERS.elephant;
     const bible = buildBibleFromLibrary(elephant);
 
-    const rulesText = bible.consistency_rules.join(" ");
+    const rulesText = bible.consistency_rules!.join(" ");
     expect(rulesText).toContain("elephant");
     expect(rulesText).toContain("never change species");
   });

@@ -99,8 +99,20 @@ function buildTestInpaintPrompt(bible: CharacterBible): string {
 
 function actionToPose(action: string): string {
   const lower = action.toLowerCase();
+
+  // PASSTHROUGH: If extractAction() already produced a detailed pose
+  // (character name + 4+ word description), strip the name and pass through.
+  const firstSpace = action.indexOf(' ');
+  if (firstSpace > 0) {
+    const afterName = action.substring(firstSpace + 1).trim();
+    if (afterName.split(/\s+/).length >= 4) {
+      return afterName;
+    }
+  }
+
+  // Fallback: single-verb lookup for short or legacy action strings
   const verbMatch = lower.match(
-    /\b(flying|soaring|swimming|running|walking|jumping|leaping|climbing|dancing|playing|exploring|sleeping|eating|reading|waving|hugging|blasting|landing|cheering|floating|gazing|discovering|looking|bouncing|riding|diving|sliding|crawling|reaching|sitting|hiding|splashing|twirling|spinning|skipping|marching|tiptoeing|sneaking|peeking|pointing|standing|exclaiming|leading)\b/
+    /\b(flying|soaring|swimming|running|walking|jumping|leaping|climbing|dancing|playing|exploring|sleeping|eating|reading|waving|hugging|blasting|landing|cheering|floating|gazing|discovering|looking|bouncing|riding|diving|sliding|crawling|reaching|sitting|hiding|splashing|twirling|spinning|skipping|marching|tiptoeing|sneaking|peeking|pointing|standing|exclaiming|leading|pressing|squeezing|freezing|singing|waddling|spotting|worrying|stepping|sharing|celebrating|tumbling)\b/
   );
 
   if (verbMatch) {
@@ -149,6 +161,17 @@ function actionToPose(action: string): string {
       hiding: 'crouching down hiding',
       crawling: 'crawling forward on all fours',
       reaching: 'reaching forward with one arm',
+      pressing: 'pressing a button with one hand excitedly',
+      squeezing: 'squeezing through eagerly',
+      freezing: 'standing frozen with wide scared eyes',
+      singing: 'singing with mouth open happily',
+      waddling: 'waddling forward with a big grin',
+      spotting: 'looking up with wide surprised eyes',
+      worrying: 'standing nervously with a worried face',
+      stepping: 'stepping forward looking around in awe',
+      sharing: 'sitting and talking happily',
+      celebrating: 'celebrating with both arms raised high',
+      tumbling: 'tumbling forward playfully',
     };
     return poseMap[verb] || `${verb} actively`;
   }
@@ -376,16 +399,18 @@ describe('E2E Pipeline Integration - Pose Variation', () => {
   });
 
   it('specific story verbs map to expected poses', () => {
-    // These are the verbs from the Riri story
+    // Detailed poses (4+ words after name) pass through directly
     expect(actionToPose('Riri walking forward looking around curiously')).toContain('walking');
-    expect(actionToPose('Riri climbing forward eagerly')).toContain('climbing');
-    expect(actionToPose('Riri blasting off excitedly')).toContain('bracing');
     expect(actionToPose('Riri soaring high with arms spread')).toContain('soaring');
-    expect(actionToPose('Riri gazing at craters in wonder')).toContain('looking');
+    expect(actionToPose('Riri landing with feet touching down')).toContain('touching');
+    expect(actionToPose('Riri pressing a button with one hand excitedly')).toContain('pressing a button');
+    expect(actionToPose('Riri standing frozen stiff with wide scared eyes')).toContain('frozen');
+
+    // Short poses (< 4 words after name) go through verb lookup
     expect(actionToPose('Riri splashing in water')).toContain('splashing');
     expect(actionToPose('Riri swimming forward')).toContain('swimming');
-    expect(actionToPose('Riri exploring the forest')).toContain('walking');
-    expect(actionToPose('Riri landing with feet touching down')).toContain('touching');
     expect(actionToPose('Riri waving goodbye')).toContain('waving');
+    expect(actionToPose('Riri climbing forward eagerly')).toContain('climbing');
+    expect(actionToPose('Riri blasting off excitedly')).toContain('bracing');
   });
 });

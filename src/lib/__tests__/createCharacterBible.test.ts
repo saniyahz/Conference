@@ -27,12 +27,12 @@ describe('createCharacterBible', () => {
 
   it('includes species in visual_fingerprint', () => {
     const bible = createCharacterBible(rhinoDNA);
-    expect(bible.visual_fingerprint.some(fp => fp.includes('rhinoceros'))).toBe(true);
+    expect(bible.visual_fingerprint!.some(fp => fp.includes('rhinoceros'))).toBe(true);
   });
 
   it('includes skin/fur color in visual_fingerprint', () => {
     const bible = createCharacterBible(rhinoDNA);
-    expect(bible.visual_fingerprint.some(fp => fp.includes('gray'))).toBe(true);
+    expect(bible.visual_fingerprint!.some(fp => fp.includes('gray'))).toBe(true);
   });
 
   it('extracts species from name when physical_form is generic', () => {
@@ -77,11 +77,11 @@ describe('createSimpleBible', () => {
 
   it('includes species in visual_fingerprint', () => {
     const bible = createSimpleBible('Riri', 'animal', 'rhinoceros');
-    expect(bible.visual_fingerprint.some(fp => fp.includes('rhinoceros'))).toBe(true);
+    expect(bible.visual_fingerprint!.some(fp => fp.includes('rhinoceros'))).toBe(true);
   });
 
   it('sets style to children\'s picture book', () => {
     const bible = createSimpleBible('Riri', 'animal', 'rhinoceros');
-    expect(bible.style.base).toContain('children');
+    expect(bible.style!.base).toContain('children');
   });
 });

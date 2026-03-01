@@ -67,10 +67,19 @@ export {
 } from "./loraTraining";
 export type { LoraTrainingConfig, LoraTrainingResult, LoraConfig } from "./loraTraining";
 
-// Pipeline — plate → inpaint → validate → escalate
+// Pipeline — plate → inpaint → validate → escalate (LEGACY — kept for backward compat)
 export {
   generateStoryPageImage,
   generateScenePlateOnly,
   buildCharacterFirstPrompt,
   buildPlatePrompt,
 } from "./pipeline";
+
+// Flux Kontext Pro — NEW character-consistent image generation
+export {
+  generateKontextImage,
+  generateKontextReference,
+  getCharacterRefUrl,
+  KONTEXT_MODEL,
+} from "./kontextGeneration";
+export type { KontextGenerateOptions } from "./kontextGeneration";
