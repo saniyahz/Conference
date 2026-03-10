@@ -182,7 +182,7 @@ export default function Home() {
         <nav className="flex justify-between items-center mb-8 bg-white/80 backdrop-blur-sm border border-zinc-200 rounded-2xl shadow-[0_20px_40px_-15px_rgba(0,0,0,0.05)] p-4">
           <div className="flex items-center gap-3">
             <BeaverMascot greeting="" isRecording={false} isProcessing={false} size="tiny" />
-            <span className="text-xl font-semibold text-zinc-800 tracking-tight">My Story Bear</span>
+            <span className="text-xl font-semibold text-zinc-800 tracking-tight">Little Story Bear</span>
           </div>
           <div className="flex gap-2">
             <button

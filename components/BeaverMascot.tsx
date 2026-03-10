@@ -174,7 +174,7 @@ export default function BeaverMascot({
       {/* Name badge — hidden for tiny */}
       {size !== 'tiny' && (
         <div className="mt-1 bg-emerald-600 text-white px-3 py-0.5 rounded-full font-bold text-xs shadow-md">
-          Story Bear
+          Little Bear
         </div>
       )}
     </div>
