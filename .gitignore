@@ -6,3 +6,5 @@ dist/
 .env.local
 *.db
 *.db-journal
+.claude/worktrees/
+prisma/migrations/

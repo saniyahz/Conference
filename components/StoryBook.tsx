@@ -13,6 +13,7 @@ interface StoryBookProps {
   onReset: () => void
   characterBible?: any
   sceneCards?: any[]
+  storyMode?: string
 }
 
 // Real AI Voice options using OpenAI TTS
@@ -171,7 +172,7 @@ function playPageFlipSound() {
   }
 }
 
-export default function StoryBook({ story, onReset, characterBible, sceneCards }: StoryBookProps) {
+export default function StoryBook({ story, onReset, characterBible, sceneCards, storyMode }: StoryBookProps) {
   const router = useRouter()
   const [currentPage, setCurrentPage] = useState(0)
   const [isReading, setIsReading] = useState(false)
@@ -322,7 +323,7 @@ export default function StoryBook({ story, onReset, characterBible, sceneCards }
       const response = await fetch('/api/generate-speech', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ text, voice: voiceId }),
+        body: JSON.stringify({ text, voice: voiceId, storyMode }),
       })
 
       if (response.ok) {
@@ -395,6 +396,7 @@ export default function StoryBook({ story, onReset, characterBible, sceneCards }
           body: JSON.stringify({
             text: text,
             voice: selectedVoice.id,
+            storyMode,
           }),
         })
 
@@ -626,7 +628,7 @@ export default function StoryBook({ story, onReset, characterBible, sceneCards }
       const response = await fetch('/api/generate-pdf', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ story, characterBible, sceneCards }),
+        body: JSON.stringify({ story, characterBible, sceneCards, storyMode }),
       })
 
       if (!response.ok) {

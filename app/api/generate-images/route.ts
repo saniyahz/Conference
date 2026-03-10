@@ -33,12 +33,11 @@ const replicate = new Replicate({
 /**
  * Max concurrent page generations.
  *
- * Set to 1 (sequential) to prevent cascading 429 rate-limit failures.
  * With <$5 Replicate credit, the rate limit is 6 req/min with burst of 1.
- * Sequential generation is only ~30s slower (60s → 90s for 10 pages) but
- * eliminates 429 cascading failures entirely.
+ * Concurrency 3 lets us finish 10 pages in 4 batches (~40s faster than
+ * sequential). The retry logic in kontextGeneration.ts handles 429s gracefully.
  */
-const PAGE_CONCURRENCY = 2;
+const PAGE_CONCURRENCY = 3;
 
 // ─── CHARACTER IDENTITY ─────────────────────────────────────────────────
 
@@ -75,7 +74,7 @@ function extractCharacterIdentity(bible?: CharacterBible): CharacterIdentity {
       name: "Character",
       species: "animal",
       description: "a cute cartoon animal character",
-      visualTokens: ["cartoon animal", "big expressive eyes", "friendly smile"],
+      visualTokens: ["cartoon animal", "friendly smile"],
       hair: "",
       outfit: "",
       genderHint: "",
@@ -161,6 +160,10 @@ function extractCharacterIdentity(bible?: CharacterBible): CharacterIdentity {
       skinTone = 'fair light skin';
     } else if (rawSkinTone) {
       skinTone = rawSkinTone;
+    } else {
+      // No skin tone specified at all — use the neutral default
+      skinTone = 'warm light-brown skin';
+      console.log(`[Identity] No skin tone found in bible — using neutral default`);
     }
     console.log(`[Identity] Skin tone from bible: "${rawSkinTone}" → strengthened: "${skinTone}"`);
   }
@@ -187,7 +190,7 @@ function extractCharacterIdentity(bible?: CharacterBible): CharacterIdentity {
     const outfitDesc = outfit ? `, wearing ${outfit}` : "";
     const accessoryDesc = accessories ? `, wearing ${accessories}` : "";
     const ageCue = age ? `, ${age}` : ", young child";
-    const genderCue = genderWord === 'girl' ? ', feminine features, cute girl face' : ', boyish features, young boy face';
+    const genderCue = genderWord === 'girl' ? ', clearly a girl' : ', clearly a boy';
     const skinCue = skinTone ? `, ${skinTone}` : "";
     description = `a cute cartoon ${genderWord} named ${name}${ageCue}, small childlike body${skinCue}${genderCue}, ${safeDescription}${hairDesc}${accessoryDesc}${outfitDesc}`;
   } else {
@@ -231,6 +234,7 @@ async function generateOnePage(
   identity: CharacterIdentity,
   referenceImageUrl?: string,
   additionalIdentities?: CharacterIdentity[],
+  storyMode: string = 'imagination',
 ): Promise<{ url: string; accepted: boolean }> {
   console.log(`\n${"=".repeat(60)}`);
   console.log(`[Page ${pageIndex + 1}] Character: ${identity.name} (${identity.species})`);
@@ -247,96 +251,443 @@ async function generateOnePage(
     console.warn(`[Page ${pageIndex + 1}] No IMAGE_PROMPT from GPT — using identity fallback`);
     if (isHumanChar) {
       const genderWord = identity.genderHint || "girl";
-      prompt = `Text-free children's book illustration, WIDE SHOT. A small cute cartoon young ${genderWord}, ${identity.age || '6 years old'}, ${identity.skinTone || ''}, ${identity.hair || ''}, wearing ${identity.outfit || 'colorful clothes'}, is standing happily in a bright colorful storybook landscape with rolling green hills, a winding path, colorful wildflowers, butterflies, and a bright blue sky with fluffy clouds. The character is small in the frame, about one-third of the image, surrounded by the rich environment. Soft painterly style, warm colors, detailed background.`;
+      prompt = `Text-free children's book illustration, WIDE SHOT. A small cute cartoon young ${genderWord}, ${identity.age || '6 years old'}, ${identity.skinTone || ''}, ${identity.hair || ''}, wearing ${identity.outfit || 'colorful clothes'}, is standing happily in a bright colorful storybook landscape with rolling green hills, a winding path, colorful wildflowers, butterflies, and a bright blue sky with fluffy clouds. The character is small in the frame, about one-third of the image, surrounded by the rich environment. Children's book illustration, 2D cartoon style, bold black outlines, flat bright colors, simple rounded shapes.`;
     } else {
       const outfitPart = identity.outfit ? `, wearing ${identity.outfit}` : "";
-      prompt = `Text-free children's book illustration, WIDE SHOT. A small cute cartoon ${identity.species}${outfitPart} is standing happily in a bright colorful meadow with tall wildflowers, a babbling brook, butterflies, and distant rolling hills under a bright blue sky with fluffy clouds. The character is small in the frame, about one-third of the image. Soft painterly style, warm colors, detailed background.`;
+      prompt = `Text-free children's book illustration, WIDE SHOT. A small cute cartoon ${identity.species}${outfitPart} is standing happily in a bright colorful meadow with tall wildflowers, a babbling brook, butterflies, and distant rolling hills under a bright blue sky with fluffy clouds. The character is small in the frame, about one-third of the image. Children's book illustration, 2D cartoon style, bold black outlines, flat bright colors, simple rounded shapes.`;
     }
   }
 
   console.log(`[Page ${pageIndex + 1}] GPT prompt: "${prompt.substring(0, 200)}..."`);
 
-  // ── 1b. Front-load critical cues (Flux weighs the beginning of the prompt most) ──
-  // Skin tone and composition MUST be near the start, not appended at the end.
-  if (isHumanChar && identity.skinTone) {
-    // Inject skin tone right after the character description in the prompt
-    // Replace "light warm skin" or "light skin" with the correct skin tone from bible
-    const skinLower = identity.skinTone.toLowerCase();
-    if (skinLower.includes('brown') || skinLower.includes('dark')) {
-      // Fix GPT's tendency to write "light warm skin" — replace with correct tone
-      prompt = prompt
-        .replace(/\blight warm skin\b/gi, identity.skinTone)
-        .replace(/\blight skin\b/gi, identity.skinTone)
-        .replace(/\bfair skin\b/gi, identity.skinTone)
-        .replace(/\bpale skin\b/gi, identity.skinTone)
-        .replace(/\bpeachy skin\b/gi, identity.skinTone)
-        .replace(/\blight complexion\b/gi, 'brown complexion')
-        .replace(/\bfair complexion\b/gi, 'brown complexion');
+  // ── 1a. Per-field corrections (fix GPT's wrong descriptions FIRST) ──
+  // IMPORTANT: These corrections run BEFORE the DNA hint insertion.
+  // If we insert the DNA hint first, the hair/outfit corrections match WITHIN
+  // the hint text and corrupt it (e.g., "short brown curlyshort brown curly hair").
+  // Skin tone, hair, outfit, and GENDER MUST match the CHARACTER_DNA identity — not
+  // GPT's paraphrased version. GPT often writes IMAGE_PROMPTs that don't match its
+  // own DNA (e.g., DNA says "girl" with "golden blonde bob cut" but IMAGE_PROMPT
+  // says "boy" with "curly brown hair"). We search-replace GPT's wrong descriptions
+  // with the correct ones from identity.
+  if (isHumanChar) {
+    // ── Gender replacement (fixes boy/girl mismatch) ──
+    // After the pre-scan in the POST handler overrides identity.genderHint when
+    // IMAGE_PROMPTs consistently disagree with DNA, this per-page fix handles
+    // remaining mismatches (e.g., mixed-gender prompts or edge cases).
+    const correctGender = identity.genderHint; // "girl" or "boy"
+    const wrongGender = correctGender === 'girl' ? 'boy' : 'girl';
+    // Match patterns like "cartoon boy", "small boy", "cute boy", "young boy"
+    // IMPORTANT: Use regex for replacement (not string.replace) to avoid
+    // substring matching — e.g., "cartoon girls" should NOT become "cartoon boys"
+    const genderPatterns = [
+      new RegExp(`\\bcartoon\\s+${wrongGender}\\b`, 'i'),
+      new RegExp(`\\bsmall\\s+${wrongGender}\\b`, 'i'),
+      new RegExp(`\\bcute\\s+${wrongGender}\\b`, 'i'),
+      new RegExp(`\\byoung\\s+${wrongGender}\\b`, 'i'),
+    ];
+    for (const pattern of genderPatterns) {
+      if (pattern.test(prompt)) {
+        const match = prompt.match(pattern)!;
+        const replacement = match[0].replace(new RegExp(`\\b${wrongGender}\\b`, 'i'), correctGender);
+        console.log(`[Page ${pageIndex + 1}] Gender mismatch: GPT="${match[0]}" → fixed="${replacement}"`);
+        // Use REGEX for replacement to respect word boundaries (avoids "girls" → "boys")
+        prompt = prompt.replace(pattern, replacement);
+        break;
+      }
+    }
+    // NOTE: We intentionally do NOT fix pronouns (his/her/he/she) — Flux uses
+    // visual keywords, not grammar. Pronoun replacement is too aggressive and
+    // can create contradictory prompts when there are multiple characters.
+
+    // ── Skin tone replacement (BIDIRECTIONAL — works in ALL directions) ──
+    // GPT often writes a different skin tone than DNA. This must fix ANY direction:
+    // DNA darker than prompt, DNA lighter than prompt, or DNA neutral vs prompt extreme.
+    // Strategy: Find the FIRST skin tone phrase in the prompt and replace with DNA's value.
+    if (identity.skinTone) {
+      const dnaSkin = identity.skinTone;
+      const dnaSkinLower = dnaSkin.toLowerCase();
+      // Match any skin tone description — ordered from most specific to least
+      const skinPattern = /\b(?:dark\s+brown\s+skin,?\s*(?:dark\s+brown|deep\s+brown)\s+complexion|deep\s+brown\s+skin(?:\s+tone)?|dark\s+brown\s+skin(?:\s+tone)?|rich\s+brown\s+skin(?:\s+tone)?|warm\s+brown\s+skin(?:\s+tone)?|warm\s+light[- ]brown\s+skin(?:\s+tone)?|light[- ]brown\s+skin(?:\s+tone)?|medium\s+brown\s+skin(?:\s+tone)?|olive\s+tan\s+skin(?:\s+tone)?|tan\s+olive\s+skin(?:\s+tone)?|light\s+warm\s+skin(?:\s+tone)?|fair\s+light\s+skin(?:\s+tone)?|fair\s+skin(?:\s+tone)?|pale\s+skin(?:\s+tone)?|peachy\s+skin(?:\s+tone)?|brown\s+skin(?:\s+tone)?|tan\s+skin(?:\s+tone)?|olive\s+skin(?:\s+tone)?|caramel\s+skin(?:\s+tone)?)\b/gi;
+      const skinMatches = [...prompt.matchAll(skinPattern)];
+      if (skinMatches.length > 0) {
+        // Replace FIRST occurrence (primary character's skin tone)
+        const firstSkinMatch = skinMatches[0];
+        if (firstSkinMatch[0].toLowerCase().trim() !== dnaSkinLower.trim()) {
+          console.log(`[Page ${pageIndex + 1}] Skin tone mismatch: GPT="${firstSkinMatch[0]}" → DNA="${dnaSkin}"`);
+          prompt = prompt.substring(0, firstSkinMatch.index!) + dnaSkin + prompt.substring(firstSkinMatch.index! + firstSkinMatch[0].length);
+        }
+      }
+      // Also fix complexion references that might be separate from the main skin phrase
+      const complexionPattern = /\b(?:dark\s+brown|brown|light|fair|pale|olive|tan|warm)\s+complexion\b/gi;
+      const complexionTarget = dnaSkinLower.includes('dark brown') ? 'dark brown complexion'
+        : dnaSkinLower.includes('brown') ? 'brown complexion'
+        : dnaSkinLower.includes('fair') || dnaSkinLower.includes('light') ? 'light complexion'
+        : dnaSkinLower.includes('olive') || dnaSkinLower.includes('tan') ? 'olive complexion'
+        : '';
+      if (complexionTarget) {
+        prompt = prompt.replace(complexionPattern, complexionTarget);
+      }
+    }
+
+    // ── Hair replacement (CRITICAL for consistency) ──
+    // GPT often writes different hair in IMAGE_PROMPT vs CHARACTER_DNA.
+    // Strategy: Find any hair description in the prompt and replace with DNA's version.
+    // IMPORTANT: The regex must match hair adjectives in ANY ORDER because GPT writes
+    // "brown curly hair" sometimes and "curly brown hair" other times. The old regex
+    // assumed a fixed order (length→style→color) and missed matches like "brown curly hair"
+    // where color came before style — only matching " curly hair" and losing the color.
+    if (identity.hair) {
+      // Match any sequence of hair-related adjectives (in ANY order) followed by a hair noun.
+      // This handles "curly brown hair", "brown curly hair", "long straight black hair", etc.
+      const hairPattern = /\b(?:(?:short|long|medium|shoulder[- ]length|waist[- ]length|chin[- ]length|straight|curly|wavy|coily|kinky|messy|spiky|braided|black|brown|blonde|golden|red|auburn|ginger|dark|light|pink|blue|purple|white|gray|grey|silver|strawberry|bob\s*cut)\s+)+(?:hair|ponytail|pigtails?|braids?|bun|afro|mohawk|dreads|locks|curls)\b/gi;
+      const dnaHair = identity.hair;
+
+      // Find all hair descriptions in the prompt
+      const matches = [...prompt.matchAll(hairPattern)];
+      if (matches.length > 0) {
+        // Replace FIRST occurrence (the main character's hair description)
+        // with the correct DNA hair
+        const firstMatch = matches[0];
+        if (firstMatch[0].toLowerCase().trim() !== dnaHair.toLowerCase().trim()) {
+          console.log(`[Page ${pageIndex + 1}] Hair mismatch: GPT="${firstMatch[0]}" → DNA="${dnaHair}"`);
+          prompt = prompt.substring(0, firstMatch.index!) + dnaHair + prompt.substring(firstMatch.index! + firstMatch[0].length);
+        }
+      }
+    }
+
+    // ── Outfit replacement (CRITICAL for consistency) ──
+    // GPT often invents new outfits in IMAGE_PROMPT that don't match CHARACTER_DNA.
+    // Strategy 1: Match "wearing [OUTFIT]" pattern
+    // Strategy 2: Match abbreviated pattern "[hair], [OUTFIT], is [ACTION]" (multi-char mode)
+    if (identity.outfit) {
+      const dnaOutfit = identity.outfit;
+      let outfitFixed = false;
+
+      // Strategy 1: Match "wearing [outfit description]"
+      const wearingPattern = /wearing\s+([^,.]+(?:,\s*(?:and\s+)?[^,.]+)*?)(?=\s*(?:,\s*(?:is|are|was|were|has|stands?|sits?|walks?|runs?|looks?|holds?|plays?)\b|[.!]|\s*(?:in|at|on|near|by|under|inside|outside|beside|next|with)\s+(?:a|an|the|her|his)\b))/i;
+      const outfitMatch = prompt.match(wearingPattern);
+      if (outfitMatch) {
+        const gptOutfit = outfitMatch[1].trim();
+        if (gptOutfit.toLowerCase() !== dnaOutfit.toLowerCase()) {
+          console.log(`[Page ${pageIndex + 1}] Outfit mismatch (wearing): GPT="${gptOutfit}" → DNA="${dnaOutfit}"`);
+          prompt = prompt.replace(`wearing ${gptOutfit}`, `wearing ${dnaOutfit}`);
+          outfitFixed = true;
+        }
+      }
+
+      // Strategy 2: Match abbreviated outfit in multi-char format
+      // Pattern: "[hair description], [OUTFIT], is [action]" — no "wearing" prefix
+      // e.g., "short curly black hair, blue t-shirt, is bouncing"
+      // The first character in the prompt gets their outfit fixed here
+      if (!outfitFixed && identity.hair) {
+        // Look for: [hair], [abbreviated_outfit], is/are [action]
+        // The abbreviated outfit is the text between the hair match and ", is"
+        const dnaHairEscaped = identity.hair.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+        const abbrevPattern = new RegExp(
+          `${dnaHairEscaped},\\s*([^,]+?)\\s*,\\s*(?:is|are)\\s`,
+          'i'
+        );
+        const abbrevMatch = prompt.match(abbrevPattern);
+        if (abbrevMatch) {
+          const gptAbbrevOutfit = abbrevMatch[1].trim();
+          // Check if this looks like an outfit (clothing words)
+          if (/\b(?:t-shirt|shirt|dress|pants|shorts|jeans|hoodie|jacket|coat|sweater|skirt|overalls|onesie|outfit|uniform|jersey|vest|blouse|tunic|romper|cardigan)\b/i.test(gptAbbrevOutfit)) {
+            // Extract just the core outfit type from DNA for abbreviated replacement
+            // e.g., "pink dress with white polka dots, white sneakers" → use first item "pink dress with white polka dots"
+            const dnaOutfitShort = dnaOutfit.split(',')[0].trim();
+            if (gptAbbrevOutfit.toLowerCase() !== dnaOutfitShort.toLowerCase()) {
+              console.log(`[Page ${pageIndex + 1}] Outfit mismatch (abbrev): GPT="${gptAbbrevOutfit}" → DNA="${dnaOutfitShort}"`);
+              prompt = prompt.replace(gptAbbrevOutfit, dnaOutfitShort);
+            }
+          }
+        }
+      }
+    }
+
+    // ── Age replacement (prevent age drift between DNA and prompt) ──
+    // GPT often writes a different age in IMAGE_PROMPTs than what CHARACTER_DNA specifies.
+    // e.g., DNA says "6 years old" but GPT writes "about 10 years old".
+    if (identity.age) {
+      const dnaAge = identity.age; // e.g., "6 years old"
+      const dnaAgeNum = parseInt(dnaAge.replace(/[^\d]/g, ''), 10) || 6;
+      // Match age patterns: "about 10 years old", "10-year-old", "10yo", "10 years old"
+      const agePattern = /\b(?:about\s+)?(\d{1,2})(?:\s*-?\s*years?\s*-?\s*old|\s*yo)\b/gi;
+      const ageMatches = [...prompt.matchAll(agePattern)];
+      if (ageMatches.length > 0) {
+        // Replace FIRST occurrence (primary character's age)
+        const firstAgeMatch = ageMatches[0];
+        const promptAge = parseInt(firstAgeMatch[1], 10);
+        if (promptAge !== dnaAgeNum) {
+          const original = firstAgeMatch[0];
+          const fixed = original.replace(firstAgeMatch[1], String(dnaAgeNum));
+          console.log(`[Page ${pageIndex + 1}] Age mismatch: GPT="${original}" (${promptAge}) → DNA="${fixed}" (${dnaAgeNum})`);
+          prompt = prompt.substring(0, firstAgeMatch.index!) + fixed + prompt.substring(firstAgeMatch.index! + original.length);
+        }
+      }
+    }
+  }
+
+  // ── 1c. Additional character corrections (multi-char mode) ──
+  // In multi-character prompts, GPT often gives ALL characters the same wrong description.
+  // The primary character was fixed above (first occurrence of hair/outfit/gender).
+  // Now fix additional characters (subsequent occurrences) with their correct DNA values.
+  if (isHumanChar && additionalIdentities && additionalIdentities.length > 0) {
+    for (let ei = 0; ei < additionalIdentities.length; ei++) {
+      const extraId = additionalIdentities[ei];
+      if (!extraId.hair && !extraId.outfit) continue;
+
+      // Re-scan for ALL hair descriptions (indices may shift after each iteration)
+      // Uses any-order adjective matching (same as primary character fix above)
+      const hairPatternG = /\b(?:(?:short|long|medium|shoulder[- ]length|waist[- ]length|chin[- ]length|straight|curly|wavy|coily|kinky|messy|spiky|braided|black|brown|blonde|golden|red|auburn|ginger|dark|light|pink|blue|purple|white|gray|grey|silver|strawberry|bob\s*cut)\s+)+(?:hair|ponytail|pigtails?|braids?|bun|afro|mohawk|dreads|locks|curls)\b/gi;
+      const allHairMatches = [...prompt.matchAll(hairPatternG)];
+      const matchIdx = ei + 1; // Skip primary character (index 0, already fixed)
+
+      // ── Fix additional character's hair ──
+      if (extraId.hair && allHairMatches.length > matchIdx) {
+        const target = allHairMatches[matchIdx];
+        if (target[0].trim().length > 4 && target[0].trim().toLowerCase() !== extraId.hair.toLowerCase().trim()) {
+          console.log(`[Page ${pageIndex + 1}] Char "${extraId.name}" hair: GPT="${target[0]}" → DNA="${extraId.hair}"`);
+          prompt = prompt.substring(0, target.index!) + extraId.hair + prompt.substring(target.index! + target[0].length);
+        }
+      }
+
+      // ── Fix additional character's outfit (anchored by corrected hair) ──
+      if (extraId.outfit && extraId.hair) {
+        const hairEsc = extraId.hair.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+        const dnaOutfitShort = extraId.outfit.split(',')[0].trim();
+        let extraOutfitFixed = false;
+
+        // Strategy 1: "wearing [OUTFIT]" near this character's hair (within 80 chars)
+        const wearNear = new RegExp(`${hairEsc}[^.]{0,80}?wearing\\s+([^,.]+(?:,\\s*(?:and\\s+)?[^,.]+)*?)(?=\\s*(?:,\\s*(?:is|are|was|were|has|stands?|sits?|walks?|runs?|looks?|holds?|plays?)\\b|[.!]))`, 'i');
+        const wMatch = prompt.match(wearNear);
+        if (wMatch) {
+          const gptOutfit = wMatch[1].trim();
+          if (gptOutfit.toLowerCase() !== extraId.outfit.toLowerCase() && gptOutfit.toLowerCase() !== dnaOutfitShort.toLowerCase()) {
+            console.log(`[Page ${pageIndex + 1}] Char "${extraId.name}" outfit (wearing): GPT="${gptOutfit}" → DNA="${dnaOutfitShort}"`);
+            prompt = prompt.replace(`wearing ${gptOutfit}`, `wearing ${dnaOutfitShort}`);
+            extraOutfitFixed = true;
+          }
+        }
+
+        // Strategy 2: abbreviated format "[hair], [outfit], is/are [action]"
+        if (!extraOutfitFixed) {
+          const abbrevP = new RegExp(`${hairEsc},\\s*([^,]+?)\\s*,\\s*(?:is|are)\\s`, 'i');
+          const aMatch = prompt.match(abbrevP);
+          if (aMatch) {
+            const gptOutfit = aMatch[1].trim();
+            if (/\b(?:t-shirt|shirt|dress|pants|shorts|jeans|hoodie|jacket|coat|sweater|skirt|overalls|onesie|outfit|uniform|jersey|vest|blouse|tunic|romper|cardigan|sneakers)\b/i.test(gptOutfit)) {
+              if (gptOutfit.toLowerCase() !== dnaOutfitShort.toLowerCase()) {
+                console.log(`[Page ${pageIndex + 1}] Char "${extraId.name}" outfit (abbrev): GPT="${gptOutfit}" → DNA="${dnaOutfitShort}"`);
+                // Replace within the full matched context to avoid affecting other parts
+                const fixedMatch = aMatch[0].replace(gptOutfit, dnaOutfitShort);
+                prompt = prompt.replace(aMatch[0], fixedMatch);
+                extraOutfitFixed = true;
+              }
+            }
+          }
+        }
+      }
+
+      // ── Fix additional character's gender ──
+      // Only fix if this character's gender differs from what the primary already corrected to.
+      // E.g., if primary is "girl" and additional is also "girl" but prompt says "boy",
+      // the remaining "cartoon boy" should be fixed.
+      if (extraId.genderHint && extraId.genderHint !== identity.genderHint) {
+        // Different gender from primary — the remaining wrong-gender matches may be correct
+        // (e.g., primary=girl fixed "cartoon boy"→"girl", remaining "cartoon boy" is the boy character)
+        // Don't touch these.
+      } else if (extraId.genderHint && extraId.genderHint === identity.genderHint) {
+        // Same gender as primary — if there are remaining wrong-gender matches, they need fixing
+        const wGender = extraId.genderHint === 'girl' ? 'boy' : 'girl';
+        const gPattern = new RegExp(`\\b(?:cartoon|cute|small|young)\\s+${wGender}\\b`, 'i');
+        if (gPattern.test(prompt)) {
+          const gMatch = prompt.match(gPattern)!;
+          const replacement = gMatch[0].replace(new RegExp(`\\b${wGender}\\b`, 'i'), extraId.genderHint);
+          console.log(`[Page ${pageIndex + 1}] Char "${extraId.name}" gender: GPT="${gMatch[0]}" → fixed="${replacement}"`);
+          prompt = prompt.replace(gPattern, replacement);
+        }
+      }
+    }
+  }
+
+  // ── 1d. DNA identity hint (compact, scene-blended) ──
+  // Inserted AFTER all per-field corrections so corrections don't match inside the hint.
+  // GPT-4o-mini often ignores its own CHARACTER_DNA. We inject a SHORT identity
+  // hint so Flux knows the character's look — but keep it minimal for scene focus.
+  if (isHumanChar && storyMode !== 'history') {
+    const g = identity.genderHint || 'girl';
+    const hairShort = identity.hair || '';
+    const outfitShort = identity.outfit ? identity.outfit.split(',')[0].trim() : '';
+    const dnaHint = `The child is a ${g}${hairShort ? ' with ' + hairShort : ''}${outfitShort ? ', wearing ' + outfitShort : ''}. `;
+    console.log(`[Page ${pageIndex + 1}] DNA hint: "${dnaHint.trim()}"`);
+    const openerMatch = prompt.match(/^(Text-free children's book illustration[^.]*\.)\s*/i);
+    if (openerMatch) {
+      prompt = openerMatch[1] + ' ' + dnaHint + prompt.substring(openerMatch[0].length);
+    } else {
+      prompt = dnaHint + prompt;
+    }
+  }
+
+  // ── 1e. FINAL CLEANUP PASS — Replace ALL remaining mismatched hair/outfit ──
+  // The per-field corrections above only fix the FIRST occurrence. But GPT sometimes
+  // describes the character in MULTIPLE places with DIFFERENT descriptions (e.g.,
+  // "a girl with brown curly hair" near the start, then "her long straight black hair"
+  // later). This creates conflicting signals for Flux, causing the character to change
+  // appearance mid-story. This pass replaces ALL remaining mismatches.
+  if (isHumanChar && identity.hair) {
+    const cleanupHairPattern = /\b(?:(?:short|long|medium|shoulder[- ]length|waist[- ]length|chin[- ]length|straight|curly|wavy|coily|kinky|messy|spiky|braided|tousled|thick|thin|wispy|fluffy|frizzy|sleek|shiny|glossy|black|brown|blonde|golden|red|auburn|ginger|dark|light|pink|blue|purple|white|gray|grey|silver|strawberry|dirty|sandy|honey|chestnut|jet|raven|copper|platinum|bob\s*cut)\s+)+(?:hair|ponytail|pigtails?|braids?|bun|afro|mohawk|dreads|locks|curls)\b/gi;
+    const dnaHairLower = identity.hair.toLowerCase().trim();
+    let cleanupMatch: RegExpExecArray | null;
+    const hairReplacements: { start: number; end: number; old: string }[] = [];
+    while ((cleanupMatch = cleanupHairPattern.exec(prompt)) !== null) {
+      if (cleanupMatch[0].toLowerCase().trim() !== dnaHairLower) {
+        hairReplacements.push({ start: cleanupMatch.index, end: cleanupMatch.index + cleanupMatch[0].length, old: cleanupMatch[0] });
+      }
+    }
+    // Replace from END to START to preserve indices
+    for (let ri = hairReplacements.length - 1; ri >= 0; ri--) {
+      const rep = hairReplacements[ri];
+      console.log(`[Page ${pageIndex + 1}] CLEANUP hair: "${rep.old}" → "${identity.hair}"`);
+      prompt = prompt.substring(0, rep.start) + identity.hair + prompt.substring(rep.end);
+    }
+  }
+
+  // Also cleanup ALL outfit mismatches for the primary character
+  if (isHumanChar && identity.outfit) {
+    const dnaOutfitCore = identity.outfit.split(',')[0].trim();
+    const dnaOutfitLower = dnaOutfitCore.toLowerCase();
+    // Find all "wearing [X]" patterns and fix them to DNA outfit
+    const outfitCleanupPattern = /wearing\s+([^,.]+(?:,\s*(?:and\s+)?[^,.]+)*?)(?=\s*(?:,\s*(?:is|are|was|were|has|stands?|sits?|walks?|runs?|looks?|holds?|plays?|who)\b|[.!]|\s*(?:in|at|on|near|by|under|inside|outside|beside|next|with)\s+(?:a|an|the|her|his)\b))/gi;
+    let outfitMatch: RegExpExecArray | null;
+    const outfitReplacements: { fullMatch: string; captured: string }[] = [];
+    while ((outfitMatch = outfitCleanupPattern.exec(prompt)) !== null) {
+      const capturedOutfit = outfitMatch[1].trim().toLowerCase();
+      // Only replace if it looks like a WRONG outfit (doesn't match DNA)
+      if (capturedOutfit !== dnaOutfitLower && capturedOutfit !== identity.outfit.toLowerCase()) {
+        // Make sure it's actually clothing and not a scene description
+        if (/\b(?:t-shirt|shirt|dress|pants|shorts|jeans|hoodie|jacket|coat|sweater|skirt|overalls|onesie|outfit|uniform|jersey|vest|blouse|tunic|romper|cardigan|sneakers|shoes|boots|sandals|leggings|kimono|jumpsuit)\b/i.test(outfitMatch[1])) {
+          outfitReplacements.push({ fullMatch: outfitMatch[0], captured: outfitMatch[1].trim() });
+        }
+      }
+    }
+    for (const rep of outfitReplacements) {
+      console.log(`[Page ${pageIndex + 1}] CLEANUP outfit: "${rep.captured}" → "${dnaOutfitCore}"`);
+      prompt = prompt.replace(`wearing ${rep.captured}`, `wearing ${dnaOutfitCore}`);
     }
   }
 
   // ── 2. Content safety validation + word replacements ──
-  // First, validate against blocklist (skip the page if severely unsafe)
-  const contentCheck = validateContent(prompt);
+  // CRITICAL: Pass storyMode so history mode prompts (with religious/historical terms)
+  // don't get falsely flagged and replaced with a generic park fallback.
+  const isHistoryMode = storyMode === 'history';
+  const contentCheck = validateContent(prompt, storyMode);
   if (!contentCheck.safe) {
     console.warn(`[Page ${pageIndex + 1}] BLOCKED content in image prompt: "${contentCheck.matchedTerm}" — using identity fallback`);
-    if (isHumanChar) {
+    if (isHistoryMode) {
+      // History mode fallback: still landscape-dominant, painterly style, historically themed
       const genderWord = identity.genderHint || "girl";
-      prompt = `Text-free children's book illustration, WIDE SHOT. A small cute cartoon young ${genderWord}, ${identity.age || '6 years old'}, ${identity.skinTone || ''}, ${identity.hair || ''}, wearing ${identity.outfit || 'colorful clothes'}, is standing happily in a bright colorful park with swings, a sandbox, tall trees with golden leaves, and a bright blue sky. The character is small in the frame, about one-third of the image. Soft painterly style, warm colors, detailed background.`;
+      prompt = `Text-free children's book illustration, EXTREME WIDE SHOT, landscape-dominant. A beautiful ancient landscape with historical architecture, markets, and paths stretching into the distance under a warm golden sky. In the far distance, a tiny cartoon ${genderWord}, about ${identity.age || '8 years old'}, ${identity.skinTone || ''}, ${identity.hair || ''}, wearing ${identity.outfit || 'simple traditional clothing'}, stands looking at the scene. The child is VERY SMALL, less than 15% of the image. Painterly children's book illustration style, rich warm colors, dramatic lighting, educational tone. No text, no words.`;
+    } else if (isHumanChar) {
+      const genderWord = identity.genderHint || "girl";
+      prompt = `Text-free children's book illustration, WIDE SHOT. A small cute cartoon young ${genderWord}, ${identity.age || '6 years old'}, ${identity.skinTone || ''}, ${identity.hair || ''}, wearing ${identity.outfit || 'colorful clothes'}, is standing happily in a bright colorful park with swings, a sandbox, tall trees with golden leaves, and a bright blue sky. The character is small in the frame, about one-third of the image. Children's book illustration, 2D cartoon style, bold black outlines, flat bright colors, simple rounded shapes.`;
     } else {
       const outfitPart = identity.outfit ? `, wearing ${identity.outfit}` : "";
-      prompt = `Text-free children's book illustration, WIDE SHOT. A small cute cartoon ${identity.species}${outfitPart} is standing happily in a bright colorful meadow with wildflowers, a winding stream, butterflies, and distant mountains under a bright sky. The character is small in the frame, about one-third of the image. Soft painterly style, warm colors, detailed background.`;
+      prompt = `Text-free children's book illustration, WIDE SHOT. A small cute cartoon ${identity.species}${outfitPart} is standing happily in a bright colorful meadow with wildflowers, a winding stream, butterflies, and distant mountains under a bright sky. The character is small in the frame, about one-third of the image. Children's book illustration, 2D cartoon style, bold black outlines, flat bright colors, simple rounded shapes.`;
     }
   }
 
   // Sanitize sensitive terms (death → gentle alternative, etc.)
-  const { cleaned: sanitizedPrompt } = sanitizeText(prompt);
+  // CRITICAL: Pass storyMode so history mode terms aren't sanitized
+  const { cleaned: sanitizedPrompt } = sanitizeText(prompt, storyMode);
   prompt = sanitizedPrompt;
 
   // Replace fear/anxiety words with positive equivalents
+  // SKIP these replacements in history mode — historical events need accurate language
+  if (!isHistoryMode) {
+    prompt = prompt
+      .replace(/\bworried\b/gi, 'curious')
+      .replace(/\bscared\b/gi, 'surprised')
+      .replace(/\bterrified\b/gi, 'amazed')
+      .replace(/\bpanick(?:ed|ing|y)?\b/gi, 'excited')
+      .replace(/\bfrightened\b/gi, 'surprised')
+      .replace(/\banxious\b/gi, 'curious')
+      .replace(/\bafraid\b/gi, 'curious')
+      .replace(/\bnervous\b/gi, 'curious')
+      // Violence → peaceful
+      .replace(/\bfighting\b/gi, 'playing')
+      .replace(/\bweapons?\b/gi, 'toy')
+      .replace(/\bswords?\b/gi, 'magic wand')
+      .replace(/\bguns?\b/gi, 'water squirter')
+      .replace(/\bknife\b/gi, 'stick')
+      .replace(/\bknives\b/gi, 'sticks')
+      // Dark moods → cozy
+      .replace(/\bgloomy\b/gi, 'cozy')
+      .replace(/\bsinister\b/gi, 'mysterious')
+      .replace(/\bhaunted\b/gi, 'enchanted')
+      .replace(/\bcreepy\b/gi, 'quirky')
+      .replace(/\bscary\b/gi, 'surprising')
+      // Adult descriptors → child-appropriate
+      .replace(/\bsexy\b/gi, 'cute')
+      .replace(/\brevealing\b/gi, 'colorful')
+      // Remove genuinely dangerous visual elements
+      .replace(/\b(?:danger|emergency|wobbl|turbulence|crash(?:ing|ed|es)?|sink(?:ing|s)?)\b[^,.]*[,.]?/gi, '')
+      .replace(/\bimagin(?:es?|ing|ed)\s+(?:the\s+)?(?:airplane|plane|car|boat|ship|rocket)\s+(?:crash|splash|fall|sink|break|burn|explod)[^,.]*[,.]?/gi, '')
+      .replace(/,\s*,/g, ',');
+  }
+
+  // Clean up whitespace for all modes
+  prompt = prompt.replace(/\s+/g, ' ').trim();
+
+  // ── 2b. Religious figure filtering (ALL modes) ──
+  // NEVER depict Prophet Muhammad or Allah in any image — this is a hard rule
+  // for Islamic content sensitivity. Strip any references to these figures
+  // from the image prompt before sending to the image model.
+  // This is a safety net — GPT should already avoid this, but we enforce it here.
   prompt = prompt
-    .replace(/\bworried\b/gi, 'curious')
-    .replace(/\bscared\b/gi, 'surprised')
-    .replace(/\bterrified\b/gi, 'amazed')
-    .replace(/\bpanick(?:ed|ing|y)?\b/gi, 'excited')
-    .replace(/\bfrightened\b/gi, 'surprised')
-    .replace(/\banxious\b/gi, 'curious')
-    .replace(/\bafraid\b/gi, 'curious')
-    .replace(/\bnervous\b/gi, 'curious')
-    // Violence → peaceful
-    .replace(/\bfighting\b/gi, 'playing')
-    .replace(/\bweapons?\b/gi, 'toy')
-    .replace(/\bswords?\b/gi, 'magic wand')
-    .replace(/\bguns?\b/gi, 'water squirter')
-    .replace(/\bknife\b/gi, 'stick')
-    .replace(/\bknives\b/gi, 'sticks')
-    // Dark moods → cozy
-    .replace(/\bgloomy\b/gi, 'cozy')
-    .replace(/\bsinister\b/gi, 'mysterious')
-    .replace(/\bhaunted\b/gi, 'enchanted')
-    .replace(/\bcreepy\b/gi, 'quirky')
-    .replace(/\bscary\b/gi, 'surprising')
-    // Adult descriptors → child-appropriate
-    .replace(/\bsexy\b/gi, 'cute')
-    .replace(/\brevealing\b/gi, 'colorful')
-    // Remove genuinely dangerous visual elements
-    .replace(/\b(?:danger|emergency|wobbl|turbulence|crash(?:ing|ed|es)?|sink(?:ing|s)?)\b[^,.]*[,.]?/gi, '')
-    .replace(/\bimagin(?:es?|ing|ed)\s+(?:the\s+)?(?:airplane|plane|car|boat|ship|rocket)\s+(?:crash|splash|fall|sink|break|burn|explod)[^,.]*[,.]?/gi, '')
-    .replace(/,\s*,/g, ',')
-    .replace(/\s+/g, ' ')
-    .trim();
+    .replace(/\b(?:the\s+)?(?:Prophet\s+)?Muhammad(?:\s+\(.*?\))?/gi, 'the community elders')
+    .replace(/\bthe\s+Prophet\b/gi, 'the community')
+    .replace(/\bProphet\s+[A-Z][a-z]+/gi, 'a wise elder')
+    .replace(/\bAllah\b/gi, 'the sky')
+    .replace(/\bGod(?:'s)?\s+(?:words?|messages?|voice|light|guidance)\b/gi, 'ancient wisdom')
+    .replace(/\breceiv(?:es?|ing|ed)\s+(?:messages?|words?|revelations?)\s+from\s+God\b/gi, 'studying ancient scrolls')
+    .replace(/\s+/g, ' ').trim();
 
   // ── 3-6. Suffix construction ──
   // CRITICAL: Flux Kontext has an effective attention window of ~1200-1500 chars.
   // GPT's IMAGE_PROMPT is already ~800-1000 chars for multi-character scenes.
   // We MUST keep suffixes SHORT to stay within Flux's attention.
   //
-  // Strategy: For MULTI-CHARACTER stories, use ultra-compact suffixes.
+  // Strategy: For HISTORY mode, landscape-dominant with tiny characters.
+  // For MULTI-CHARACTER stories, use ultra-compact suffixes.
   // For single-character stories, use the full verbose suffixes.
   const genderLabel = identity.genderHint || "girl";
   const hasMultipleMainChars = additionalIdentities && additionalIdentities.length > 0;
 
-  if (hasMultipleMainChars) {
+  if (storyMode === 'history') {
+    // ═══════ HISTORY MODE — SCENE-DOMINANT BUT CHARACTER VISIBLE ═══════
+    // Historical scene is the star, but character must be RECOGNIZABLE (not microscopic).
+    // Previously we made characters 15% of the image which broke consistency entirely.
+
+    // Scene-dominant but character still visible
+    prompt += '. WIDE SHOT, the historical scene dominates the image';
+    prompt += '. The child character is small but clearly visible and recognizable, about 20-25% of the image';
+    prompt += '. ALL human figures must look like cartoon CHILDREN — NEVER draw realistic adults';
+
+    // Character identity reinforcement (same as other modes)
+    if (identity.skinTone) {
+      prompt += `. The child has ${identity.skinTone}`;
+    }
+    const identityCues: string[] = [];
+    if (identity.hairCue) identityCues.push(identity.hairCue);
+    if (identity.outfit) identityCues.push(`wearing ${identity.outfit.split(',')[0].trim()}`);
+    if (identityCues.length > 0) {
+      prompt += `. ${identityCues.join(', ')}`;
+    }
+
+    prompt += '. No text, no words, no letters anywhere in the image';
+    prompt += '. Children\'s book illustration, 2D cartoon style, bold outlines, flat warm colors, educational tone';
+
+  } else if (hasMultipleMainChars) {
     // ═══════ MULTI-CHARACTER MODE — COMPACT SUFFIX ═══════
     // GPT's prompt already describes each character in detail.
     // We add ONLY the most critical reinforcements in minimal chars.
@@ -371,61 +722,76 @@ async function generateOnePage(
       prompt += `. All same family, same skin: ${identity.skinTone}`;
     }
 
-    // No-text + style in one compact line
-    prompt += '. No text/words/letters in image. Correct anatomy, no extra limbs';
+    // Outfit + hair reinforcement for ALL characters (multi-char mode)
+    if (identity.outfit) {
+      prompt += `. ${identity.name}(${identity.genderHint}): wears ${identity.outfit.split(',')[0].trim()}, has ${identity.hair || 'matching hair'}`;
+    }
+    // Reinforce EACH additional character's distinct appearance
+    if (additionalIdentities) {
+      for (const extraId of additionalIdentities) {
+        if (extraId.genderHint && (extraId.outfit || extraId.hair)) {
+          const parts: string[] = [];
+          if (extraId.outfit) parts.push(`wears ${extraId.outfit.split(',')[0].trim()}`);
+          if (extraId.hair) parts.push(`has ${extraId.hair}`);
+          prompt += `. ${extraId.name}(${extraId.genderHint}): ${parts.join(', ')}`;
+        }
+      }
+    }
+
+    // Children + scene-blending + style
+    prompt += '. All characters are children, naturally engaged in the action, full body visible head to feet';
+    prompt += '. Each child is about 30-35% of the image height, same size on every page';
+    prompt += '. No text. Correct anatomy. Children\'s book illustration, 2D cartoon style, bold outlines, flat bright colors';
 
   } else {
-    // ═══════ SINGLE CHARACTER MODE — FULL SUFFIX ═══════
+    // ═══════ SINGLE CHARACTER MODE — SCENE-FOCUSED SUFFIX ═══════
+    // Key principle: the SCENE is the star, the character is part of it.
+    // Keep character identity cues SHORT. Spend budget on composition + style.
     if (isHumanChar) {
-      const mentionsOtherPeople = /\b(?:friend|friends|boy|boys|worker|workers|people|children|kids|man|woman|lady|passengers?|attendant|teacher|parent|dad|mom|mother|father|sister|brother|classmate)\b/i.test(prompt);
       const mentionsAdult = /\b(?:dad|father|mom|mother|parent|grandpa|grandma|grandfather|grandmother|uncle|aunt|teacher|adult)\b/i.test(prompt);
 
       if (mentionsAdult) {
-        prompt += `. Adults must be TALL with adult proportions, much taller than the child`;
+        prompt += `. Adults are the child's FAMILY — same ${identity.skinTone || 'skin tone'}, looking related`;
+        prompt += '. Adults wear cozy modest clothing (cardigan, sweater, long pants), taller than children';
       }
 
-      if (mentionsOtherPeople) {
-        prompt += `. Main character is a young ${genderLabel} with ${identity.skinTone || 'matching skin tone'}`;
-      } else {
-        prompt += `. Only one young ${genderLabel} with ${identity.skinTone || 'matching skin tone'} in the scene, no other people`;
+      // Compact identity: gender + skin tone in one short line
+      prompt += `. The ${genderLabel} has ${identity.skinTone || 'warm skin'}`;
+
+      // Dark skin needs extra emphasis to prevent Flux lightening
+      if (isHumanChar && identity.skinTone) {
+        const skinLower = identity.skinTone.toLowerCase();
+        if (skinLower.includes('dark brown') || skinLower.includes('deep brown')) {
+          prompt += `, NOT white, NOT pale`;
+        }
       }
     } else {
-      prompt += '. Only one character in the scene, no humans, no people, animal character only';
+      prompt += '. No humans, animal character only';
     }
 
-    // Skin tone reinforcement (single char — more space to be verbose)
-    if (isHumanChar && identity.skinTone) {
-      const skinLower = identity.skinTone.toLowerCase();
-      if (skinLower.includes('dark brown') || skinLower.includes('deep brown')) {
-        prompt += `. CRITICAL: skin is ${identity.skinTone}, NOT white, NOT pale`;
-      } else {
-        prompt += `. Character must have ${identity.skinTone}`;
-      }
+    // Compact outfit + hair reinforcement (one line, not three)
+    const identityCues: string[] = [];
+    if (identity.hairCue) identityCues.push(identity.hairCue);
+    if (identity.outfit) identityCues.push(`wearing ${identity.outfit.split(',')[0].trim()}`);
+    if (identity.accessories) identityCues.push(identity.accessories);
+    if (identityCues.length > 0) {
+      prompt += `. ${identityCues.join(', ')}`;
     }
 
-    // Hair reinforcement
-    if (isHumanChar && identity.hairCue) {
-      prompt += `. Character must have ${identity.hairCue}`;
-    }
-
-    // Accessories
-    if (identity.accessories) {
-      prompt += `. Must be wearing ${identity.accessories}`;
-    }
-
-    // Anti-limbs + composition + no-text
-    prompt += '. Correct anatomy, no extra limbs, no extra fingers';
-    prompt += '. WIDE SHOT, character small in frame, richly detailed environment';
-    prompt += '. No text, no words, no letters anywhere in the image';
-    prompt += '. Bright, cheerful, child-friendly storybook illustration';
+    // Scene-dominant composition + style (the key change)
+    prompt += '. Correct anatomy (two arms, two legs, no extra limbs, five fingers per hand)';
+    prompt += '. Character is about 30-35% of the image height, full body visible head to feet, same size on every page';
+    prompt += '. No text. Children\'s book illustration, 2D cartoon style, bold outlines, flat bright colors';
   }
 
   console.log(`[Page ${pageIndex + 1}] Final prompt (${prompt.length} chars): "${prompt.substring(0, 300)}..."`);
 
   // ── 7. Generate with Kontext ──
+  // ALL modes use reference image for character consistency — including history mode.
+  const useRefImage = referenceImageUrl;
   const url = await generateKontextImage(replicate, {
     prompt,
-    inputImageUrl: referenceImageUrl,
+    inputImageUrl: useRefImage,
     seed,
     pageIndex,
   });
@@ -434,13 +800,13 @@ async function generateOnePage(
     // Retry once with a simpler prompt (strip visual cues that might trigger safety filters)
     console.warn(`[Page ${pageIndex + 1}] First attempt failed, retrying with simplified prompt...`);
     const simplifiedPrompt = prompt
-      .replace(/feminine features, pretty eyelashes, cute girl face/g, '')
-      .replace(/boyish features, young boy face/g, '')
+      .replace(/clearly a girl/g, '')
+      .replace(/clearly a boy/g, '')
       .replace(/\s{2,}/g, ' ')
       .trim();
     const retryUrl = await generateKontextImage(replicate, {
       prompt: simplifiedPrompt,
-      inputImageUrl: referenceImageUrl,
+      inputImageUrl: useRefImage,
       seed: seed + 1,
       pageIndex,
       safetyTolerance: 4,  // Retry with slightly more permissive tolerance (capped by MAX_PAGE_SAFETY_TOLERANCE)
@@ -462,7 +828,7 @@ async function generateOnePage(
 
 export async function POST(request: NextRequest) {
   try {
-    const { imagePrompts, seed, seeds, characterBible, additionalCharacterBibles } = await request.json();
+    const { imagePrompts, seed, seeds, characterBible, additionalCharacterBibles, storyMode = 'imagination' } = await request.json();
 
     if (!imagePrompts || !Array.isArray(imagePrompts)) {
       return NextResponse.json({ error: "Invalid image prompts provided" }, { status: 400 });
@@ -477,6 +843,86 @@ export async function POST(request: NextRequest) {
     const identity = extractCharacterIdentity(characterBible as CharacterBible | undefined);
     console.log(`[Book] Character: ${identity.name} (${identity.species})`);
     console.log(`[Book] Description: "${identity.description}"`);
+
+    // ── PRE-SCAN: Detect majority gender from IMAGE_PROMPTs ──
+    // GPT sometimes puts the wrong name/gender in CHARACTER_DNA (e.g., uses the
+    // story title as the character name), but writes correct IMAGE_PROMPTs.
+    // When IMAGE_PROMPTs consistently use a different gender than DNA, trust the prompts.
+    if (identity.genderHint) {
+      const promptGenderVote = { girl: 0, boy: 0 };
+      for (const p of imagePrompts) {
+        if (/\b(?:cartoon|cute|small|young)\s+girl\b/i.test(p)) promptGenderVote.girl++;
+        if (/\b(?:cartoon|cute|small|young)\s+boy\b/i.test(p)) promptGenderVote.boy++;
+      }
+      const majorGender = promptGenderVote.girl > promptGenderVote.boy ? 'girl'
+        : promptGenderVote.boy > promptGenderVote.girl ? 'boy' : null;
+
+      if (majorGender && majorGender !== identity.genderHint && promptGenderVote[majorGender] >= 3) {
+        // ── SAFETY CHECK: Does DNA's outfit/hair strongly confirm its own gender? ──
+        // If DNA says "girl" with outfit "pink dress" or hair "ponytail with bows",
+        // the DNA gender is likely correct — GPT just wrote wrong gender in IMAGE_PROMPTs.
+        // If DNA outfit is neutral (t-shirt, shorts), trust the prompt majority instead.
+        const dnaOutfitLower = (identity.outfit || '').toLowerCase();
+        const dnaHairLower = (identity.hair || '').toLowerCase();
+
+        const girlSignals = /\b(?:dress|skirt|tutu|tiara|gown|leggings|tights|ballet)\b/.test(dnaOutfitLower)
+          || /\b(?:ponytail|pigtails?|braids?|bows?|ribbons?|barrettes?|headband)\b/.test(dnaHairLower);
+        const boySignals = /\b(?:overalls|cargo\s+pants|baseball\s+cap|suspenders|bow\s*tie)\b/.test(dnaOutfitLower);
+
+        const dnaGenderConfirmedByOutfit =
+          (identity.genderHint === 'girl' && girlSignals) ||
+          (identity.genderHint === 'boy' && boySignals);
+
+        if (dnaGenderConfirmedByOutfit) {
+          // DNA's outfit matches DNA's gender — trust DNA, DON'T override
+          const majority = promptGenderVote[majorGender];
+          const total = imagePrompts.length;
+          console.log(`[Book] ⚠️ GENDER OVERRIDE BLOCKED: DNA says "${identity.genderHint}" and outfit/hair confirms it ("${dnaOutfitLower}"). ${majority}/${total} prompts say "${majorGender}" but trusting DNA.`);
+        } else {
+          // DNA's outfit is neutral — trust prompt majority (DNA probably has wrong character)
+          const majority = promptGenderVote[majorGender];
+          const total = imagePrompts.length;
+          console.log(`[Book] ⚠️ GENDER OVERRIDE: DNA says "${identity.genderHint}" but ${majority}/${total} IMAGE_PROMPTs say "${majorGender}" — trusting prompts`);
+
+          identity.genderHint = majorGender;
+          identity.species = majorGender;
+          // Update the description to use the correct gender
+          identity.description = identity.description
+            .replace(/\bcartoon\s+(boy|girl)\b/i, `cartoon ${majorGender}`)
+            .replace(/\b(clearly a boy|clearly a girl)\b/i,
+              majorGender === 'girl' ? 'clearly a girl' : 'clearly a boy');
+
+          // ── ALSO extract hair/outfit from IMAGE_PROMPTs ──
+          // When DNA is unreliable (wrong gender), its hair/outfit are probably wrong too.
+          // Extract hair and outfit from the first prompt that has clear descriptions,
+          // so per-page replacement doesn't overwrite correct prompt values with wrong DNA values.
+          const hairExtractPattern = /\b(?:(?:short|long|medium|shoulder[- ]length|waist[- ]length)\s+)?(?:(?:straight|curly|wavy|coily|kinky|messy|spiky|braided)\s+)?(?:(?:black|brown|blonde|golden|red|auburn|ginger|dark|light|pink|blue|purple|white|gray|grey|silver|strawberry)\s+)?(?:bob\s*cut\s*)?(?:hair|ponytail|pigtails?|braids?|bun|afro|mohawk|dreads|locks|curls)\b/i;
+          for (const p of imagePrompts) {
+            const hairMatch = p.match(hairExtractPattern);
+            if (hairMatch && hairMatch[0].trim().length > 5) { // Skip bare "hair" / "curls"
+              console.log(`[Book]   → Extracting hair from prompts: "${hairMatch[0]}" (replaces DNA: "${identity.hair}")`);
+              identity.hair = hairMatch[0].trim();
+              identity.hairCue = identity.hair;
+              break;
+            }
+          }
+
+          // Extract outfit — look for "wearing [OUTFIT]" in prompts
+          const outfitExtractPattern = /wearing\s+([^,.]+(?:,\s*(?:and\s+)?[^,.]+)*?)(?=\s*(?:,\s*(?:is|are|was|were|has|stands?|sits?|walks?|runs?|looks?|holds?|plays?)\b|[.!]|\s*(?:in|at|on|near|by|under|inside|outside|beside|next|with)\s+(?:a|an|the|her|his)\b))/i;
+          for (const p of imagePrompts) {
+            const outfitMatch = p.match(outfitExtractPattern);
+            if (outfitMatch && outfitMatch[1].trim().length > 3) {
+              console.log(`[Book]   → Extracting outfit from prompts: "${outfitMatch[1]}" (replaces DNA: "${identity.outfit}")`);
+              identity.outfit = outfitMatch[1].trim();
+              break;
+            }
+          }
+
+          console.log(`[Book]   → Post-override identity: gender="${identity.genderHint}", hair="${identity.hair}", outfit="${identity.outfit}"`);
+        }
+      }
+      console.log(`[Book] Gender vote: girl=${promptGenderVote.girl}, boy=${promptGenderVote.boy}, identity="${identity.genderHint}"`);
+    }
 
     // ── Extract additional character identities (multi-character stories) ──
     const additionalIdentities: CharacterIdentity[] = [];
@@ -501,8 +947,9 @@ export async function POST(request: NextRequest) {
 
     // For human characters, don't use cached references — each human character looks unique
     // (different hair, outfit, skin tone). For animals, species-level caching works fine.
+    // NOTE: History mode ALSO gets a reference image now — character consistency requires it.
     const isHumanCharacter = identity.genderHint !== "";
-    const libraryResult = isHumanCharacter ? null : lookupCharacter(identity.species);
+    const libraryResult = !isHumanCharacter ? lookupCharacter(identity.species) : null;
     if (libraryResult?.hasAssets) {
       // FAST PATH: Use cached reference image from library (animals only)
       console.log(`\n[Library] HIT: "${identity.species}" — using cached reference image`);
@@ -515,6 +962,9 @@ export async function POST(request: NextRequest) {
 
     if (!referenceImageUrl) {
       // GENERATE PATH: Create a clean reference image using Kontext txt2img.
+      // NOTE: History mode ALSO needs a reference image for character consistency.
+      // Previously we skipped it ("landscapes don't need refs") but that broke
+      // character consistency completely — the kid looked different on every page.
       console.log(`\n[Library] MISS: "${identity.species}" — generating character reference with Kontext...`);
 
       const libChar = libraryResult?.character;
@@ -523,17 +973,17 @@ export async function POST(request: NextRequest) {
       const ageDesc = identity.age || "6 years old";
       const animalVisualDesc = identity.visualTokens.length > 0
         ? identity.visualTokens.join(", ")
-        : `big expressive eyes, soft round cheeks, friendly smile`;
+        : `round eyes, soft round cheeks, friendly smile`;
       const animalOutfit = identity.outfit ? `, wearing ${identity.outfit}` : "";
 
       const genderWord = identity.genderHint || 'girl';
       const genderCuesRef = genderWord === 'girl'
-        ? 'feminine features, pretty eyelashes, cute girl face, clearly a girl'
-        : 'boyish features, young boy face, clearly a boy';
+        ? 'clearly a girl'
+        : 'clearly a boy';
       const skinToneRef = identity.skinTone || '';
       const filteredVisualTokens = identity.visualTokens.length > 0
-        ? identity.visualTokens.filter(t => !t.toLowerCase().includes('skin')).join(", ")
-        : `big expressive brown eyes, soft cheeks, friendly smile`;
+        ? identity.visualTokens.filter(t => !t.toLowerCase().includes('skin') && !t.toLowerCase().includes('eyes')).join(", ")
+        : `soft cheeks, friendly smile`;
       // IMPORTANT: Reference image composition directly affects ALL page images.
       // Flux Kontext preserves the reference's layout — if the reference has a white bg
       // and big character, pages will trend toward white bg and big character.
@@ -567,7 +1017,7 @@ export async function POST(request: NextRequest) {
             gender: genderWord,
             hair: identity.hair || '',
             outfit: identity.outfit || 'colorful clothes',
-            skinTone: identity.skinTone || 'warm skin',
+            skinTone: identity.skinTone || 'warm light-brown skin',
           },
           ...(additionalCharacterBibles as CharacterBible[]).map((ab: CharacterBible) => ({
             name: ab.name,
@@ -575,7 +1025,7 @@ export async function POST(request: NextRequest) {
             gender: ab.gender || 'girl',
             hair: ab.appearance?.hair || '',
             outfit: ab.signature_outfit || ab.outfit || 'colorful clothes',
-            skinTone: ab.appearance?.skin_tone || 'warm skin',
+            skinTone: ab.appearance?.skin_tone || 'warm light-brown skin',
           })),
         ];
 
@@ -595,31 +1045,37 @@ export async function POST(request: NextRequest) {
 
         const skinDesc = allCharsForRef[0].skinTone;
         refPrompt = [
-          `Children's picture book illustration of ${allCharsForRef.length} children standing side by side`,
+          `Children's book illustration of ${allCharsForRef.length} cartoon children standing together in a simple outdoor scene`,
           `all with ${skinDesc}, same family`,
           ...charDescs,
-          "standing together in a bright colorful meadow with green grass",
-          "full body visible head to toe, correct height differences based on age",
-          "soft painterly style, warm vibrant colors",
+          "characters take up about half the image height, full body visible head to feet",
+          "standing on green grass with colorful flowers, blue sky with white clouds behind",
+          "each character's face, hair, and clothing clearly visible",
+          "children's book illustration, 2D cartoon style, bold black outlines, flat bright colors",
           "no text, no watermarks",
         ].join(". ");
 
         console.log(`[Reference] GROUP mode: ${allCharsForRef.length} characters`);
       } else if (isHumanRef) {
-        // ═══ SINGLE CHARACTER REFERENCE ═══
+        // ═══ SINGLE CHARACTER REFERENCE — MEDIUM SIZE IN SCENE ═══
+        // Balance between two competing needs:
+        //   A) Character big enough for Flux to SEE features (face, hair, outfit)
+        //   B) Character NOT so big that pages inherit a portrait composition
+        // Solution: ~40-50% of frame, in a simple scene, features clearly visible.
+        // Previously: 20% (too tiny → Flux couldn't see → character changed every page)
+        // Previously: 90% portrait (too big → pages all became close-ups)
         refPrompt = [
-          `Children's picture book illustration of a small cute cartoon young ${genderWord}`,
-          `${ageDesc}, realistic child proportions`,
-          skinToneRef ? `${skinToneRef}, NOT white skin, NOT pale skin` : '',
+          `Children's book illustration of a cartoon ${genderWord} in a simple outdoor scene`,
+          `${ageDesc}`,
+          skinToneRef ? `${skinToneRef}` : '',
           genderCuesRef,
-          filteredVisualTokens,
           identity.hair ? identity.hair : "",
           identity.accessories ? `wearing ${identity.accessories}` : "",
           identity.outfit ? `wearing ${identity.outfit}` : "",
-          "standing in a bright colorful meadow with green grass and wildflowers",
-          "the character is small in the frame, about one-third of the image height",
-          "full body visible from head to toe",
-          "soft painterly style, warm vibrant colors, detailed background",
+          "the character takes up about half the image height, full body visible head to feet",
+          "standing on green grass with colorful flowers, blue sky with white clouds behind",
+          "face, hair, and clothing clearly visible and recognizable",
+          "children's book illustration, 2D cartoon style, bold black outlines, flat bright colors",
           "no text, no watermarks",
         ].filter(Boolean).join(", ");
       } else {
@@ -628,9 +1084,9 @@ export async function POST(request: NextRequest) {
           `Children's picture book illustration of a small cute cartoon ${simpleSpeciesName}`,
           animalVisualDesc + animalOutfit,
           "standing upright in a bright colorful meadow with green grass and wildflowers",
-          "the character is small in the frame, about one-third of the image height",
+          "the character is SMALL in the frame, about one-quarter of the image height, surrounded by lots of detailed scenery",
           "full body visible from head to toe",
-          "soft painterly style, warm vibrant colors, detailed background",
+          "Children's book illustration, 2D cartoon style, bold black outlines, flat bright colors, simple rounded shapes, detailed background",
           "cute round proportions",
           "no text, no watermarks",
         ].join(", ");
@@ -652,8 +1108,8 @@ export async function POST(request: NextRequest) {
           const skinSimple = skinToneRef ? `, ${skinToneRef}` : '';
           const accessorySimple = identity.accessories ? `, wearing ${identity.accessories}` : '';
           const simplePrompt = isHumanRef
-            ? `cute cartoon young ${genderWord}, ${ageDesc}, small child${skinSimple}, ${genderCuesRef}${identity.hair ? ', ' + identity.hair : ''}${accessorySimple}, children's book illustration, friendly smile, big eyes, white background, full body, simple, colorful`
-            : `cute cartoon ${simpleSpeciesName}, children's book illustration, friendly smile, big eyes, white background, full body, simple, colorful`;
+            ? `cartoon ${genderWord}, ${ageDesc}${skinSimple}, ${genderCuesRef}${identity.hair ? ', ' + identity.hair : ''}${accessorySimple}, children's book illustration, standing on green grass, blue sky, full body visible, character about half the image, 2D cartoon style, bold outlines`
+            : `cartoon ${simpleSpeciesName}, children's book illustration, standing on green grass, blue sky, full body visible, character about half the image, 2D cartoon style, bold outlines`;
           refUrl = await generateKontextImage(replicate, {
             prompt: simplePrompt,
             seed: storySeed + 1,
@@ -710,7 +1166,7 @@ export async function POST(request: NextRequest) {
         console.log(`\n========== GENERATING PAGE ${i + 1}/${imagePrompts.length} ==========`);
 
         const result = await generateOnePage(
-          imagePrompts[i], i, pageSeed, identity, referenceImageUrl || undefined, additionalIdentities
+          imagePrompts[i], i, pageSeed, identity, referenceImageUrl || undefined, additionalIdentities, storyMode
         );
         imageUrls[i] = result.url;
       }

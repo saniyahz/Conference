@@ -101,7 +101,7 @@ export async function POST(request: NextRequest) {
             currency: 'usd',
             product_data: {
               name: `Printed Book: ${story.title}`,
-              description: `8x8" hardcover photobook — ${story.title} by ${story.author || 'Young Author'}`,
+              description: `${(process.env.PRINT_PROVIDER || 'gelato') === 'lulu' ? '8.5x8.5" paperback' : '8x8" hardcover'} photobook — ${story.title} by ${story.author || 'Young Author'}`,
             },
             unit_amount: Math.round(bookPrice * 100), // Convert to cents
           },
@@ -125,6 +125,7 @@ export async function POST(request: NextRequest) {
         storyId,
         userId: session.user.id,
         shipmentMethodUid: shipmentMethodUid || '',
+        printProvider: process.env.PRINT_PROVIDER || 'gelato',
       },
       success_url: `${appUrl}/print/${storyId}?success=true&orderId=${order.id}`,
       cancel_url: `${appUrl}/print/${storyId}?cancelled=true&orderId=${order.id}`,

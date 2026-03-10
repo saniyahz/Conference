@@ -42,7 +42,7 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
     }
 
-    const { title, author, originalPrompt, pages, coverImage } = await request.json()
+    const { title, author, originalPrompt, pages, coverImage, language } = await request.json()
 
     if (!title || !pages) {
       return NextResponse.json(
@@ -82,6 +82,7 @@ export async function POST(request: NextRequest) {
         originalPrompt,
         pages: JSON.stringify(pages),
         coverImage,
+        language: language || 'en',
         isSaved: true,
       },
     })

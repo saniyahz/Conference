@@ -673,7 +673,7 @@ export default function LoadingSpinner({ message = 'Loading...', stage = 'story'
   // Overall progress depends on whether we're generating a movie too
   const stageStartPct = hasMovie ? [0, 10, 60] : [0, 15]
   const stageEndPct = hasMovie ? [10, 60, 100] : [15, 100]
-  const stageDurationSec = hasMovie ? [30, 70, 40] : [30, 70]
+  const stageDurationSec = hasMovie ? [30, 150, 60] : [30, 150]
 
   const stageProgress = Math.min(elapsedTime / stageDurationSec[stageIndex], 1)
   const overallProgress = Math.min(
@@ -736,7 +736,7 @@ export default function LoadingSpinner({ message = 'Loading...', stage = 'story'
 
         {/* Total time estimate */}
         <p className="mt-2 text-xs text-zinc-400 text-center">
-          Total estimated time: {hasMovie ? '~2-3 minutes' : '~1-2 minutes'}
+          Total estimated time: {hasMovie ? '~4-5 minutes' : '~2-3 minutes'}
         </p>
       </div>
 

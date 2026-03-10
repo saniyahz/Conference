@@ -6,9 +6,10 @@ import BeaverMascot from './BeaverMascot'
 
 export type AgeGroup = '3-5' | '6-8' | '9-12'
 export type GenerationMode = 'storybook' | 'movie'
+export type StoryMode = 'imagination' | 'history'
 
 interface SpeechRecorderProps {
-  onComplete: (text: string, authorName: string, ageGroup: AgeGroup, mode: GenerationMode) => void
+  onComplete: (text: string, authorName: string, ageGroup: AgeGroup, mode: GenerationMode, storyMode: StoryMode, detectedLanguage: string) => void
 }
 
 export default function SpeechRecorder({ onComplete }: SpeechRecorderProps) {
@@ -21,6 +22,8 @@ export default function SpeechRecorder({ onComplete }: SpeechRecorderProps) {
   const [audioLevel, setAudioLevel] = useState(0)
   const [isMicWarmingUp, setIsMicWarmingUp] = useState(false)
   const [ageGroup, setAgeGroup] = useState<AgeGroup>('3-5')
+  const [storyMode, setStoryMode] = useState<StoryMode>('imagination')
+  const [detectedLanguage, setDetectedLanguage] = useState<string>('en')
   const mediaRecorderRef = useRef<MediaRecorder | null>(null)
   const audioChunksRef = useRef<Blob[]>([])
   const streamRef = useRef<MediaStream | null>(null)
@@ -197,6 +200,11 @@ export default function SpeechRecorder({ onComplete }: SpeechRecorderProps) {
 
       const data = await response.json()
 
+      // Capture detected language from Whisper auto-detection
+      if (data.detectedLanguage) {
+        setDetectedLanguage(data.detectedLanguage)
+      }
+
       if (data.text && data.text.trim()) {
         setTranscription(prev => {
           const newText = prev ? `${prev} ${data.text.trim()}` : data.text.trim()
@@ -221,7 +229,7 @@ export default function SpeechRecorder({ onComplete }: SpeechRecorderProps) {
 
   const handleSubmit = () => {
     if (transcription.trim()) {
-      onComplete(transcription.trim(), authorName.trim() || 'Young Author', ageGroup, 'storybook')
+      onComplete(transcription.trim(), authorName.trim() || 'Young Author', ageGroup, 'storybook', storyMode, detectedLanguage)
     }
   }
 
@@ -459,6 +467,47 @@ Example: A brave little bunny who goes on an adventure to find a magical rainbow
           </div>
         )}
 
+
+        {/* Story Mode Selector */}
+        {transcription && (
+          <div className="mt-6">
+            <label className="text-sm font-medium text-zinc-700 mb-3 block">
+              Story Type
+            </label>
+            <div className="grid grid-cols-2 gap-3">
+              {([
+                { value: 'imagination' as StoryMode, emoji: '✨', label: 'Imagination', sub: 'Creative & magical' },
+                { value: 'history' as StoryMode, emoji: '📜', label: 'History', sub: 'Real events as stories' },
+              ]).map(opt => (
+                <button
+                  key={opt.value}
+                  onClick={() => setStoryMode(opt.value)}
+                  className={`relative p-4 rounded-xl border-2 text-center transition-all active:scale-[0.98] ${
+                    storyMode === opt.value
+                      ? 'border-emerald-500 bg-emerald-50 shadow-md'
+                      : 'border-zinc-200 bg-white hover:border-zinc-300 hover:bg-zinc-50'
+                  }`}
+                >
+                  {storyMode === opt.value && (
+                    <div className="absolute top-2 right-2">
+                      <Check className="w-4 h-4 text-emerald-600" />
+                    </div>
+                  )}
+                  <div className="text-2xl mb-1">{opt.emoji}</div>
+                  <div className={`text-sm font-semibold ${storyMode === opt.value ? 'text-emerald-700' : 'text-zinc-700'}`}>
+                    {opt.label}
+                  </div>
+                  <div className="text-xs text-zinc-400">{opt.sub}</div>
+                </button>
+              ))}
+            </div>
+            {storyMode === 'history' && (
+              <p className="text-xs text-amber-600 mt-2">
+                History mode creates age-appropriate stories based on real events, places, and people.
+              </p>
+            )}
+          </div>
+        )}
 
         {/* Submit button */}
         {transcription && (

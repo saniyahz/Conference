@@ -11,7 +11,7 @@ const VOICE_MAP: { [key: string]: string } = {
 
 export async function POST(request: NextRequest) {
   try {
-    const { text, voice, speed: requestedSpeed } = await request.json()
+    const { text, voice, speed: requestedSpeed, storyMode = 'imagination' } = await request.json()
 
     if (!text || typeof text !== 'string') {
       return NextResponse.json(
@@ -24,7 +24,9 @@ export async function POST(request: NextRequest) {
     // This prevents malicious direct API calls from getting TTS to speak
     // inappropriate content. The story route already validates, but this
     // is defense-in-depth against direct endpoint abuse.
-    const validation = validateContent(text);
+    // CRITICAL: Pass storyMode so history mode text (with religious/historical
+    // terms like "Muhammad", "Quran", "Allah") doesn't get blocked.
+    const validation = validateContent(text, storyMode);
     if (!validation.safe) {
       console.warn(`[SPEECH SAFETY] Blocked unsafe text: "${validation.matchedTerm}" (${validation.category})`);
       return NextResponse.json(

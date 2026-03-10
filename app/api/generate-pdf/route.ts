@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server'
 import jsPDF from 'jspdf'
 import { Story } from '@/app/page'
 import { renderGamePage } from '@/lib/gamePageRenderer'
+import { loadFontForLanguage, isRtlLanguage, preprocessTextForPdf } from '@/lib/fontLoader'
 
 // Helper function to convert image URL to base64
 async function getImageAsBase64(url: string): Promise<string> {
@@ -18,10 +19,11 @@ async function getImageAsBase64(url: string): Promise<string> {
 
 export async function POST(request: NextRequest) {
   try {
-    const { story, characterBible, sceneCards } = await request.json() as {
+    const { story, characterBible, sceneCards, storyMode } = await request.json() as {
       story: Story
       characterBible?: any
       sceneCards?: any[]
+      storyMode?: string
     }
 
     if (!story || !story.title || !story.pages) {
@@ -43,6 +45,11 @@ export async function POST(request: NextRequest) {
     const margin = 20
     const contentWidth = pageWidth - 2 * margin
 
+    // ── Load Unicode font for non-Latin story text ──
+    const language = story.language || 'en'
+    const storyFontName = await loadFontForLanguage(pdf, language)
+    const rtl = isRtlLanguage(language)
+
     // ========== COVER PAGE (WARM BEIGE AESTHETIC) ==========
     // Warm beige/parchment background
     pdf.setFillColor(253, 246, 227) // #FDF6E3 — warm beige
@@ -58,12 +65,13 @@ export async function POST(request: NextRequest) {
     pdf.setLineWidth(0.5)
     pdf.roundedRect(18, 18, pageWidth - 36, pageHeight - 36, 2, 2, 'S')
 
-    // Title area — warm brown text
+    // Title area — warm brown text (uses story font for multilingual support)
     pdf.setTextColor(101, 67, 33) // Dark warm brown
     pdf.setFontSize(32)
-    pdf.setFont('helvetica', 'bold')
+    pdf.setFont(storyFontName, 'normal')
 
-    const titleLines = pdf.splitTextToSize(story.title, contentWidth - 30)
+    const processedTitle = preprocessTextForPdf(story.title, language)
+    const titleLines = pdf.splitTextToSize(processedTitle, contentWidth - 30)
     const titleStartY = 80
     titleLines.forEach((line: string, index: number) => {
       pdf.text(line, pageWidth / 2, titleStartY + (index * 14), { align: 'center' })
@@ -78,7 +86,7 @@ export async function POST(request: NextRequest) {
     pdf.setFontSize(14)
     pdf.setFont('helvetica', 'italic')
     pdf.setTextColor(100, 100, 100)
-    pdf.text('A Magical Story', pageWidth / 2, titleStartY + (titleLines.length * 14) + 25, { align: 'center' })
+    pdf.text(storyMode === 'history' ? 'A Historical Story' : 'A Magical Story', pageWidth / 2, titleStartY + (titleLines.length * 14) + 25, { align: 'center' })
 
     // Author section
     const authorY = pageHeight / 2 + 20
@@ -137,7 +145,22 @@ export async function POST(request: NextRequest) {
     pdf.setFontSize(10)
     pdf.setFont('helvetica', 'normal')
 
-    const disclaimerText = [
+    const disclaimerText = storyMode === 'history' ? [
+      `"${story.title}" by ${story.author || 'Young Author'}`,
+      `Created on ${today}`,
+      '',
+      'This story was generated with the assistance of artificial intelligence',
+      'and is based on real historical events. While the historical facts are',
+      'intended to be accurate, some details may be simplified for young readers.',
+      '',
+      'The fictional child characters are products of AI generation.',
+      'Historical events, dates, and places are presented as accurately as possible.',
+      '',
+      'Parents are encouraged to explore the historical topic further with their children.',
+      'All illustrations were generated using AI image generation technology.',
+      '',
+      'Created with Kids Story Creator — History Mode',
+    ] : [
       `"${story.title}" by ${story.author || 'Young Author'}`,
       `Created on ${today}`,
       '',
@@ -256,17 +279,22 @@ export async function POST(request: NextRequest) {
       const textY = imageY + imageHeight + 8
       const textAreaHeight = pageHeight - textY - 35 // Leave room for page number
 
-      // Story text - larger font and better spacing for kids
+      // Story text - larger font and better spacing for kids (uses story font for multilingual)
       pdf.setTextColor(0, 0, 0)
       pdf.setFontSize(14)
-      pdf.setFont('helvetica', 'normal')
+      pdf.setFont(storyFontName, 'normal')
 
-      const textLines = pdf.splitTextToSize(story.pages[i].text, contentWidth - 4)
+      const processedText = preprocessTextForPdf(story.pages[i].text, language)
+      const textLines = pdf.splitTextToSize(processedText, contentWidth - 4)
       let currentY = textY
 
       textLines.forEach((line: string) => {
         if (currentY < pageHeight - 35) {
-          pdf.text(line, margin + 2, currentY)
+          if (rtl) {
+            pdf.text(line, pageWidth - margin - 2, currentY, { align: 'right' })
+          } else {
+            pdf.text(line, margin + 2, currentY)
+          }
           currentY += 7 // Better line spacing for readability
         }
       })
@@ -310,8 +338,9 @@ export async function POST(request: NextRequest) {
 
       // Calculate prompt text layout FIRST so we can size the box dynamically
       pdf.setFontSize(13)
-      pdf.setFont('helvetica', 'normal')
-      const promptLines = pdf.splitTextToSize(story.originalPrompt, contentWidth - 50)
+      pdf.setFont(storyFontName, 'normal')
+      const processedPrompt = preprocessTextForPdf(story.originalPrompt, language)
+      const promptLines = pdf.splitTextToSize(processedPrompt, contentWidth - 50)
       const lineHeight = 7
       const promptTextHeight = promptLines.length * lineHeight
       // Box: 15px top padding + text + 15px bottom padding
@@ -333,15 +362,19 @@ export async function POST(request: NextRequest) {
       pdf.setFont('helvetica', 'bold')
       pdf.text('"', 35, 105)
 
-      // The original prompt text — render ALL lines that fit
+      // The original prompt text — render ALL lines that fit (uses story font for multilingual)
       pdf.setTextColor(50, 50, 50)
       pdf.setFontSize(13)
-      pdf.setFont('helvetica', 'normal')
+      pdf.setFont(storyFontName, 'normal')
       let promptY = 100
       const maxPromptY = 80 + finalBoxHeight - 15 // stop 15px before box bottom
       promptLines.forEach((line: string) => {
         if (promptY < maxPromptY) {
-          pdf.text(line, 45, promptY)
+          if (rtl) {
+            pdf.text(line, pageWidth - 45, promptY, { align: 'right' })
+          } else {
+            pdf.text(line, 45, promptY)
+          }
           promptY += lineHeight
         }
       })
@@ -357,7 +390,7 @@ export async function POST(request: NextRequest) {
       pdf.setTextColor(100, 100, 100)
       pdf.setFontSize(11)
       pdf.setFont('helvetica', 'italic')
-      pdf.text('This magical story grew from this wonderful idea!', pageWidth / 2, footerY, { align: 'center' })
+      pdf.text(storyMode === 'history' ? 'This historical story was inspired by this question!' : 'This magical story grew from this wonderful idea!', pageWidth / 2, footerY, { align: 'center' })
 
       // Small beaver emoji placeholder text
       pdf.setFontSize(10)
@@ -402,8 +435,13 @@ export async function POST(request: NextRequest) {
     pdf.setFontSize(7)
     pdf.setFont('helvetica', 'normal')
     pdf.setTextColor(160, 140, 180)
-    pdf.text('This is a work of fiction. All characters, events, and illustrations are AI-generated.', pageWidth / 2, pageHeight - 18, { align: 'center' })
-    pdf.text('Any resemblance to real persons or events is purely coincidental.', pageWidth / 2, pageHeight - 13, { align: 'center' })
+    if (storyMode === 'history') {
+      pdf.text('Based on real historical events. Characters and illustrations are AI-generated.', pageWidth / 2, pageHeight - 18, { align: 'center' })
+      pdf.text('Historical facts may be simplified for young readers.', pageWidth / 2, pageHeight - 13, { align: 'center' })
+    } else {
+      pdf.text('This is a work of fiction. All characters, events, and illustrations are AI-generated.', pageWidth / 2, pageHeight - 18, { align: 'center' })
+      pdf.text('Any resemblance to real persons or events is purely coincidental.', pageWidth / 2, pageHeight - 13, { align: 'center' })
+    }
 
     // Decorative stars on back cover
     const stars = [

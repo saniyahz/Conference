@@ -35,6 +35,7 @@ type Story = {
   downloadCount: number
   audioPlayCount: number
   isSaved: boolean
+  language?: string
 }
 
 type UsageTracking = {
@@ -132,7 +133,8 @@ export default function DashboardPage() {
           story: {
             title: story.title,
             author: story.author,
-            pages
+            pages,
+            language: story.language || 'en',
           }
         }),
       })

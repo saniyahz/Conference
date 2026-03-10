@@ -4,6 +4,9 @@ import { authOptions } from '@/lib/auth'
 import { prisma } from '@/lib/prisma'
 import { calculatePrintPrice, PRINT_BASE_PRICE } from '@/lib/subscriptions'
 import { getShippingQuote, type GelatoAddress } from '@/lib/gelato'
+import { calculateShippingCost, type LuluAddress } from '@/lib/lulu'
+
+const PRINT_PROVIDER = process.env.PRINT_PROVIDER || 'gelato'
 
 export async function POST(request: NextRequest) {
   try {
@@ -45,47 +48,77 @@ export async function POST(request: NextRequest) {
       ? Math.round((discountAmount / PRINT_BASE_PRICE) * 100)
       : 0
 
-    // Build Gelato address
-    const gelatoAddress: GelatoAddress = {
-      firstName: shippingAddress.firstName,
-      lastName: shippingAddress.lastName,
-      addressLine1: shippingAddress.address,
-      city: shippingAddress.city,
-      state: shippingAddress.state,
-      postCode: shippingAddress.zip,
-      country: shippingAddress.country,
-      email: shippingAddress.email || session.user.email || '',
-    }
-
-    // Get shipping quote from Gelato
-    // Use a placeholder PDF URL for quoting — Gelato only needs the product spec for shipping quotes
     let shippingCost = 4.99 // Default fallback
     let minDeliveryDays = 5
     let maxDeliveryDays = 10
     let shipmentMethodUid = ''
 
-    try {
-      // Note: For quotes, Gelato may need a valid PDF URL or accept a dummy
-      // In sandbox mode, we can use a placeholder
-      const quoteResponse = await getShippingQuote(
-        gelatoAddress,
-        'https://example.com/placeholder.pdf', // Placeholder for quote
-        `quote-${Date.now()}`
-      )
-
-      if (quoteResponse.quotes && quoteResponse.quotes.length > 0) {
-        // Use the cheapest shipping option
-        const cheapest = quoteResponse.quotes.reduce((min, q) =>
-          q.price < min.price ? q : min
-        )
-        shippingCost = cheapest.price
-        minDeliveryDays = cheapest.minDeliveryDays
-        maxDeliveryDays = cheapest.maxDeliveryDays
-        shipmentMethodUid = cheapest.shipmentMethodUid
+    if (PRINT_PROVIDER === 'lulu') {
+      // ── Lulu cost calculation ──────────────────
+      const luluAddress: LuluAddress = {
+        name: `${shippingAddress.firstName} ${shippingAddress.lastName}`.trim(),
+        street1: shippingAddress.address,
+        city: shippingAddress.city,
+        state_code: shippingAddress.state || undefined,
+        postcode: shippingAddress.zip,
+        country_code: shippingAddress.country,
+        email: shippingAddress.email || session.user.email || '',
       }
-    } catch (error) {
-      console.error('Gelato quote error (using fallback pricing):', error)
-      // Continue with fallback pricing — don't fail the quote
+
+      try {
+        // Lulu cost calculation includes manufacturing + shipping
+        // 32 pages = Lulu minimum for our book spec
+        const costResponse = await calculateShippingCost(luluAddress, 32, 'MAIL')
+
+        shippingCost = parseFloat(costResponse.shipping_cost?.total_cost_excl_tax || '4.99')
+        shipmentMethodUid = 'MAIL' // Lulu uses shipping level strings
+        // Lulu estimated dates come as ISO strings — calculate day ranges
+        if (costResponse.shipping_cost?.estimated_shipping_dates) {
+          const { arrival_min, arrival_max } = costResponse.shipping_cost.estimated_shipping_dates
+          if (arrival_min) {
+            const now = new Date()
+            const minDate = new Date(arrival_min)
+            const maxDate = arrival_max ? new Date(arrival_max) : minDate
+            minDeliveryDays = Math.max(1, Math.ceil((minDate.getTime() - now.getTime()) / (1000 * 60 * 60 * 24)))
+            maxDeliveryDays = Math.max(minDeliveryDays, Math.ceil((maxDate.getTime() - now.getTime()) / (1000 * 60 * 60 * 24)))
+          }
+        }
+      } catch (error) {
+        console.error('Lulu cost calculation error (using fallback pricing):', error)
+        // Continue with fallback pricing
+      }
+    } else {
+      // ── Gelato cost calculation (existing) ─────
+      const gelatoAddress: GelatoAddress = {
+        firstName: shippingAddress.firstName,
+        lastName: shippingAddress.lastName,
+        addressLine1: shippingAddress.address,
+        city: shippingAddress.city,
+        state: shippingAddress.state,
+        postCode: shippingAddress.zip,
+        country: shippingAddress.country,
+        email: shippingAddress.email || session.user.email || '',
+      }
+
+      try {
+        const quoteResponse = await getShippingQuote(
+          gelatoAddress,
+          'https://example.com/placeholder.pdf',
+          `quote-${Date.now()}`
+        )
+
+        if (quoteResponse.quotes && quoteResponse.quotes.length > 0) {
+          const cheapest = quoteResponse.quotes.reduce((min, q) =>
+            q.price < min.price ? q : min
+          )
+          shippingCost = cheapest.price
+          minDeliveryDays = cheapest.minDeliveryDays
+          maxDeliveryDays = cheapest.maxDeliveryDays
+          shipmentMethodUid = cheapest.shipmentMethodUid
+        }
+      } catch (error) {
+        console.error('Gelato quote error (using fallback pricing):', error)
+      }
     }
 
     const totalPrice = ourPrice + shippingCost

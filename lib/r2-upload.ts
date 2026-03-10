@@ -26,11 +26,17 @@ function getR2Client(): S3Client {
 
 /**
  * Upload a print-ready PDF to Cloudflare R2.
- * Returns the publicly accessible URL for Gelato to download.
+ * Returns the publicly accessible URL for the print provider to download.
+ *
+ * @param suffix - Optional suffix before .pdf extension.
+ *   Default '' → print-orders/{orderId}.pdf (backward-compatible for Gelato)
+ *   '-interior' → print-orders/{orderId}-interior.pdf (Lulu interior)
+ *   '-cover'    → print-orders/{orderId}-cover.pdf (Lulu cover)
  */
 export async function uploadPrintPdf(
   pdfBuffer: Buffer,
-  orderId: string
+  orderId: string,
+  suffix: string = ''
 ): Promise<string> {
   const bucketName = process.env.R2_BUCKET_NAME
   const publicUrl = process.env.R2_PUBLIC_URL
@@ -39,7 +45,7 @@ export async function uploadPrintPdf(
     throw new Error('R2 bucket config missing. Set R2_BUCKET_NAME and R2_PUBLIC_URL.')
   }
 
-  const key = `print-orders/${orderId}.pdf`
+  const key = `print-orders/${orderId}${suffix}.pdf`
   const client = getR2Client()
 
   await client.send(

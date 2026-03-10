@@ -132,7 +132,9 @@ export function createCharacterBible(dna: CharacterDNA, fallbackSpecies?: string
     visual_fingerprint.push(`cartoon ${species}`);
   }
   visual_fingerprint.push(skinTone);
-  visual_fingerprint.push(eyes);
+  // NOTE: Eyes deliberately NOT pushed into visual_fingerprint.
+  // "big expressive eyes" caused Flux to create oversized anime eyes.
+  // Eye color is stored in appearance.eyes for metadata only.
   if (faceFeatures) visual_fingerprint.push(faceFeatures);
   // Add identity-defining accessories (glasses, hats, etc.) to fingerprint
   // so they're included in every image prompt
@@ -176,10 +178,10 @@ export function createCharacterBible(dna: CharacterDNA, fallbackSpecies?: string
     },
 
     art_style: {
-      medium: "soft watercolor",
-      genre: "premium children's picture book",
-      mood: "warm, gentle, magical",
-      line_detail: "clean, whimsical",
+      medium: "2D cartoon",
+      genre: "children's book illustration",
+      mood: "warm, bright, cheerful",
+      line_detail: "bold black outlines, flat bright colors",
     },
     consistency_rules: [
       `${dna.name} must look identical across all pages.`,
@@ -311,7 +313,6 @@ export function createSimpleBible(
     visual_fingerprint.push(`cartoon ${actualSpecies}`);
   }
   visual_fingerprint.push(skinTone);
-  visual_fingerprint.push("big expressive eyes");
   visual_fingerprint.push("friendly smile");
 
   console.log(`[createSimpleBible] Created bible for ${name}:`);
@@ -331,7 +332,7 @@ export function createSimpleBible(
 
     appearance: {
       skin_tone: skinTone,
-      eyes: "big expressive eyes",
+      eyes: "round brown eyes",
       hair: hairOrFur,
       face_features: "friendly smile, cute face",
     },
@@ -346,10 +347,10 @@ export function createSimpleBible(
     },
 
     art_style: {
-      medium: "soft watercolor",
-      genre: "premium children's picture book",
-      mood: "warm, gentle, magical",
-      line_detail: "clean, whimsical",
+      medium: "2D cartoon",
+      genre: "children's book illustration",
+      mood: "warm, bright, cheerful",
+      line_detail: "bold black outlines, flat bright colors",
     },
     consistency_rules: [
       `${name} must look identical across all pages.`,
@@ -428,7 +429,9 @@ function extractEyes(facialFeatures: string): string {
   else if (features.includes('green eye')) eyeColor = 'green';
   else if (features.includes('hazel')) eyeColor = 'hazel';
 
-  return `big expressive ${eyeColor} eyes`;
+  // IMPORTANT: Do NOT use "big expressive eyes" — it made Flux create
+  // oversized anime-style eyes. Just return the color.
+  return `${eyeColor} eyes`;
 }
 
 function extractHair(physicalForm: string, colorPalette: string[]): string {
@@ -617,6 +620,12 @@ function sanitizeChildOutfit(accessories: string): string {
     [/\bhalter\b/gi, ''],
     // "strapless" → remove
     [/\bstrapless\b/gi, ''],
+    // "khaki pants/shorts" → jeans (modesty + consistency)
+    [/\bkhaki\s+pants\b/gi, 'jeans'],
+    [/\bkhaki\s+shorts\b/gi, 'jeans'],
+    [/\bkhakis\b/gi, 'jeans'],
+    // "shorts" → jeans (modesty rule)
+    [/\b(?:cargo\s+)?shorts\b/gi, 'jeans'],
     // "plunging" → remove
     [/\bplunging\b/gi, ''],
     // "bodycon" → remove

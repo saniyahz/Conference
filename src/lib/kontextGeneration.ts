@@ -125,7 +125,7 @@ async function pollPrediction(
   prediction: { id: string; status: string; output?: unknown; error?: unknown }
 ): Promise<{ output?: unknown; status: string; error?: unknown }> {
   let result = prediction;
-  const pollInterval = 2000;
+  const pollInterval = 1500; // Poll every 1.5s instead of 2s for faster detection
   const maxPollTime = 180000; // 3 minutes max
   const startTime = Date.now();
 

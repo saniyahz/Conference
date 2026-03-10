@@ -133,6 +133,22 @@ const BLOCKED_RELIGIOUS = new Set([
   // OpenAI Moderation API catches genuinely inappropriate religious content.
 ]);
 
+// ─── HISTORY MODE ALLOWED TERMS ──────────────────────────────────────
+// In History Mode, parents explicitly opted into real historical content.
+// These terms from violence/religious categories are allowed.
+
+const HISTORY_ALLOWED_VIOLENCE = new Set([
+  'bombing', 'hostage', 'kidnap', 'kidnapping',
+]);
+
+const HISTORY_ALLOWED_RELIGIOUS = new Set([
+  'jesus christ', 'messiah', 'prophet muhammad', 'allah',
+  'scripture', 'sermon', 'preach', 'preaching',
+  'baptism', 'baptize', 'communion', 'missionary',
+  'crucifixion', 'psalm', 'commandment',
+  'quran', 'koran', 'torah', 'talmud',
+]);
+
 // Words that are allowed even though they overlap with religious concepts
 // (fantasy/cultural context is OK)
 const RELIGIOUS_ALLOWLIST = new Set([
@@ -194,6 +210,12 @@ const SENSITIVE_REPLACEMENTS = new Map<string, string>([
   ['ugly', 'unusual-looking'],
   ['fat', 'round'],
   ['skinny', 'thin'],
+  // ── Sleepover / pajama party — redirect to daytime activity ──
+  ['sleepover', 'fun play date'],
+  ['slumber party', 'fun play date'],
+  ['pajama party', 'fun play date'],
+  ['pyjama party', 'fun play date'],
+  ['sleep over', 'fun play date'],
 ]);
 
 // ─── ALL BLOCKED TERMS (combined for validation) ─────────────────────────
@@ -218,13 +240,20 @@ function getAllBlockedSets(): { set: Set<string>; category: string }[] {
  *
  * Uses word-boundary matching to prevent false positives.
  */
-export function validateContent(text: string): ContentValidationResult {
+export function validateContent(text: string, storyMode: string = 'imagination'): ContentValidationResult {
   if (!text) return { safe: true };
 
+  const isHistoryMode = storyMode === 'history';
   const lower = text.toLowerCase();
 
   for (const { set, category } of getAllBlockedSets()) {
     for (const term of set) {
+      // In history mode, skip terms on the per-category allowlists
+      if (isHistoryMode) {
+        if (category === 'violence' && HISTORY_ALLOWED_VIOLENCE.has(term)) continue;
+        if (category === 'religious' && HISTORY_ALLOWED_RELIGIOUS.has(term)) continue;
+      }
+
       // For multi-word terms, use includes
       if (term.includes(' ')) {
         if (lower.includes(term)) {
@@ -253,8 +282,13 @@ export function validateContent(text: string): ContentValidationResult {
  * Sanitize text by replacing sensitive terms with gentle alternatives.
  * Does NOT reject — just softens language.
  */
-export function sanitizeText(text: string): SanitizeResult {
+export function sanitizeText(text: string, storyMode: string = 'imagination'): SanitizeResult {
   if (!text) return { cleaned: text, modifications: [] };
+
+  // In history mode, skip ALL sanitization — parents want real historical language
+  if (storyMode === 'history') {
+    return { cleaned: text, modifications: [] };
+  }
 
   let cleaned = text;
   const modifications: string[] = [];
@@ -352,19 +386,73 @@ export function detectPromptInjection(text: string): boolean {
  * Combined validation: blocklist check + prompt injection check.
  * Returns a user-friendly error message if content is unsafe, or null if safe.
  */
-export function getContentError(text: string): string | null {
+export function getContentError(text: string, storyMode: string = 'imagination'): string | null {
   // Check for prompt injection
   if (detectPromptInjection(text)) {
     return "This story idea contains content that isn't appropriate for a children's story app. Please try a different, kid-friendly idea!";
   }
 
   // Check blocklists
-  const validation = validateContent(text);
+  const validation = validateContent(text, storyMode);
   if (!validation.safe) {
     return "This story idea contains content that isn't appropriate for a children's story app. Please try a different, kid-friendly idea!";
   }
 
   return null;
+}
+
+// ─── COPING STORY DETECTION ────────────────────────────────────────────
+// Parents can write stories about REAL scary situations (war, missiles,
+// earthquakes, storms) WITH a safety/coping message. These should NOT be
+// blocked or sanitized — the parent deliberately chose this topic.
+//
+// Detection: prompt contains BOTH a difficult topic AND coping intent.
+
+const COPING_DIFFICULT_TOPICS = [
+  'missile', 'missiles', 'war', 'bomb', 'bombing', 'attack', 'attacks',
+  'explosion', 'loud noise', 'loud noises', 'loud boom', 'loud booms',
+  'siren', 'sirens', 'shelter', 'earthquake', 'tornado', 'hurricane',
+  'flood', 'storm', 'thunder', 'lightning', 'fire', 'wildfire',
+  'conflict', 'fighting', 'soldiers', 'military',
+  'death', 'died', 'passed away', 'lost', 'sick', 'illness', 'hospital',
+  'divorce', 'moving', 'bully', 'bullying', 'bullied',
+  'scared', 'fear', 'afraid', 'nightmare', 'anxiety', 'worried',
+];
+
+const COPING_INTENT_KEYWORDS = [
+  'hope', 'hopeful', 'cope', 'coping', 'calm', 'calming',
+  'safe', 'safety', 'brave', 'bravery', 'courage', 'courageous',
+  'pray', 'prayer', 'praying', 'breathe', 'breathing', 'deep breath',
+  'comfort', 'comforting', 'comfort them', 'help them',
+  'navigate', 'navigating', 'overcome', 'overcoming',
+  'strong', 'resilient', 'resilience', 'protect', 'protecting',
+  'reassure', 'reassuring', 'soothe', 'soothing',
+  'together', 'family', 'support', 'supporting',
+  'positive', 'empowering', 'healing',
+];
+
+/**
+ * Detect whether a user's prompt describes a coping story.
+ *
+ * A coping story has BOTH:
+ *   1. A difficult/scary real-life topic (war, natural disaster, loss, etc.)
+ *   2. A coping/safety/hope intent (the parent wants to help the child process it)
+ *
+ * When detected, sanitization of STORY TEXT is skipped (parent chose these words),
+ * but IMAGE PROMPT sanitization is kept (images should show coping, not violence).
+ */
+export function isCopingStory(prompt: string): boolean {
+  if (!prompt) return false;
+  const lower = prompt.toLowerCase();
+
+  const hasDifficultTopic = COPING_DIFFICULT_TOPICS.some(topic => lower.includes(topic));
+  const hasCopingIntent = COPING_INTENT_KEYWORDS.some(kw => lower.includes(kw));
+
+  if (hasDifficultTopic && hasCopingIntent) {
+    console.log(`[SAFETY] Coping story detected — will preserve parent's language in story text`);
+    return true;
+  }
+  return false;
 }
 
 /**

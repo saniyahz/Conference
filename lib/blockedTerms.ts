@@ -17,6 +17,18 @@
  * context-dependent meanings. False positives here block valid children's stories.
  */
 
+// ─── HISTORY MODE ALLOWED TERMS ──────────────────────────────────────
+// Terms from violence/religious categories that are OK in History Mode
+// (parents explicitly opted in to real historical content).
+const HISTORY_ALLOWED_TERMS = new Set([
+  'bombing', 'hostage', 'kidnap', 'kidnapping',
+  'allah', 'jesus christ', 'messiah', 'prophet muhammad',
+  'scripture', 'sermon', 'preach', 'preaching',
+  'baptism', 'baptize', 'communion', 'missionary',
+  'crucifixion', 'psalm', 'commandment',
+  'quran', 'koran', 'torah', 'talmud',
+]);
+
 // ─── ALL BLOCKED TERMS (flat set for client-side matching) ────────────
 // Mirrors the categorized sets in contentSafety.ts.
 
@@ -86,12 +98,16 @@ const BLOCKED_TERMS: string[] = [
  * Uses word-boundary matching to avoid false positives.
  * Returns the matched term if found, or null if clean.
  */
-export function clientValidateContent(text: string): string | null {
+export function clientValidateContent(text: string, storyMode: string = 'imagination'): string | null {
   if (!text) return null;
 
+  const isHistoryMode = storyMode === 'history';
   const lower = text.toLowerCase();
 
   for (const term of BLOCKED_TERMS) {
+    // In history mode, skip terms on the allowlist
+    if (isHistoryMode && HISTORY_ALLOWED_TERMS.has(term)) continue;
+
     if (term.includes(' ')) {
       // Multi-word terms: simple includes check
       if (lower.includes(term)) return term;

@@ -2,7 +2,7 @@
 
 import { useState, useEffect, useCallback } from 'react'
 import { useRouter } from 'next/navigation'
-import SpeechRecorder, { AgeGroup, GenerationMode } from '@/components/SpeechRecorder'
+import SpeechRecorder, { AgeGroup, GenerationMode, StoryMode } from '@/components/SpeechRecorder'
 import StoryBook from '@/components/StoryBook'
 import LoadingSpinner from '@/components/LoadingSpinner'
 import BeaverMascot from '@/components/BeaverMascot'
@@ -20,6 +20,7 @@ export type Story = {
   author: string
   pages: StoryPage[]
   originalPrompt?: string
+  language?: string  // ISO 639-1 code from Whisper auto-detection (default: 'en')
 }
 
 export default function Home() {
@@ -31,6 +32,8 @@ export default function Home() {
   const [loadingMessage, setLoadingMessage] = useState('Creating your magical story...')
   const [selectedAgeGroup, setSelectedAgeGroup] = useState<AgeGroup>('3-5')
   const [selectedMode, setSelectedMode] = useState<GenerationMode>('storybook')
+  const [selectedStoryMode, setSelectedStoryMode] = useState<StoryMode>('imagination')
+  const [detectedLanguage, setDetectedLanguage] = useState<string>('en')
   const router = useRouter()
 
   const isGenerating = step === 'generating' || step === 'generating-images'
@@ -58,16 +61,18 @@ export default function Home() {
     router.push(href)
   }, [isGenerating, router])
 
-  const handleTranscriptionComplete = async (text: string, authorName: string, ageGroup: AgeGroup, mode: GenerationMode) => {
+  const handleTranscriptionComplete = async (text: string, authorName: string, ageGroup: AgeGroup, mode: GenerationMode, storyMode: StoryMode = 'imagination', language: string = 'en') => {
     setTranscription(text)
     setSelectedAgeGroup(ageGroup)
     setSelectedMode(mode)
+    setSelectedStoryMode(storyMode)
+    setDetectedLanguage(language)
 
     // ─── CLIENT-SIDE CONTENT SAFETY ─────────────────────────────────
     // Advisory check — gives immediate feedback. Server enforces the real rules.
     // Uses comprehensive blocklist from lib/blockedTerms.ts (250+ terms across
     // sexual, violence, profanity, slurs, substance, religious categories).
-    const blockedTerm = clientValidateContent(text)
+    const blockedTerm = clientValidateContent(text, storyMode)
     if (blockedTerm) {
       console.warn(`[CLIENT SAFETY] Blocked term detected: "${blockedTerm}"`)
       alert('This story idea contains content that isn\'t appropriate for a children\'s story app. Please try a different, kid-friendly idea! Think of fun adventures with animals, magical creatures, or everyday heroes.')
@@ -82,7 +87,7 @@ export default function Home() {
       const storyResponse = await fetch('/api/generate-story', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ prompt: text, ageGroup }),
+        body: JSON.stringify({ prompt: text, ageGroup, storyMode, language }),
       })
 
       if (!storyResponse.ok) {
@@ -108,6 +113,7 @@ export default function Home() {
           additionalCharacterBibles: storyData.additionalCharacterBibles,
           seed: storyData.seed,
           seeds: storyData.seeds,
+          storyMode,
         }),
       })
 
@@ -115,7 +121,8 @@ export default function Home() {
         // If pipeline fails, continue with story but no images
         setStory({
           ...storyData.story,
-          author: authorName
+          author: authorName,
+          language,
         })
         setStep('book')
         return
@@ -135,6 +142,7 @@ export default function Home() {
       const storyWithImages = {
         ...storyData.story,
         author: authorName,
+        language,
         pages: storyData.story.pages.map((page: any, index: number) => ({
           ...page,
           imageUrl: mediaData.imageUrls[index] || undefined,
@@ -232,7 +240,7 @@ export default function Home() {
           )}
 
           {step === 'book' && story && (
-            <StoryBook story={story} onReset={handleReset} characterBible={characterBible} sceneCards={sceneCards} />
+            <StoryBook story={story} onReset={handleReset} characterBible={characterBible} sceneCards={sceneCards} storyMode={selectedStoryMode} />
           )}
         </div>
       </div>
