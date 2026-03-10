@@ -48,7 +48,7 @@ export async function GET(request: NextRequest) {
   try {
     const response = await fetch(url, {
       headers: {
-        "User-Agent": "BennysStoryTime/1.0",
+        "User-Agent": "MyStoryBear/1.0",
       },
     });
 

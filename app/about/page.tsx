@@ -24,7 +24,7 @@ export default function AboutPage() {
           <div className="grid md:grid-cols-[1fr_auto] gap-8 items-center mb-8">
             <div>
               <h1 className="text-4xl md:text-5xl font-bold text-zinc-800 mb-4 tracking-tight">
-                Meet Benny &amp; Our Story
+                Meet Story Bear &amp; Our Story
               </h1>
               <p className="text-xl text-zinc-500">
                 Helping kids discover the joy of storytelling
@@ -42,7 +42,7 @@ export default function AboutPage() {
               <h2 className="text-2xl font-bold text-zinc-800">Our Mission</h2>
             </div>
             <p className="text-lg text-zinc-600 leading-relaxed">
-              We believe every child has a story to tell. <strong>Benny&apos;s Story Time</strong> was created
+              We believe every child has a story to tell. <strong>My Story Bear</strong> was created
               to spark the imagination of young minds and help them fall in love with reading and
               storytelling. By letting kids speak their ideas and watch them transform into beautiful
               illustrated stories, we&apos;re making creativity accessible and fun for everyone.
@@ -64,7 +64,7 @@ export default function AboutPage() {
               </p>
 
               <p className="text-lg leading-relaxed">
-                <strong>Benny the Beaver</strong> was born from a simple idea: what if we could
+                <strong>Story Bear</strong> was born from a simple idea: what if we could
                 make storytelling as easy as talking to a friend? Kids don&apos;t need to know how to
                 write perfectly or draw beautifully to be storytellers. They just need their
                 imagination and their voice.
@@ -167,13 +167,13 @@ export default function AboutPage() {
             <div className="flex justify-center mb-4">
               <BeaverMascot greeting="" isRecording={false} isProcessing={false} size="small" />
             </div>
-            <h2 className="text-2xl font-bold mb-4">Benny&apos;s Promise</h2>
+            <h2 className="text-2xl font-bold mb-4">Our Promise</h2>
             <p className="text-lg text-white/90 leading-relaxed max-w-2xl mx-auto">
               &quot;Every story you tell is special. I&apos;m here to listen to your amazing ideas and
               help bring them to life. Together, we&apos;ll create adventures you can read again
               and again. So tell me... what story shall we create today?&quot;
             </p>
-            <p className="text-emerald-200 mt-4 font-semibold">&mdash; Benny the Story Beaver</p>
+            <p className="text-emerald-200 mt-4 font-semibold">&mdash; The My Story Bear Team</p>
           </div>
         </div>
 

@@ -10,7 +10,7 @@ const outfit = Outfit({
 })
 
 export const metadata: Metadata = {
-  title: "Benny's Story Time",
+  title: "My Story Bear",
   description: 'Create magical stories with your voice!',
 }
 
@@ -31,7 +31,7 @@ export default function RootLayout({
               We bear no responsibility for any content that may be perceived as offensive.
             </p>
             <p className="mt-1 text-zinc-300">
-              &copy; {new Date().getFullYear()} Benny&apos;s Story Time
+              &copy; {new Date().getFullYear()} My Story Bear
             </p>
           </footer>
         </SessionProvider>

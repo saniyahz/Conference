@@ -69,7 +69,7 @@ export default function PricingPage() {
         <div className="text-center mb-10">
           <Link href="/" className="inline-flex items-center gap-2 mb-4 text-emerald-600 hover:text-emerald-700">
             <BookOpen className="w-8 h-8" />
-            <span className="text-2xl font-bold">Benny&apos;s Story Time</span>
+            <span className="text-2xl font-bold">My Story Bear</span>
           </Link>
           <h1 className="text-4xl md:text-5xl font-bold text-zinc-800 mb-3 tracking-tight">
             Choose Your Plan

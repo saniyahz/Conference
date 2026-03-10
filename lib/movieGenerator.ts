@@ -702,7 +702,7 @@ export async function generateMovie(config: MovieConfig): Promise<string> {
   // ── Render end card ──
   report(95, 'Finishing up...')
   await renderFramesSynced((progress) => {
-    drawTitleCard(ctx, 'The End', `Made with Benny's Story Time`, width, height)
+    drawTitleCard(ctx, 'The End', `Made with My Story Bear`, width, height)
     drawFade(progress, TITLE_DURATION)
   }, TITLE_DURATION)
 

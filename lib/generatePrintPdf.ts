@@ -235,7 +235,7 @@ export async function generatePrintReadyPdf(
     // Small branding
     pdf.setFontSize(8)
     pdf.setTextColor(ZINC_500[0], ZINC_500[1], ZINC_500[2])
-    pdf.text("Benny's Story Time", centerX(d), d.PAGE_SIZE - d.BLEED - 10, { align: 'center' })
+    pdf.text("My Story Bear", centerX(d), d.PAGE_SIZE - d.BLEED - 10, { align: 'center' })
   }
 
   // ════════════════════════════════════════════════
@@ -316,14 +316,14 @@ export async function generatePrintReadyPdf(
     '',
     'All illustrations were generated using AI technology.',
     '',
-    "Created with Benny's Story Time",
+    "Created with My Story Bear",
   ]
 
   disclaimerLines.forEach((line, i) => {
     if (line === `"${story.title}" by ${story.author || 'Young Author'}`) {
       pdf.setFont('helvetica', 'bold')
       pdf.setTextColor(ZINC_800[0], ZINC_800[1], ZINC_800[2])
-    } else if (line === "Created with Benny's Story Time") {
+    } else if (line === "Created with My Story Bear") {
       pdf.setFont('helvetica', 'italic')
       pdf.setTextColor(EMERALD[0], EMERALD[1], EMERALD[2])
     } else {
@@ -1199,7 +1199,7 @@ export async function generatePrintReadyPdf(
     pdf.setTextColor(255, 255, 255)
     pdf.setFontSize(14)
     pdf.setFont('helvetica', 'bold')
-    pdf.text("Benny's Story Time", centerX(d), d.PAGE_SIZE / 2 - 10, { align: 'center' })
+    pdf.text("My Story Bear", centerX(d), d.PAGE_SIZE / 2 - 10, { align: 'center' })
 
     pdf.setFontSize(10)
     pdf.setFont('helvetica', 'normal')
@@ -1269,7 +1269,7 @@ export async function generateLuluCoverPdf(
   pdf.setTextColor(255, 255, 255)
   pdf.setFontSize(14)
   pdf.setFont('helvetica', 'bold')
-  pdf.text("Benny's Story Time", backX + backW / 2, coverHeight / 2 - 10, { align: 'center' })
+  pdf.text("My Story Bear", backX + backW / 2, coverHeight / 2 - 10, { align: 'center' })
 
   pdf.setFontSize(10)
   pdf.setFont('helvetica', 'normal')
@@ -1354,7 +1354,7 @@ export async function generateLuluCoverPdf(
   // Small branding
   pdf.setFontSize(8)
   pdf.setTextColor(ZINC_500[0], ZINC_500[1], ZINC_500[2])
-  pdf.text("Benny's Story Time", frontX + frontW / 2, coverHeight - d.BLEED - 10, { align: 'center' })
+  pdf.text("My Story Bear", frontX + frontW / 2, coverHeight - d.BLEED - 10, { align: 'center' })
 
   console.log(`[Lulu Cover PDF] Generated cover spread: ${coverWidth.toFixed(1)}mm x ${coverHeight.toFixed(1)}mm, spine: ${spineMm.toFixed(2)}mm`)
 
