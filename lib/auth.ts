@@ -8,10 +8,13 @@ import { prisma } from './prisma'
 export const authOptions: NextAuthOptions = {
   adapter: PrismaAdapter(prisma) as any,
   providers: [
-    GoogleProvider({
-      clientId: process.env.GOOGLE_CLIENT_ID || '',
-      clientSecret: process.env.GOOGLE_CLIENT_SECRET || '',
-    }),
+    // Google OAuth — only enable when credentials are configured
+    ...(process.env.GOOGLE_CLIENT_ID && process.env.GOOGLE_CLIENT_SECRET
+      ? [GoogleProvider({
+          clientId: process.env.GOOGLE_CLIENT_ID,
+          clientSecret: process.env.GOOGLE_CLIENT_SECRET,
+        })]
+      : []),
     CredentialsProvider({
       name: 'credentials',
       credentials: {
@@ -54,6 +57,9 @@ export const authOptions: NextAuthOptions = {
     async jwt({ token, user, account }) {
       if (user) {
         token.id = user.id
+        // Fetch role from DB
+        const dbUser = await prisma.user.findUnique({ where: { id: user.id }, select: { role: true } })
+        token.role = dbUser?.role || 'user'
       }
       // For OAuth sign-ups, ensure subscription and usage tracking are created
       if (account && user) {
@@ -70,6 +76,7 @@ export const authOptions: NextAuthOptions = {
           where: { userId: token.id as string },
         })
 
+        session.user.role = (token.role as string) || 'user'
         session.user.subscription = subscription
           ? {
               plan: subscription.plan,

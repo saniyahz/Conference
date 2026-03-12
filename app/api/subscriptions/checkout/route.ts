@@ -21,9 +21,10 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
     }
 
-    const { plan, billingCycle = 'monthly' } = (await request.json()) as {
+    const { plan, billingCycle = 'monthly', couponCode } = (await request.json()) as {
       plan: string
       billingCycle?: BillingCycle
+      couponCode?: string
     }
 
     // Validate plan exists
@@ -57,6 +58,30 @@ export async function POST(request: NextRequest) {
       audience: planInfo.audience,
     }
 
+    // Validate coupon if provided
+    let discounts: { coupon: string }[] | undefined
+    if (couponCode) {
+      try {
+        const coupon = await stripe.coupons.retrieve(couponCode)
+        if (!coupon.valid) {
+          return NextResponse.json({ error: 'This discount code has expired' }, { status: 400 })
+        }
+        discounts = [{ coupon: couponCode }]
+      } catch {
+        // Try as promotion code instead
+        try {
+          const promoCodes = await stripe.promotionCodes.list({ code: couponCode, active: true, limit: 1 })
+          if (promoCodes.data.length > 0) {
+            discounts = [{ coupon: promoCodes.data[0].coupon.id as string }]
+          } else {
+            return NextResponse.json({ error: 'Invalid discount code' }, { status: 400 })
+          }
+        } catch {
+          return NextResponse.json({ error: 'Invalid discount code' }, { status: 400 })
+        }
+      }
+    }
+
     // Create Stripe checkout session
     const checkoutSession = await stripe.checkout.sessions.create({
       customer_email: session.user.email,
@@ -75,6 +100,7 @@ export async function POST(request: NextRequest) {
         },
       ],
       mode: 'subscription',
+      ...(discounts ? { discounts } : { allow_promotion_codes: true }),
       success_url: isSchoolPlan(planType)
         ? `${process.env.NEXT_PUBLIC_APP_URL}/dashboard?success=true&school=true`
         : `${process.env.NEXT_PUBLIC_APP_URL}/dashboard?success=true`,

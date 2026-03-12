@@ -320,12 +320,14 @@ export function getSchoolLimits(plan: SchoolPlanType): SchoolLimits {
   return PLANS[plan].limits as SchoolLimits
 }
 
-/** Free plan: 1 story lifetime (not monthly). All other plans use monthly quota. */
+/** Free plan: 1 story lifetime (not monthly). All other plans use monthly quota. Superusers bypass all limits. */
 export function canCreateStory(
   plan: PlanType,
   storiesCreatedThisMonth: number,
-  totalStoriesCreated: number = 0
+  totalStoriesCreated: number = 0,
+  role: string = 'user'
 ): boolean {
+  if (role === 'superuser') return true
   if (plan === 'free') {
     return totalStoriesCreated < 1
   }

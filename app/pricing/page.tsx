@@ -25,6 +25,8 @@ export default function PricingPage() {
   const { data: session } = useSession()
   const router = useRouter()
   const [isLoading, setIsLoading] = useState<string | null>(null)
+  const [couponCode, setCouponCode] = useState('')
+  const [couponApplied, setCouponApplied] = useState(false)
 
   const handleSubscribe = async (plan: PlanType, billingCycle: 'monthly' | 'yearly' = 'monthly') => {
     if (plan === 'free') {
@@ -43,13 +45,15 @@ export default function PricingPage() {
       const response = await fetch('/api/subscriptions/checkout', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ plan, billingCycle }),
+        body: JSON.stringify({ plan, billingCycle, ...(couponCode && { couponCode: couponCode.trim() }) }),
       })
 
       const data = await response.json()
 
       if (data.url) {
         window.location.href = data.url
+      } else if (data.error) {
+        alert(data.error)
       } else {
         throw new Error('No checkout URL returned')
       }
@@ -77,6 +81,30 @@ export default function PricingPage() {
           <p className="text-xl text-zinc-500">
             Start creating magical stories today!
           </p>
+        </div>
+
+        {/* Discount Code */}
+        <div className="max-w-md mx-auto mb-8">
+          <div className="flex gap-2">
+            <input
+              type="text"
+              value={couponCode}
+              onChange={(e) => { setCouponCode(e.target.value); setCouponApplied(false) }}
+              placeholder="Have a discount code?"
+              className="flex-1 px-4 py-2.5 border border-zinc-300 rounded-lg text-sm focus:ring-2 focus:ring-emerald-500 focus:border-transparent"
+            />
+            {couponCode && (
+              <button
+                onClick={() => setCouponApplied(true)}
+                className="px-4 py-2.5 bg-emerald-600 text-white rounded-lg text-sm font-medium hover:bg-emerald-700"
+              >
+                Apply
+              </button>
+            )}
+          </div>
+          {couponApplied && couponCode && (
+            <p className="text-emerald-600 text-sm mt-1.5">Discount code will be applied at checkout</p>
+          )}
         </div>
 
         {/* Parent Plans — Asymmetric: featured plan is larger */}
