@@ -411,6 +411,7 @@ function extractSkinTone(colorPalette: string[], originalPrompt?: string): strin
   if (colors.includes('peach') || colors.includes('rosy') || colors.includes('pink')) return 'light peachy skin';
   if (colors.includes('pale') || colors.includes('fair') || colors.includes('light skin')) return 'fair skin';
   if (colors.includes('caramel') || colors.includes('honey')) return 'warm caramel brown skin';
+  if (colors.includes('light golden-tan') || colors.includes('golden-tan') || colors.includes('golden tan')) return 'light golden-tan skin';
 
   // Check color words — but be careful: "brown" in palette might refer to hair, not skin
   if (colors.includes('dark brown') || colors.includes('deep brown')) return 'dark brown skin';
@@ -418,8 +419,8 @@ function extractSkinTone(colorPalette: string[], originalPrompt?: string): strin
   // "brown" as first color in palette is likely skin tone (GPT puts skin first)
   if (colorPalette.length > 0 && colorPalette[0].toLowerCase().trim().startsWith('brown')) return 'brown skin';
 
-  // Default: light warm skin
-  return 'light warm skin';
+  // Default: light golden-tan skin (matches GPT prompt instructions)
+  return 'light golden-tan skin';
 }
 
 function extractEyes(facialFeatures: string): string {

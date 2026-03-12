@@ -154,6 +154,8 @@ function extractCharacterIdentity(bible?: CharacterBible): CharacterIdentity {
       skinTone = 'light golden-tan skin';
     } else if (rawSkinTone.includes('brown') || rawSkinTone.includes('caramel') || rawSkinTone.includes('warm brown')) {
       skinTone = 'brown skin, brown complexion';
+    } else if (rawSkinTone.includes('golden-tan') || rawSkinTone.includes('golden tan')) {
+      skinTone = 'light golden-tan skin, light warm honey complexion';
     } else if (rawSkinTone.includes('tan') || rawSkinTone.includes('olive')) {
       skinTone = 'tan olive skin';
     } else if (rawSkinTone.includes('fair') || rawSkinTone.includes('pale') || rawSkinTone.includes('light')) {
@@ -161,8 +163,8 @@ function extractCharacterIdentity(bible?: CharacterBible): CharacterIdentity {
     } else if (rawSkinTone) {
       skinTone = rawSkinTone;
     } else {
-      // No skin tone specified at all — use the neutral default
-      skinTone = 'light golden-tan skin';
+      // No skin tone specified at all — use the neutral default (light warm tone)
+      skinTone = 'light golden-tan skin, light warm honey complexion';
       console.log(`[Identity] No skin tone found in bible — using neutral default`);
     }
     console.log(`[Identity] Skin tone from bible: "${rawSkinTone}" → strengthened: "${skinTone}"`);

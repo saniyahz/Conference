@@ -851,7 +851,7 @@ This is for ${age.label}. ${age.sentences}`
 Remember: This is for ${age.label}. ${age.sentences} Keep it engaging and age-appropriate!`
 
     const completion = await openai.chat.completions.create({
-      model: "gpt-4o-mini",
+      model: "gpt-4o",
       messages: [
         { role: "system", content: systemPrompt },
         { role: "user", content: userPrompt },

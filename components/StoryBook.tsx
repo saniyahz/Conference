@@ -768,7 +768,7 @@ export default function StoryBook({ story, onReset, characterBible, sceneCards, 
                 key={`page-${displayedPage}-${imageRetryCount.current.get(displayedPage) || 0}`}
                 src={story.pages[displayedPage].imageUrl}
                 alt={`Page ${displayedPage + 1} illustration`}
-                className="absolute inset-0 w-full h-full object-cover"
+                className="absolute inset-0 w-full h-full object-contain"
                 onLoad={() => {
                   // Signal that this page's image is now visible
                   setImageLoaded(true)

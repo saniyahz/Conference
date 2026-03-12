@@ -264,38 +264,68 @@ export default function SpeechRecorder({ onComplete }: SpeechRecorderProps) {
           Press the microphone and tell me your idea!
         </p>
 
-        {/* Book Language Selector — always visible so parents pick language before recording */}
-        <div className="flex items-center justify-center gap-3 mb-2">
-          <label className="text-sm font-medium text-zinc-500">Book language:</label>
-          <select
-            value={detectedLanguage}
-            onChange={(e) => setDetectedLanguage(e.target.value)}
-            className="px-3 py-1.5 border border-zinc-200 rounded-lg focus:border-emerald-500 focus:ring-2 focus:ring-emerald-500/20 focus:outline-none text-sm text-zinc-700 bg-white appearance-none cursor-pointer"
-            style={{ backgroundImage: `url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='12' viewBox='0 0 12 12'%3E%3Cpath fill='%23666' d='M6 8L1 3h10z'/%3E%3C/svg%3E")`, backgroundRepeat: 'no-repeat', backgroundPosition: 'right 10px center', paddingRight: '30px' }}
-          >
-            <option value="en">English</option>
-            <option value="ur">Urdu (اردو)</option>
-            <option value="ar">Arabic (العربية)</option>
-            <option value="fr">French (Français)</option>
-            <option value="es">Spanish (Español)</option>
-            <option value="hi">Hindi (हिन्दी)</option>
-            <option value="zh">Chinese (中文)</option>
-            <option value="tr">Turkish (Türkçe)</option>
-            <option value="de">German (Deutsch)</option>
-            <option value="pt">Portuguese (Português)</option>
-            <option value="bn">Bengali (বাংলা)</option>
-            <option value="ta">Tamil (தமிழ்)</option>
-            <option value="ko">Korean (한국어)</option>
-            <option value="ja">Japanese (日本語)</option>
-            <option value="ru">Russian (Русский)</option>
-            <option value="it">Italian (Italiano)</option>
-            <option value="nl">Dutch (Nederlands)</option>
-            <option value="pl">Polish (Polski)</option>
-            <option value="fa">Persian (فارسی)</option>
-            <option value="ms">Malay (Bahasa Melayu)</option>
-            <option value="id">Indonesian (Bahasa Indonesia)</option>
-            <option value="sw">Swahili (Kiswahili)</option>
-          </select>
+        {/* Story Type + Language — always visible before mic */}
+        <div className="flex flex-wrap items-center justify-center gap-4 mb-2">
+          {/* Story Type toggle */}
+          <div className="flex items-center gap-2">
+            <label className="text-sm font-medium text-zinc-500">Story type:</label>
+            <div className="flex rounded-lg border border-zinc-200 overflow-hidden">
+              <button
+                onClick={() => setStoryMode('imagination')}
+                className={`px-3 py-1.5 text-sm font-medium transition-colors ${
+                  storyMode === 'imagination'
+                    ? 'bg-emerald-500 text-white'
+                    : 'bg-white text-zinc-600 hover:bg-zinc-50'
+                }`}
+              >
+                Fiction
+              </button>
+              <button
+                onClick={() => setStoryMode('history')}
+                className={`px-3 py-1.5 text-sm font-medium transition-colors border-l border-zinc-200 ${
+                  storyMode === 'history'
+                    ? 'bg-amber-500 text-white'
+                    : 'bg-white text-zinc-600 hover:bg-zinc-50'
+                }`}
+              >
+                History
+              </button>
+            </div>
+          </div>
+
+          {/* Language dropdown */}
+          <div className="flex items-center gap-2">
+            <label className="text-sm font-medium text-zinc-500">Language:</label>
+            <select
+              value={detectedLanguage}
+              onChange={(e) => setDetectedLanguage(e.target.value)}
+              className="px-3 py-1.5 border border-zinc-200 rounded-lg focus:border-emerald-500 focus:ring-2 focus:ring-emerald-500/20 focus:outline-none text-sm text-zinc-700 bg-white appearance-none cursor-pointer"
+              style={{ backgroundImage: `url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='12' viewBox='0 0 12 12'%3E%3Cpath fill='%23666' d='M6 8L1 3h10z'/%3E%3C/svg%3E")`, backgroundRepeat: 'no-repeat', backgroundPosition: 'right 10px center', paddingRight: '30px' }}
+            >
+              <option value="en">English</option>
+              <option value="ur">Urdu (اردو)</option>
+              <option value="ar">Arabic (العربية)</option>
+              <option value="fr">French (Français)</option>
+              <option value="es">Spanish (Español)</option>
+              <option value="hi">Hindi (हिन्दी)</option>
+              <option value="zh">Chinese (中文)</option>
+              <option value="tr">Turkish (Türkçe)</option>
+              <option value="de">German (Deutsch)</option>
+              <option value="pt">Portuguese (Português)</option>
+              <option value="bn">Bengali (বাংলা)</option>
+              <option value="ta">Tamil (தமிழ்)</option>
+              <option value="ko">Korean (한국어)</option>
+              <option value="ja">Japanese (日本語)</option>
+              <option value="ru">Russian (Русский)</option>
+              <option value="it">Italian (Italiano)</option>
+              <option value="nl">Dutch (Nederlands)</option>
+              <option value="pl">Polish (Polski)</option>
+              <option value="fa">Persian (فارسی)</option>
+              <option value="ms">Malay (Bahasa Melayu)</option>
+              <option value="id">Indonesian (Bahasa Indonesia)</option>
+              <option value="sw">Swahili (Kiswahili)</option>
+            </select>
+          </div>
         </div>
       </div>
 
@@ -507,46 +537,6 @@ export default function SpeechRecorder({ onComplete }: SpeechRecorderProps) {
         )}
 
 
-        {/* Story Mode Selector */}
-        {transcription && (
-          <div className="mt-6">
-            <label className="text-sm font-medium text-zinc-700 mb-3 block">
-              Story Type
-            </label>
-            <div className="grid grid-cols-2 gap-3">
-              {([
-                { value: 'imagination' as StoryMode, emoji: '✨', label: 'Imagination', sub: 'Creative & magical' },
-                { value: 'history' as StoryMode, emoji: '📜', label: 'History', sub: 'Real events as stories' },
-              ]).map(opt => (
-                <button
-                  key={opt.value}
-                  onClick={() => setStoryMode(opt.value)}
-                  className={`relative p-4 rounded-xl border-2 text-center transition-all active:scale-[0.98] ${
-                    storyMode === opt.value
-                      ? 'border-emerald-500 bg-emerald-50 shadow-md'
-                      : 'border-zinc-200 bg-white hover:border-zinc-300 hover:bg-zinc-50'
-                  }`}
-                >
-                  {storyMode === opt.value && (
-                    <div className="absolute top-2 right-2">
-                      <Check className="w-4 h-4 text-emerald-600" />
-                    </div>
-                  )}
-                  <div className="text-2xl mb-1">{opt.emoji}</div>
-                  <div className={`text-sm font-semibold ${storyMode === opt.value ? 'text-emerald-700' : 'text-zinc-700'}`}>
-                    {opt.label}
-                  </div>
-                  <div className="text-xs text-zinc-400">{opt.sub}</div>
-                </button>
-              ))}
-            </div>
-            {storyMode === 'history' && (
-              <p className="text-xs text-amber-600 mt-2">
-                History mode creates age-appropriate stories based on real events, places, and people.
-              </p>
-            )}
-          </div>
-        )}
 
 
         {/* Submit button */}
