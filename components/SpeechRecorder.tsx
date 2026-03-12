@@ -256,9 +256,43 @@ export default function SpeechRecorder({ onComplete }: SpeechRecorderProps) {
         <h2 className="text-3xl font-bold text-zinc-800 mb-2 tracking-tight">
           What story shall we create today?
         </h2>
-        <p className="text-zinc-500 text-lg mb-6">
+        <p className="text-zinc-500 text-lg mb-4">
           Press the microphone and tell me your idea!
         </p>
+
+        {/* Book Language Selector — always visible so parents pick language before recording */}
+        <div className="flex items-center justify-center gap-3 mb-2">
+          <label className="text-sm font-medium text-zinc-500">Book language:</label>
+          <select
+            value={detectedLanguage}
+            onChange={(e) => setDetectedLanguage(e.target.value)}
+            className="px-3 py-1.5 border border-zinc-200 rounded-lg focus:border-emerald-500 focus:ring-2 focus:ring-emerald-500/20 focus:outline-none text-sm text-zinc-700 bg-white appearance-none cursor-pointer"
+            style={{ backgroundImage: `url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='12' viewBox='0 0 12 12'%3E%3Cpath fill='%23666' d='M6 8L1 3h10z'/%3E%3C/svg%3E")`, backgroundRepeat: 'no-repeat', backgroundPosition: 'right 10px center', paddingRight: '30px' }}
+          >
+            <option value="en">English</option>
+            <option value="ur">Urdu (اردو)</option>
+            <option value="ar">Arabic (العربية)</option>
+            <option value="fr">French (Français)</option>
+            <option value="es">Spanish (Español)</option>
+            <option value="hi">Hindi (हिन्दी)</option>
+            <option value="zh">Chinese (中文)</option>
+            <option value="tr">Turkish (Türkçe)</option>
+            <option value="de">German (Deutsch)</option>
+            <option value="pt">Portuguese (Português)</option>
+            <option value="bn">Bengali (বাংলা)</option>
+            <option value="ta">Tamil (தமிழ்)</option>
+            <option value="ko">Korean (한국어)</option>
+            <option value="ja">Japanese (日本語)</option>
+            <option value="ru">Russian (Русский)</option>
+            <option value="it">Italian (Italiano)</option>
+            <option value="nl">Dutch (Nederlands)</option>
+            <option value="pl">Polish (Polski)</option>
+            <option value="fa">Persian (فارسی)</option>
+            <option value="ms">Malay (Bahasa Melayu)</option>
+            <option value="id">Indonesian (Bahasa Indonesia)</option>
+            <option value="sw">Swahili (Kiswahili)</option>
+          </select>
+        </div>
       </div>
 
       {/* Show typing option if voice isn't working */}
@@ -504,6 +538,7 @@ export default function SpeechRecorder({ onComplete }: SpeechRecorderProps) {
             )}
           </div>
         )}
+
 
         {/* Submit button */}
         {transcription && (
