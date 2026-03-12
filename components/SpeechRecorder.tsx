@@ -187,6 +187,10 @@ export default function SpeechRecorder({ onComplete }: SpeechRecorderProps) {
       const formData = new FormData()
       const extension = mimeType.includes('webm') ? 'webm' : 'mp4'
       formData.append('audio', audioBlob, `recording.${extension}`)
+      // Send the user's selected language so Whisper transcribes in the correct script
+      if (detectedLanguage !== 'en') {
+        formData.append('language', detectedLanguage)
+      }
 
       // Send to Whisper API
       const response = await fetch('/api/transcribe', {
@@ -200,8 +204,8 @@ export default function SpeechRecorder({ onComplete }: SpeechRecorderProps) {
 
       const data = await response.json()
 
-      // Capture detected language from Whisper auto-detection
-      if (data.detectedLanguage) {
+      // Only auto-update language if user hasn't manually selected one (still on default English)
+      if (data.detectedLanguage && detectedLanguage === 'en') {
         setDetectedLanguage(data.detectedLanguage)
       }
 

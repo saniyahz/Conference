@@ -10,6 +10,7 @@ export async function POST(request: NextRequest) {
   try {
     const formData = await request.formData()
     const audioFile = formData.get('audio') as File
+    const userLanguage = formData.get('language') as string | null  // ISO code from user's dropdown selection
 
     if (!audioFile) {
       return NextResponse.json(
@@ -25,21 +26,22 @@ export async function POST(request: NextRequest) {
       )
     }
 
-    // Whisper auto-detects language when `language` is omitted.
-    // Using verbose_json response format to get the detected language back.
-    //
-    // Prompt helps with:
-    // 1. Children's speech patterns (fast, unclear)
-    // 2. Proper nouns — listing common kids' names prevents Whisper from transcribing
-    //    "Wes" as "Was", "Ken" as "Can", etc. The prompt biases Whisper toward names.
-    // 3. Story-related vocabulary
-    const transcription = await openai.audio.transcriptions.create({
+    // If user explicitly selected a language, pass it to Whisper so it transcribes
+    // in the correct script (e.g., Urdu in Arabic script, not Hindi in Devanagari).
+    // Otherwise let Whisper auto-detect.
+    const whisperParams: any = {
       file: audioFile,
       model: 'whisper-1',
-      // No `language` param — let Whisper auto-detect from 99+ languages
       response_format: 'verbose_json',
       prompt: 'This is a child telling a story idea for a children\'s storybook. They will mention character names — listen carefully for proper nouns. Common character names in children\'s stories: Wes, Anya, Luna, Bella, Max, Leo, Aria, Kai, Zara, Mia, Lily, Noah, Emma, Finn, Ruby, Chloe, Maya, Ivy, Nora, Ali, Omar, Zain, Priya, Aisha, Sofia, Riri, Benny, Teddy, Rosie, Lola, Kiki, Coco, Zuzu, Pip. Story vocabulary: adventure, magical, princess, dragon, unicorn, bunny, bear, forest, castle, rainbow, friends, happy, brave, superhero, mermaid, pirate, treasure, explore.',
-    })
+    }
+
+    if (userLanguage) {
+      whisperParams.language = userLanguage
+      console.log(`[Transcribe] User selected language: ${userLanguage} — forcing Whisper to use it`)
+    }
+
+    const transcription = await openai.audio.transcriptions.create(whisperParams)
 
     // ─── CONTENT SAFETY: Light validation only ─────
     // We do NOT fully validate/sanitize here because we don't know the storyMode yet.
