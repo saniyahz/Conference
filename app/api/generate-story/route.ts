@@ -172,10 +172,10 @@ export async function POST(request: NextRequest) {
     const ageConfig = {
       '3-5': {
         label: 'ages 3-5 (toddlers/preschoolers)',
-        sentences: '2-3 VERY SHORT sentences per page. Max 8 words per sentence.',
-        vocab: 'Use only words a 3-year-old would know. Repeat key words often.',
-        style: 'Heavy on sounds effects (SPLASH! BOOM! Whoooosh!), animal noises (Moo! Quack!), repetition, and simple rhyming. Ask "Can you say ROAR?" type questions.',
-        complexity: 'Very simple cause-and-effect. One thing happens per page. No subplots.',
+        sentences: '2-4 SHORT sentences per page. Max 10 words per sentence.',
+        vocab: 'Use simple words a 4-year-old would know, but make the STORY exciting. Repeat key words for rhythm.',
+        style: 'Include sound effects (SPLASH! BOOM! Whoooosh!), animal noises, AND short dialogue between characters ("Oh no!" said Leila. "Look!" cried the bunny). Make EVERY page have something NEW happening — a discovery, a surprise, a problem, or a funny moment. The story should feel like an ADVENTURE, not a description.',
+        complexity: 'Simple but WITH A PLOT: a problem or goal on page 1-2, fun obstacles/surprises in pages 3-8, and a satisfying resolution on pages 9-10. Even 3-year-olds love suspense ("But then... the door opened!"), surprises ("It wasn\'t a rock — it was a sleeping dragon!"), and humor (silly character reactions, funny sounds). NEVER just describe a character doing mundane things page after page — something exciting must happen!',
       },
       '6-8': {
         label: 'ages 6-8 (early readers)',
@@ -274,6 +274,15 @@ IMPORTANT RULES:
 - ALL clothing must be MODEST: long pants or leggings, sleeves (short sleeves minimum), no bare midriffs, no tank tops.
 - This applies to ALL characters — main characters, supporting characters, parents, and background characters.
 - In IMAGE_PROMPTs, always describe the outfit explicitly with non-dress clothing items.
+
+⚠️ CHARACTER HAIR AND ACCESSORIES — CRITICAL:
+- Girl characters MUST have LONG hair (shoulder length or longer). Use: "long straight hair", "long curly hair", "long wavy hair in a ponytail", "long hair in two braids", "long hair with a headband". NEVER give girls short hair, pixie cuts, bob cuts, or buzzed hair.
+- Boy characters can have short or medium hair.
+- NEVER give ANY child character earrings, piercings, jewelry, makeup, nail polish, or any accessories that look adult or gender-ambiguous.
+- Girls should look clearly FEMININE: long hair, soft features, bright colored clothing.
+- Boys should look clearly MASCULINE: short hair, sturdy build.
+- NO gender-neutral or androgynous character designs — children should be CLEARLY identifiable as a girl or boy at a glance.
+- In CHARACTER_DNA, always specify hair length explicitly: "long black curly hair" not just "black curly hair".
 `}
 
 ${storyMode === 'history' ? `
@@ -551,10 +560,10 @@ GOOD example (low angle): "Text-free children's book illustration, LOW ANGLE loo
 
 ETHNICITY AND APPEARANCE — READ THE CHILD'S PROMPT CAREFULLY:
 - If the child EXPLICITLY describes ethnicity (e.g., "South Asian", "Indian", "Black", "African", "Chinese", "Mexican", "Arab"), you MUST honor it in CHARACTER_DNA and EVERY IMAGE_PROMPT
-- Ethnicity → skin tone mapping (ONLY use when ethnicity is EXPLICITLY stated): South Asian/Indian/Pakistani = "warm brown skin". African/Black = "dark brown skin, deep brown complexion". East Asian/Chinese/Japanese/Korean = "light warm skin, East Asian features". Middle Eastern/Arab = "olive tan skin, warm complexion". Latino/Hispanic = "warm tan skin". European/Caucasian = "fair skin, light complexion". Mixed Asian-White/Hapa = "warm golden-tan skin, soft features". Mixed race (any) = blend the parent tones toward a warm middle.
-- ⚠️ CRITICAL DEFAULT: If the child does NOT specify ethnicity, you MUST use "warm golden-tan skin" as the skin tone for ALL characters (main AND supporting). Do NOT use "dark brown skin" or "pale white skin" — use "warm golden-tan skin" which is a neutral warm middle tone (think Mediterranean/mixed). This is the #1 most common mistake — double-check your CHARACTER_DNA material_or_texture field.
-- IMPORTANT: "warm golden-tan skin" means a WARM, SUN-KISSED middle tone — NOT dark brown, NOT pale white, NOT pink. Think light caramel, honey, or golden beige.
-- You MAY infer ethnicity from culturally-specific names (e.g., "Amalia, Jibreel, Iman" suggest Middle Eastern/Arab → "olive tan skin"), but ONLY if the names clearly suggest a specific background. When in doubt, use "warm golden-tan skin"
+- Ethnicity → skin tone mapping (ONLY use when ethnicity is EXPLICITLY stated): South Asian/Indian/Pakistani = "warm brown skin". African/Black = "dark brown skin, deep brown complexion". East Asian/Chinese/Japanese/Korean = "light warm skin, East Asian features". Middle Eastern/Arab = "olive tan skin, warm complexion". Latino/Hispanic = "warm tan skin". European/Caucasian = "fair skin, light complexion". Mixed Asian-White/Hapa = "light golden-tan skin, soft features". Mixed race (any) = blend the parent tones toward a warm middle.
+- ⚠️ CRITICAL DEFAULT: If the child does NOT specify ethnicity, you MUST use "light golden-tan skin" as the skin tone for ALL characters (main AND supporting). Do NOT use "dark brown skin", "brown skin", or "pale white skin" — use "light golden-tan skin" which is a LIGHT warm tone (think light honey, light caramel, golden beige — closer to light than dark). This is the #1 most common mistake — double-check your CHARACTER_DNA material_or_texture field.
+- IMPORTANT: "light golden-tan skin" means LIGHT, WARM, SUN-KISSED — like a light caramel or honey color. It should look LIGHT, not dark. NOT dark brown, NOT medium brown, NOT pale white, NOT pink. Think of a lightly tanned Mediterranean child. If in doubt, go LIGHTER rather than darker.
+- You MAY infer ethnicity from culturally-specific names (e.g., "Amalia, Jibreel, Iman" suggest Middle Eastern/Arab → "olive tan skin"), but ONLY if the names clearly suggest a specific background. When in doubt, use "light golden-tan skin"
 - If the child describes hair (e.g., "short brown hair with bangs"), use EXACTLY that description — do NOT invent different hair
 - If the child gives a name (e.g., "Her name was Anya"), use THAT name — do NOT use ethnicity words as names
 - ALL characters in the SAME FAMILY must have the SAME skin tone description — do NOT give different skin tones to cousins/siblings
@@ -654,7 +663,7 @@ If the story features UNNAMED supporting characters (e.g., the main character's 
 7. If a page's story text does NOT mention friends, do NOT include them in that page's IMAGE_PROMPT
 8. Supporting characters share the SAME SKIN TONE as the main character (they are friends from the same community)
 
-EXAMPLE — if main character has warm golden-tan skin (the default when NO ethnicity is specified):
+EXAMPLE — if main character has light golden-tan skin (the default when NO ethnicity is specified):
 SUPPORTING_CHARACTER_DNA_1:
 {
   "name": "Friend1",
@@ -662,8 +671,8 @@ SUPPORTING_CHARACTER_DNA_1:
   "gender": "boy",
   "age": "6 years old",
   "physical_form": "small boy, about 6 years old, with short curly brown hair",
-  "material_or_texture": "warm golden-tan skin",
-  "color_palette": ["warm golden-tan skin", "brown hair", "green"],
+  "material_or_texture": "light golden-tan skin",
+  "color_palette": ["light golden-tan skin", "brown hair", "green"],
   "facial_features": "round brown eyes, round nose, wide grin",
   "accessories": "green t-shirt with a star, blue jeans, white sneakers",
   "personality_visuals": "pumps fists when excited",
@@ -678,8 +687,8 @@ SUPPORTING_CHARACTER_DNA_2:
   "gender": "girl",
   "age": "6 years old",
   "physical_form": "small girl, about 6 years old, with long brown ponytail",
-  "material_or_texture": "warm golden-tan skin",
-  "color_palette": ["warm golden-tan skin", "brown hair", "yellow"],
+  "material_or_texture": "light golden-tan skin",
+  "color_palette": ["light golden-tan skin", "brown hair", "yellow"],
   "facial_features": "round brown eyes, cute dimples, bright smile",
   "accessories": "yellow t-shirt with white polka dots, pink leggings, pink sneakers",
   "personality_visuals": "claps when happy, tilts head when curious",
@@ -701,8 +710,8 @@ CHARACTER_DNA: (or CHARACTER_DNA_1: if there are 2+ main characters)
   "gender": "[girl/boy - REQUIRED for human characters. Use the gender that matches the character's name and story. Do NOT use 'child' or 'neutral'. If the name is feminine (e.g. Anya, Luna, Sofia), use 'girl'. If masculine (e.g. Max, Leo, Jack), use 'boy'.]",
   "age": "[REQUIRED — use the child's specified age if given, e.g. '8 years old'. If not specified, choose an appropriate age]",
   "physical_form": "[body shape, hair style — COPY THE CHILD'S DESCRIPTION. If they said 'short brown hair with bangs', write exactly that. For human children: describe as 'small child' NOT 'tall'. MUST include the age, e.g. 'small girl, about 8 years old, with short brown hair and bangs']",
-  "material_or_texture": "[skin type — If the child stated an ethnicity, match it. If NO ethnicity was specified, you MUST use 'warm golden-tan skin' as the default — do NOT use 'dark brown skin' or 'pale skin' without explicit reason]",
-  "color_palette": ["skin tone — If ethnicity was stated: South Asian = 'brown skin', African = 'dark brown skin', East Asian = 'light warm skin'. If NO ethnicity was stated: use 'warm golden-tan skin'. DO NOT default to dark brown or pale skin.", "hair color — match child's description exactly", "outfit accent color"],
+  "material_or_texture": "[skin type — If the child stated an ethnicity, match it. If NO ethnicity was specified, you MUST use 'light golden-tan skin' as the default — do NOT use 'dark brown skin' or 'pale skin' without explicit reason]",
+  "color_palette": ["skin tone — If ethnicity was stated: South Asian = 'brown skin', African = 'dark brown skin', East Asian = 'light warm skin'. If NO ethnicity was stated: use 'light golden-tan skin'. DO NOT default to dark brown or pale skin.", "hair color — match child's description exactly", "outfit accent color"],
   "facial_features": "[eyes, nose, smile description]",
   "accessories": "[main outfit/clothing - if human child, use CHILD clothing only. NEVER use dresses, gowns, skirts, shorts, or tutus. ALL clothing must be MODEST with long pants or leggings. For GIRLS: 'cute yellow t-shirt and denim jeans with sneakers', 'pink hoodie and leggings with sparkly shoes', 'purple sweater and jeans with a hair bow'. For BOYS: 'red t-shirt and blue jeans', 'striped polo and khaki pants', 'dinosaur hoodie and pants'. NEVER use shorts, tank tops, or revealing clothing. AND any accessories like hats, bags, hair bows, etc.]",
   "personality_visuals": "[how emotions show visually]",
@@ -781,7 +790,7 @@ Before writing EACH IMAGE_PROMPT, re-read your CHARACTER_DNA above and COPY-PAST
 2. The EXACT age (e.g., "6 years old")
 3. The EXACT hair description (e.g., "golden blonde bob cut hair")
 4. The EXACT outfit (e.g., "red t-shirt with yellow star")
-5. The EXACT skin tone (e.g., "warm golden-tan skin")
+5. The EXACT skin tone (e.g., "light golden-tan skin")
 
 If your IMAGE_PROMPT says ANYTHING DIFFERENT from your CHARACTER_DNA for ANY of these 5 fields, your output is WRONG. Fix it before moving to the next page.
 

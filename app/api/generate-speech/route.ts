@@ -9,9 +9,12 @@ const VOICE_MAP: { [key: string]: string } = {
   'friendly': 'shimmer',      // Soft, gentle female voice
 }
 
+// Languages where we should override to a more natural-sounding voice
+const RTL_LANGUAGES = ['ur', 'ar', 'fa', 'ps', 'ku', 'sd']
+
 export async function POST(request: NextRequest) {
   try {
-    const { text, voice, speed: requestedSpeed, storyMode = 'imagination' } = await request.json()
+    const { text, voice, speed: requestedSpeed, storyMode = 'imagination', language = 'en' } = await request.json()
 
     if (!text || typeof text !== 'string') {
       return NextResponse.json(
@@ -44,7 +47,17 @@ export async function POST(request: NextRequest) {
     }
 
     // Map voice name to OpenAI voice
-    const openaiVoice = VOICE_MAP[voice] || 'nova'
+    let openaiVoice = VOICE_MAP[voice] || 'nova'
+
+    // For non-English languages (especially Urdu, Arabic, Persian), use 'alloy' voice
+    // which produces more natural-sounding non-English speech with a neutral accent.
+    // Also slow down slightly for RTL languages for better clarity.
+    const isRtlLanguage = RTL_LANGUAGES.includes(language)
+    if (isRtlLanguage) {
+      openaiVoice = 'alloy'  // Most natural for Urdu/Arabic — no English accent
+    }
+
+    const speed = isRtlLanguage ? (requestedSpeed || 0.9) : (requestedSpeed || 1.0)
 
     // Call OpenAI TTS API
     const response = await fetch('https://api.openai.com/v1/audio/speech', {
@@ -58,7 +71,7 @@ export async function POST(request: NextRequest) {
         input: text,
         voice: openaiVoice,
         response_format: 'mp3',
-        speed: requestedSpeed || 1.0, // Normal speed
+        speed,
       }),
     })
 

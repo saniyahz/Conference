@@ -151,7 +151,7 @@ function extractCharacterIdentity(bible?: CharacterBible): CharacterIdentity {
       skinTone = 'dark brown skin, dark brown complexion';
     } else if (rawSkinTone.includes('light-brown') || rawSkinTone.includes('light brown') || rawSkinTone.includes('warm light')) {
       // Neutral default — don't over-strengthen to avoid pushing Flux too dark
-      skinTone = 'warm golden-tan skin';
+      skinTone = 'light golden-tan skin';
     } else if (rawSkinTone.includes('brown') || rawSkinTone.includes('caramel') || rawSkinTone.includes('warm brown')) {
       skinTone = 'brown skin, brown complexion';
     } else if (rawSkinTone.includes('tan') || rawSkinTone.includes('olive')) {
@@ -162,7 +162,7 @@ function extractCharacterIdentity(bible?: CharacterBible): CharacterIdentity {
       skinTone = rawSkinTone;
     } else {
       // No skin tone specified at all — use the neutral default
-      skinTone = 'warm golden-tan skin';
+      skinTone = 'light golden-tan skin';
       console.log(`[Identity] No skin tone found in bible — using neutral default`);
     }
     console.log(`[Identity] Skin tone from bible: "${rawSkinTone}" → strengthened: "${skinTone}"`);
@@ -684,7 +684,8 @@ async function generateOnePage(
       prompt += `. ${identityCues.join(', ')}`;
     }
 
-    prompt += '. No text, no words, no letters anywhere in the image';
+    prompt += '. Girl characters must have LONG hair, NO earrings, NO jewelry';
+    prompt += '. ABSOLUTELY NO text, NO words, NO letters, NO numbers, NO writing, NO signs with text anywhere in the image';
     prompt += '. Children\'s book illustration, 2D cartoon style, bold outlines, flat warm colors, educational tone';
 
   } else if (hasMultipleMainChars) {
@@ -740,8 +741,10 @@ async function generateOnePage(
 
     // Children + scene-blending + style
     prompt += '. All characters are children, naturally engaged in the action, full body visible head to feet';
-    prompt += '. WIDE SHOT — each child is about 25-30% of the image height, environment fills most of the frame';
-    prompt += '. No text. Correct anatomy. Children\'s book illustration, 2D cartoon style, bold outlines, flat bright colors';
+    prompt += '. WIDE SHOT — each child is about 20-25% of the image height, environment fills most of the frame';
+    prompt += '. Girl characters must have LONG hair, NO earrings, NO jewelry. Correct anatomy';
+    prompt += '. ABSOLUTELY NO text, NO words, NO letters, NO numbers, NO writing anywhere in the image';
+    prompt += '. Children\'s book illustration, 2D cartoon style, bold outlines, flat bright colors';
 
   } else {
     // ═══════ SINGLE CHARACTER MODE — SCENE-FOCUSED SUFFIX ═══════
@@ -780,9 +783,11 @@ async function generateOnePage(
 
     // Scene-dominant composition + style (the key change)
     prompt += '. Correct anatomy (two arms, two legs, no extra limbs, five fingers per hand)';
-    prompt += '. EXTREME WIDE SHOT composition — character is TINY, only 20-25% of image height, full body visible head to feet';
-    prompt += '. The environment fills 75%+ of the image — detailed backgrounds with depth and atmosphere';
-    prompt += '. No text. Children\'s book illustration, 2D cartoon style, bold outlines, flat bright colors';
+    prompt += '. EXTREME WIDE SHOT composition — character is TINY, only 15-20% of image height, full body visible head to feet';
+    prompt += '. The environment fills 80%+ of the image — detailed backgrounds with depth and atmosphere';
+    prompt += '. Girl characters must have LONG hair (shoulder length or longer), NO earrings, NO jewelry, NO piercings';
+    prompt += '. ABSOLUTELY NO text, NO words, NO letters, NO numbers, NO writing, NO signs with text anywhere in the image';
+    prompt += '. Children\'s book illustration, 2D cartoon style, bold outlines, flat bright colors';
   }
 
   console.log(`[Page ${pageIndex + 1}] Final prompt (${prompt.length} chars): "${prompt.substring(0, 300)}..."`);
@@ -1018,7 +1023,7 @@ export async function POST(request: NextRequest) {
             gender: genderWord,
             hair: identity.hair || '',
             outfit: identity.outfit || 'colorful clothes',
-            skinTone: identity.skinTone || 'warm golden-tan skin',
+            skinTone: identity.skinTone || 'light golden-tan skin',
           },
           ...(additionalCharacterBibles as CharacterBible[]).map((ab: CharacterBible) => ({
             name: ab.name,
@@ -1026,7 +1031,7 @@ export async function POST(request: NextRequest) {
             gender: ab.gender || 'girl',
             hair: ab.appearance?.hair || '',
             outfit: ab.signature_outfit || ab.outfit || 'colorful clothes',
-            skinTone: ab.appearance?.skin_tone || 'warm golden-tan skin',
+            skinTone: ab.appearance?.skin_tone || 'light golden-tan skin',
           })),
         ];
 
@@ -1076,8 +1081,9 @@ export async function POST(request: NextRequest) {
           "the character takes up about half the image height, full body visible head to feet",
           "standing on green grass with colorful flowers, blue sky with white clouds behind",
           "face, hair, and clothing clearly visible and recognizable",
+          genderWord === 'girl' ? "girl has LONG hair (shoulder length or longer), NO earrings, NO jewelry, NO piercings" : "",
           "children's book illustration, 2D cartoon style, bold black outlines, flat bright colors",
-          "no text, no watermarks",
+          "no text, no watermarks, no letters, no writing",
         ].filter(Boolean).join(", ");
       } else {
         // ═══ ANIMAL REFERENCE ═══

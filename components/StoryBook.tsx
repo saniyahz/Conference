@@ -323,7 +323,7 @@ export default function StoryBook({ story, onReset, characterBible, sceneCards, 
       const response = await fetch('/api/generate-speech', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ text, voice: voiceId, storyMode }),
+        body: JSON.stringify({ text, voice: voiceId, storyMode, language: story.language || 'en' }),
       })
 
       if (response.ok) {
@@ -397,6 +397,7 @@ export default function StoryBook({ story, onReset, characterBible, sceneCards, 
             text: text,
             voice: selectedVoice.id,
             storyMode,
+            language: story.language || 'en',
           }),
         })
 
