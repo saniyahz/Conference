@@ -374,14 +374,9 @@ export default function SpeechRecorder({ onComplete }: SpeechRecorderProps) {
 
       {/* Tips - shown when not recording */}
       {!isRecording && !transcription && (
-        <div className="bg-zinc-50 border border-zinc-200 rounded-xl p-4 max-w-md mx-auto text-center">
-          <p className="text-zinc-600 font-medium">
-            Tell me about an adventure you'd like to read about!
-          </p>
-          <p className="text-zinc-400 text-sm mt-1">
-            You can review and edit your words before creating the story.
-          </p>
-        </div>
+        <p className="text-zinc-400 text-sm text-center max-w-sm mx-auto">
+          Speak your idea, then review and edit before creating.
+        </p>
       )}
 
       {/* Transcription Display & Manual Input */}
@@ -403,14 +398,12 @@ export default function SpeechRecorder({ onComplete }: SpeechRecorderProps) {
           {/* Editable textarea */}
           <textarea
             className="w-full p-4 border border-zinc-200 rounded-xl focus:border-emerald-500 focus:ring-2 focus:ring-emerald-500/20 focus:outline-none text-lg min-h-[120px] resize-none bg-white"
-            placeholder="Your story ideas will appear here... You can also type directly!
-
-Example: A brave little bunny who goes on an adventure to find a magical rainbow..."
+            placeholder="Your story will appear here after recording — or just type it!"
             value={transcription}
             onChange={(e) => setTranscription(e.target.value)}
           />
           <p className="text-xs text-zinc-400 mt-2">
-            Tip: You can review and edit the text after recording, record again to add more ideas, or type directly!
+            Edit freely before creating your story.
           </p>
         </div>
 

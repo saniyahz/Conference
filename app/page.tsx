@@ -220,19 +220,13 @@ export default function Home() {
             <span className="text-emerald-600">Magical</span>{' '}
             Stories
           </h1>
-          <p className="text-lg text-zinc-500 max-w-md">
-            Tell us your story ideas and watch them come to life as beautifully illustrated books.
+          <p className="text-lg text-zinc-500 max-w-lg">
+            Speak or type a story idea. Review it. We'll turn it into a beautifully illustrated book.
           </p>
-          <div className="flex flex-wrap gap-3 mt-4">
-            <span className="inline-flex items-center gap-1.5 px-3 py-1.5 bg-emerald-50 text-emerald-700 rounded-full text-sm font-medium">
-              ✨ Imaginative Fiction
-            </span>
-            <span className="inline-flex items-center gap-1.5 px-3 py-1.5 bg-amber-50 text-amber-700 rounded-full text-sm font-medium">
-              📜 Historical Adventures
-            </span>
-            <span className="inline-flex items-center gap-1.5 px-3 py-1.5 bg-purple-50 text-purple-700 rounded-full text-sm font-medium">
-              🌍 Multilingual Stories
-            </span>
+          <div className="flex flex-wrap gap-2 mt-3">
+            <span className="px-2.5 py-1 bg-emerald-50 text-emerald-700 rounded-full text-xs font-medium">Fiction</span>
+            <span className="px-2.5 py-1 bg-amber-50 text-amber-700 rounded-full text-xs font-medium">History</span>
+            <span className="px-2.5 py-1 bg-purple-50 text-purple-700 rounded-full text-xs font-medium">Any Language</span>
           </div>
         </div>
 
