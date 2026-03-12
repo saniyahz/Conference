@@ -378,6 +378,9 @@ export default function SpeechRecorder({ onComplete }: SpeechRecorderProps) {
           <p className="text-zinc-600 font-medium">
             Tell me about an adventure you'd like to read about!
           </p>
+          <p className="text-zinc-400 text-sm mt-1">
+            You can review and edit your words before creating the story.
+          </p>
         </div>
       )}
 
@@ -407,7 +410,7 @@ Example: A brave little bunny who goes on an adventure to find a magical rainbow
             onChange={(e) => setTranscription(e.target.value)}
           />
           <p className="text-xs text-zinc-400 mt-2">
-            Tip: You can record multiple times to add more ideas, or type directly!
+            Tip: You can review and edit the text after recording, record again to add more ideas, or type directly!
           </p>
         </div>
 

@@ -445,13 +445,27 @@ CRITICAL — KEEP MULTI-CHARACTER PROMPTS SHORT! With 3-4 characters, the AI ima
 EXAMPLE for 4 characters: "Text-free children's book illustration, WIDE SHOT. Four cousins, all with brown skin. A tall cartoon girl, 8yo, long wavy brown hair, purple t-shirt and jeans, is pointing excitedly. A shorter cartoon boy, 5yo, short curly black hair, blue rocket t-shirt and jeans, is jumping. A same-height cartoon girl, 5yo, brown bob cut, pink hoodie and leggings, is laughing. A tiny toddler girl, 2yo, curly black hair, purple onesie, is being carried. Background: colorful Dubai fountain plaza with palm trees and city skyline. Children's book illustration, 2D cartoon style, bold black outlines, flat bright colors."
 
 COMPOSITION RULE — THE MOST IMPORTANT VISUAL RULE:
-- The BACKGROUND and ENVIRONMENT are the stars of each illustration — they should be RICH, DETAILED, and take up MOST of the image
-- The character should be SMALL in the frame, positioned naturally within the scene — ACTIVELY DOING something, not just standing
+- The BACKGROUND and ENVIRONMENT are the stars of each illustration — they should be RICH, DETAILED, and take up MOST of the image (70%+ of the frame)
+- The character should be TINY in the frame — about 20% of the image height, like a small figure in a vast landscape painting
 - Think of a Hayao Miyazaki film frame — a rich, detailed world with a small character naturally blending into it
 - NEVER draw just a close-up of the character's face or upper body
-- NEVER let the character fill more than 30% of the frame
-- Describe at least 4-5 specific background elements for every scene (trees, buildings, clouds, animals, objects, weather, lighting, etc.)
-- Always include "WIDE SHOT" at the beginning of your IMAGE_PROMPT
+- NEVER let the character fill more than 25% of the frame — if you can't see the character's feet and lots of sky/ground, you're TOO CLOSE
+- Describe at least 5-6 specific background elements for every scene (trees, buildings, clouds, animals, objects, weather, lighting, ground texture, etc.)
+- Always include "EXTREME WIDE SHOT" at the beginning of your IMAGE_PROMPT
+
+CAMERA ANGLE VARIETY — CRITICAL FOR VISUAL INTEREST:
+- Each page MUST use a DIFFERENT camera angle/perspective. Rotate through these:
+  * Page 1: Eye-level establishing shot (character centered in vast scene)
+  * Page 2: Bird's-eye view / overhead looking down (see the environment from above, character tiny below)
+  * Page 3: Low angle looking up (character small at bottom, sky/trees/buildings towering above)
+  * Page 4: Side view / profile (character in silhouette or from the side, panoramic background)
+  * Page 5: Distant wide shot (character very small, environment dominates completely)
+  * Page 6: Behind the character (over-shoulder view, seeing what the character sees)
+  * Page 7: Slight Dutch angle / tilted perspective for energy
+  * Page 8+: Cycle through again with variations
+- Write the camera angle EXPLICITLY in each IMAGE_PROMPT: "BIRD'S-EYE VIEW looking down on...", "LOW ANGLE looking up at..."
+- NEVER use the same camera angle on consecutive pages
+- This prevents the "same image over and over" problem — varied angles make every page feel unique
 
 POSE AND EXPRESSION VARIETY — CRITICAL FOR NATURAL-LOOKING ILLUSTRATIONS:
 - The character must be doing a DIFFERENT ACTION on every page — never the same pose twice
@@ -529,14 +543,18 @@ CHILD SAFETY:
 
 BAD example: "Anya looks worried" (no character description, no background, no style, no composition)
 BAD example: "A cute cartoon girl in a park" (too zoomed in, character will fill entire frame, no detail, static pose)
-BAD example: "A small cute cartoon girl is standing in a meadow and smiling." (boring static pose, no interaction, no scene detail)
-GOOD example: "Text-free children's book illustration, WIDE SHOT of a warm airplane cabin. Rows of blue leather seats stretch into the distance, overhead compartments with colorful luggage, oval windows showing fluffy white clouds and a golden sunset, a flight attendant pushing a silver drink cart down the narrow aisle, passengers reading books and sleeping. A small cartoon girl, about 6 years old, brown skin, long black curly hair, wearing a yellow t-shirt and denim jeans, is kneeling on her seat and pressing her nose against the oval window, eyes wide with wonder, hands cupped around her face to see better. Children's book illustration, 2D cartoon style, bold black outlines, flat bright colors."
+BAD example: "A small cute cartoon girl is standing in a meadow and smiling." (boring static pose, no interaction, no scene detail, same as every other page)
+BAD example: "Text-free children's book illustration, WIDE SHOT..." repeated with same eye-level angle every page (monotonous — needs camera variety!)
+GOOD example (eye-level): "Text-free children's book illustration, EXTREME WIDE SHOT of a warm airplane cabin. Rows of blue leather seats stretch into the distance, overhead compartments with colorful luggage, oval windows showing fluffy white clouds and a golden sunset, a flight attendant pushing a silver drink cart down the narrow aisle, passengers reading books and sleeping. A small cartoon girl, about 6 years old, brown skin, long black curly hair, wearing a yellow t-shirt and denim jeans, is kneeling on her seat and pressing her nose against the oval window, eyes wide with wonder, hands cupped around her face to see better. Children's book illustration, 2D cartoon style, bold black outlines, flat bright colors."
+GOOD example (bird's-eye): "Text-free children's book illustration, BIRD'S-EYE VIEW looking straight down on a lush green park with winding stone paths, colorful flower beds in geometric patterns, a pond with lily pads, tiny ducks, benches, and autumn trees in orange and gold. A tiny cartoon girl seen from above, brown skin, long black curly hair, yellow t-shirt and jeans, is lying on her back in the grass making grass angels, arms spread wide. The character is VERY SMALL in this overhead view. Children's book illustration, 2D cartoon style, bold black outlines, flat bright colors."
+GOOD example (low angle): "Text-free children's book illustration, LOW ANGLE looking up from the ground. Enormous redwood trees tower overhead, their trunks like pillars reaching impossibly high, sunbeams streaming through the canopy creating golden shafts of light, ferns and mushrooms in the foreground. A tiny cartoon girl, brown skin, long black curly hair, yellow t-shirt and jeans, is crouching at the base of the biggest tree, neck craned up in wonder, one hand touching the rough bark. Children's book illustration, 2D cartoon style, bold black outlines, flat bright colors."
 
 ETHNICITY AND APPEARANCE — READ THE CHILD'S PROMPT CAREFULLY:
 - If the child EXPLICITLY describes ethnicity (e.g., "South Asian", "Indian", "Black", "African", "Chinese", "Mexican", "Arab"), you MUST honor it in CHARACTER_DNA and EVERY IMAGE_PROMPT
-- Ethnicity → skin tone mapping (ONLY use when ethnicity is EXPLICITLY stated): South Asian/Indian/Pakistani = "warm brown skin". African/Black = "dark brown skin, deep brown complexion". East Asian/Chinese/Japanese/Korean = "light warm skin, East Asian features". Middle Eastern/Arab = "olive tan skin, warm complexion". Latino/Hispanic = "warm tan skin". European/Caucasian = "fair skin, light complexion"
-- ⚠️ CRITICAL DEFAULT: If the child does NOT specify ethnicity, you MUST use "warm light-brown skin" as the skin tone for ALL characters (main AND supporting). Do NOT use "dark brown skin" or "pale skin" — use "warm light-brown skin" which is a neutral middle tone. This is the #1 most common mistake — double-check your CHARACTER_DNA material_or_texture field
-- You MAY infer ethnicity from culturally-specific names (e.g., "Amalia, Jibreel, Iman" suggest Middle Eastern/Arab → "olive tan skin"), but ONLY if the names clearly suggest a specific background. When in doubt, use the neutral default
+- Ethnicity → skin tone mapping (ONLY use when ethnicity is EXPLICITLY stated): South Asian/Indian/Pakistani = "warm brown skin". African/Black = "dark brown skin, deep brown complexion". East Asian/Chinese/Japanese/Korean = "light warm skin, East Asian features". Middle Eastern/Arab = "olive tan skin, warm complexion". Latino/Hispanic = "warm tan skin". European/Caucasian = "fair skin, light complexion". Mixed Asian-White/Hapa = "warm golden-tan skin, soft features". Mixed race (any) = blend the parent tones toward a warm middle.
+- ⚠️ CRITICAL DEFAULT: If the child does NOT specify ethnicity, you MUST use "warm golden-tan skin" as the skin tone for ALL characters (main AND supporting). Do NOT use "dark brown skin" or "pale white skin" — use "warm golden-tan skin" which is a neutral warm middle tone (think Mediterranean/mixed). This is the #1 most common mistake — double-check your CHARACTER_DNA material_or_texture field.
+- IMPORTANT: "warm golden-tan skin" means a WARM, SUN-KISSED middle tone — NOT dark brown, NOT pale white, NOT pink. Think light caramel, honey, or golden beige.
+- You MAY infer ethnicity from culturally-specific names (e.g., "Amalia, Jibreel, Iman" suggest Middle Eastern/Arab → "olive tan skin"), but ONLY if the names clearly suggest a specific background. When in doubt, use "warm golden-tan skin"
 - If the child describes hair (e.g., "short brown hair with bangs"), use EXACTLY that description — do NOT invent different hair
 - If the child gives a name (e.g., "Her name was Anya"), use THAT name — do NOT use ethnicity words as names
 - ALL characters in the SAME FAMILY must have the SAME skin tone description — do NOT give different skin tones to cousins/siblings
@@ -636,7 +654,7 @@ If the story features UNNAMED supporting characters (e.g., the main character's 
 7. If a page's story text does NOT mention friends, do NOT include them in that page's IMAGE_PROMPT
 8. Supporting characters share the SAME SKIN TONE as the main character (they are friends from the same community)
 
-EXAMPLE — if main character has warm light-brown skin (the default when NO ethnicity is specified):
+EXAMPLE — if main character has warm golden-tan skin (the default when NO ethnicity is specified):
 SUPPORTING_CHARACTER_DNA_1:
 {
   "name": "Friend1",
@@ -644,8 +662,8 @@ SUPPORTING_CHARACTER_DNA_1:
   "gender": "boy",
   "age": "6 years old",
   "physical_form": "small boy, about 6 years old, with short curly brown hair",
-  "material_or_texture": "warm light-brown skin",
-  "color_palette": ["warm light-brown skin", "brown hair", "green"],
+  "material_or_texture": "warm golden-tan skin",
+  "color_palette": ["warm golden-tan skin", "brown hair", "green"],
   "facial_features": "round brown eyes, round nose, wide grin",
   "accessories": "green t-shirt with a star, blue jeans, white sneakers",
   "personality_visuals": "pumps fists when excited",
@@ -660,8 +678,8 @@ SUPPORTING_CHARACTER_DNA_2:
   "gender": "girl",
   "age": "6 years old",
   "physical_form": "small girl, about 6 years old, with long brown ponytail",
-  "material_or_texture": "warm light-brown skin",
-  "color_palette": ["warm light-brown skin", "brown hair", "yellow"],
+  "material_or_texture": "warm golden-tan skin",
+  "color_palette": ["warm golden-tan skin", "brown hair", "yellow"],
   "facial_features": "round brown eyes, cute dimples, bright smile",
   "accessories": "yellow t-shirt with white polka dots, pink leggings, pink sneakers",
   "personality_visuals": "claps when happy, tilts head when curious",
@@ -683,8 +701,8 @@ CHARACTER_DNA: (or CHARACTER_DNA_1: if there are 2+ main characters)
   "gender": "[girl/boy - REQUIRED for human characters. Use the gender that matches the character's name and story. Do NOT use 'child' or 'neutral'. If the name is feminine (e.g. Anya, Luna, Sofia), use 'girl'. If masculine (e.g. Max, Leo, Jack), use 'boy'.]",
   "age": "[REQUIRED — use the child's specified age if given, e.g. '8 years old'. If not specified, choose an appropriate age]",
   "physical_form": "[body shape, hair style — COPY THE CHILD'S DESCRIPTION. If they said 'short brown hair with bangs', write exactly that. For human children: describe as 'small child' NOT 'tall'. MUST include the age, e.g. 'small girl, about 8 years old, with short brown hair and bangs']",
-  "material_or_texture": "[skin type — If the child stated an ethnicity, match it. If NO ethnicity was specified, you MUST use 'warm light-brown skin' as the default — do NOT use 'dark brown skin' or 'pale skin' without explicit reason]",
-  "color_palette": ["skin tone — If ethnicity was stated: South Asian = 'brown skin', African = 'dark brown skin', East Asian = 'light warm skin'. If NO ethnicity was stated: use 'warm light-brown skin'. DO NOT default to dark brown or pale skin.", "hair color — match child's description exactly", "outfit accent color"],
+  "material_or_texture": "[skin type — If the child stated an ethnicity, match it. If NO ethnicity was specified, you MUST use 'warm golden-tan skin' as the default — do NOT use 'dark brown skin' or 'pale skin' without explicit reason]",
+  "color_palette": ["skin tone — If ethnicity was stated: South Asian = 'brown skin', African = 'dark brown skin', East Asian = 'light warm skin'. If NO ethnicity was stated: use 'warm golden-tan skin'. DO NOT default to dark brown or pale skin.", "hair color — match child's description exactly", "outfit accent color"],
   "facial_features": "[eyes, nose, smile description]",
   "accessories": "[main outfit/clothing - if human child, use CHILD clothing only. NEVER use dresses, gowns, skirts, shorts, or tutus. ALL clothing must be MODEST with long pants or leggings. For GIRLS: 'cute yellow t-shirt and denim jeans with sneakers', 'pink hoodie and leggings with sparkly shoes', 'purple sweater and jeans with a hair bow'. For BOYS: 'red t-shirt and blue jeans', 'striped polo and khaki pants', 'dinosaur hoodie and pants'. NEVER use shorts, tank tops, or revealing clothing. AND any accessories like hats, bags, hair bows, etc.]",
   "personality_visuals": "[how emotions show visually]",
@@ -763,7 +781,7 @@ Before writing EACH IMAGE_PROMPT, re-read your CHARACTER_DNA above and COPY-PAST
 2. The EXACT age (e.g., "6 years old")
 3. The EXACT hair description (e.g., "golden blonde bob cut hair")
 4. The EXACT outfit (e.g., "red t-shirt with yellow star")
-5. The EXACT skin tone (e.g., "warm light-brown skin")
+5. The EXACT skin tone (e.g., "warm golden-tan skin")
 
 If your IMAGE_PROMPT says ANYTHING DIFFERENT from your CHARACTER_DNA for ANY of these 5 fields, your output is WRONG. Fix it before moving to the next page.
 

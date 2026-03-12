@@ -151,7 +151,7 @@ function extractCharacterIdentity(bible?: CharacterBible): CharacterIdentity {
       skinTone = 'dark brown skin, dark brown complexion';
     } else if (rawSkinTone.includes('light-brown') || rawSkinTone.includes('light brown') || rawSkinTone.includes('warm light')) {
       // Neutral default — don't over-strengthen to avoid pushing Flux too dark
-      skinTone = 'warm light-brown skin';
+      skinTone = 'warm golden-tan skin';
     } else if (rawSkinTone.includes('brown') || rawSkinTone.includes('caramel') || rawSkinTone.includes('warm brown')) {
       skinTone = 'brown skin, brown complexion';
     } else if (rawSkinTone.includes('tan') || rawSkinTone.includes('olive')) {
@@ -162,7 +162,7 @@ function extractCharacterIdentity(bible?: CharacterBible): CharacterIdentity {
       skinTone = rawSkinTone;
     } else {
       // No skin tone specified at all — use the neutral default
-      skinTone = 'warm light-brown skin';
+      skinTone = 'warm golden-tan skin';
       console.log(`[Identity] No skin tone found in bible — using neutral default`);
     }
     console.log(`[Identity] Skin tone from bible: "${rawSkinTone}" → strengthened: "${skinTone}"`);
@@ -251,10 +251,10 @@ async function generateOnePage(
     console.warn(`[Page ${pageIndex + 1}] No IMAGE_PROMPT from GPT — using identity fallback`);
     if (isHumanChar) {
       const genderWord = identity.genderHint || "girl";
-      prompt = `Text-free children's book illustration, WIDE SHOT. A small cute cartoon young ${genderWord}, ${identity.age || '6 years old'}, ${identity.skinTone || ''}, ${identity.hair || ''}, wearing ${identity.outfit || 'colorful clothes'}, is standing happily in a bright colorful storybook landscape with rolling green hills, a winding path, colorful wildflowers, butterflies, and a bright blue sky with fluffy clouds. The character is small in the frame, about one-third of the image, surrounded by the rich environment. Children's book illustration, 2D cartoon style, bold black outlines, flat bright colors, simple rounded shapes.`;
+      prompt = `Text-free children's book illustration, EXTREME WIDE SHOT. A small cute cartoon young ${genderWord}, ${identity.age || '6 years old'}, ${identity.skinTone || ''}, ${identity.hair || ''}, wearing ${identity.outfit || 'colorful clothes'}, is standing happily in a bright colorful storybook landscape with rolling green hills, a winding path, colorful wildflowers, butterflies, a small cottage in the distance, and a bright blue sky with fluffy clouds. The character is TINY in the frame, about one-quarter of the image height. The landscape dominates the image. Children's book illustration, 2D cartoon style, bold black outlines, flat bright colors, simple rounded shapes.`;
     } else {
       const outfitPart = identity.outfit ? `, wearing ${identity.outfit}` : "";
-      prompt = `Text-free children's book illustration, WIDE SHOT. A small cute cartoon ${identity.species}${outfitPart} is standing happily in a bright colorful meadow with tall wildflowers, a babbling brook, butterflies, and distant rolling hills under a bright blue sky with fluffy clouds. The character is small in the frame, about one-third of the image. Children's book illustration, 2D cartoon style, bold black outlines, flat bright colors, simple rounded shapes.`;
+      prompt = `Text-free children's book illustration, EXTREME WIDE SHOT. A small cute cartoon ${identity.species}${outfitPart} is standing happily in a bright colorful meadow with tall wildflowers, a babbling brook, butterflies, ladybugs, and distant rolling hills under a bright blue sky with fluffy clouds. The character is TINY in the frame, about one-quarter of the image height. The meadow dominates the image. Children's book illustration, 2D cartoon style, bold black outlines, flat bright colors, simple rounded shapes.`;
     }
   }
 
@@ -589,10 +589,10 @@ async function generateOnePage(
       prompt = `Text-free children's book illustration, EXTREME WIDE SHOT, landscape-dominant. A beautiful ancient landscape with historical architecture, markets, and paths stretching into the distance under a warm golden sky. In the far distance, a tiny cartoon ${genderWord}, about ${identity.age || '8 years old'}, ${identity.skinTone || ''}, ${identity.hair || ''}, wearing ${identity.outfit || 'simple traditional clothing'}, stands looking at the scene. The child is VERY SMALL, less than 15% of the image. Painterly children's book illustration style, rich warm colors, dramatic lighting, educational tone. No text, no words.`;
     } else if (isHumanChar) {
       const genderWord = identity.genderHint || "girl";
-      prompt = `Text-free children's book illustration, WIDE SHOT. A small cute cartoon young ${genderWord}, ${identity.age || '6 years old'}, ${identity.skinTone || ''}, ${identity.hair || ''}, wearing ${identity.outfit || 'colorful clothes'}, is standing happily in a bright colorful park with swings, a sandbox, tall trees with golden leaves, and a bright blue sky. The character is small in the frame, about one-third of the image. Children's book illustration, 2D cartoon style, bold black outlines, flat bright colors, simple rounded shapes.`;
+      prompt = `Text-free children's book illustration, EXTREME WIDE SHOT. A small cute cartoon young ${genderWord}, ${identity.age || '6 years old'}, ${identity.skinTone || ''}, ${identity.hair || ''}, wearing ${identity.outfit || 'colorful clothes'}, is standing happily in a bright colorful park with swings, a sandbox, tall trees with golden leaves, a winding stone path, and a bright blue sky with fluffy clouds. The character is TINY in the frame, about one-quarter of the image height. The park environment dominates the image. Children's book illustration, 2D cartoon style, bold black outlines, flat bright colors, simple rounded shapes.`;
     } else {
       const outfitPart = identity.outfit ? `, wearing ${identity.outfit}` : "";
-      prompt = `Text-free children's book illustration, WIDE SHOT. A small cute cartoon ${identity.species}${outfitPart} is standing happily in a bright colorful meadow with wildflowers, a winding stream, butterflies, and distant mountains under a bright sky. The character is small in the frame, about one-third of the image. Children's book illustration, 2D cartoon style, bold black outlines, flat bright colors, simple rounded shapes.`;
+      prompt = `Text-free children's book illustration, EXTREME WIDE SHOT. A small cute cartoon ${identity.species}${outfitPart} is standing happily in a bright colorful meadow with wildflowers, a winding stream, butterflies, ladybugs on tall grass, and distant mountains under a bright sky with wispy clouds. The character is TINY in the frame, about one-quarter of the image height. The meadow environment dominates the image. Children's book illustration, 2D cartoon style, bold black outlines, flat bright colors, simple rounded shapes.`;
     }
   }
 
@@ -740,7 +740,7 @@ async function generateOnePage(
 
     // Children + scene-blending + style
     prompt += '. All characters are children, naturally engaged in the action, full body visible head to feet';
-    prompt += '. Each child is about 30-35% of the image height, same size on every page';
+    prompt += '. WIDE SHOT — each child is about 25-30% of the image height, environment fills most of the frame';
     prompt += '. No text. Correct anatomy. Children\'s book illustration, 2D cartoon style, bold outlines, flat bright colors';
 
   } else {
@@ -780,7 +780,8 @@ async function generateOnePage(
 
     // Scene-dominant composition + style (the key change)
     prompt += '. Correct anatomy (two arms, two legs, no extra limbs, five fingers per hand)';
-    prompt += '. Character is about 30-35% of the image height, full body visible head to feet, same size on every page';
+    prompt += '. EXTREME WIDE SHOT composition — character is TINY, only 20-25% of image height, full body visible head to feet';
+    prompt += '. The environment fills 75%+ of the image — detailed backgrounds with depth and atmosphere';
     prompt += '. No text. Children\'s book illustration, 2D cartoon style, bold outlines, flat bright colors';
   }
 
@@ -1017,7 +1018,7 @@ export async function POST(request: NextRequest) {
             gender: genderWord,
             hair: identity.hair || '',
             outfit: identity.outfit || 'colorful clothes',
-            skinTone: identity.skinTone || 'warm light-brown skin',
+            skinTone: identity.skinTone || 'warm golden-tan skin',
           },
           ...(additionalCharacterBibles as CharacterBible[]).map((ab: CharacterBible) => ({
             name: ab.name,
@@ -1025,7 +1026,7 @@ export async function POST(request: NextRequest) {
             gender: ab.gender || 'girl',
             hair: ab.appearance?.hair || '',
             outfit: ab.signature_outfit || ab.outfit || 'colorful clothes',
-            skinTone: ab.appearance?.skin_tone || 'warm light-brown skin',
+            skinTone: ab.appearance?.skin_tone || 'warm golden-tan skin',
           })),
         ];
 

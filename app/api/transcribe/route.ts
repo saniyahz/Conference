@@ -51,10 +51,29 @@ export async function POST(request: NextRequest) {
 
     // Extract detected language from verbose_json response
     // Whisper returns language as full name (e.g., "english", "arabic", "chinese")
-    const whisperLang = (transcription as any).language || 'english'
+    let whisperLang = (transcription as any).language || 'english'
+
+    // Fix Whisper's Urdu/Hindi confusion: they sound identical but use different scripts.
+    // If Whisper says "hindi" but the text contains Arabic-script characters (U+0600-U+06FF),
+    // it's actually Urdu. Similarly, if it says "urdu" but text is Devanagari, it's Hindi.
+    if (whisperLang.toLowerCase() === 'hindi' || whisperLang.toLowerCase() === 'urdu') {
+      const hasArabicScript = /[\u0600-\u06FF\u0750-\u077F\uFB50-\uFDFF\uFE70-\uFEFF]/.test(safeText)
+      const hasDevanagari = /[\u0900-\u097F]/.test(safeText)
+      if (hasArabicScript && !hasDevanagari) {
+        whisperLang = 'urdu'
+      } else if (hasDevanagari && !hasArabicScript) {
+        whisperLang = 'hindi'
+      }
+      // If romanized (no script detected), keep Whisper's guess but prefer Urdu
+      // since Hindi speakers are less likely to use this app in Hindi
+      if (!hasArabicScript && !hasDevanagari && whisperLang.toLowerCase() === 'hindi') {
+        whisperLang = 'urdu'
+      }
+    }
+
     const detectedLanguage = WHISPER_LANG_TO_CODE[whisperLang.toLowerCase()] || 'en'
 
-    console.log(`[Transcribe] Detected language: ${whisperLang} → ${detectedLanguage}`)
+    console.log(`[Transcribe] Detected language: ${(transcription as any).language} → corrected: ${whisperLang} → ${detectedLanguage}`)
 
     return NextResponse.json({
       text: safeText,

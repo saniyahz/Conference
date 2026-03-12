@@ -223,6 +223,17 @@ export default function Home() {
           <p className="text-lg text-zinc-500 max-w-md">
             Tell us your story ideas and watch them come to life as beautifully illustrated books.
           </p>
+          <div className="flex flex-wrap gap-3 mt-4">
+            <span className="inline-flex items-center gap-1.5 px-3 py-1.5 bg-emerald-50 text-emerald-700 rounded-full text-sm font-medium">
+              ✨ Imaginative Fiction
+            </span>
+            <span className="inline-flex items-center gap-1.5 px-3 py-1.5 bg-amber-50 text-amber-700 rounded-full text-sm font-medium">
+              📜 Historical Adventures
+            </span>
+            <span className="inline-flex items-center gap-1.5 px-3 py-1.5 bg-purple-50 text-purple-700 rounded-full text-sm font-medium">
+              🌍 Multilingual Stories
+            </span>
+          </div>
         </div>
 
         {/* Main Content */}
