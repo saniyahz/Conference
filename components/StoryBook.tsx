@@ -705,7 +705,14 @@ export default function StoryBook({ story, onReset, characterBible, sceneCards, 
 
       {/* Title */}
       <div className="text-center border-b border-amber-200/50 pb-4">
-        <h1 className="text-3xl md:text-4xl font-bold text-amber-950 tracking-tight">
+        <h1
+          className={`font-bold text-amber-950 ${
+            ['ur', 'ar', 'fa'].includes(story.language || '')
+              ? 'text-4xl md:text-5xl leading-[1.8]'
+              : 'text-3xl md:text-4xl tracking-tight'
+          }`}
+          dir={['ur', 'ar', 'fa'].includes(story.language || '') ? 'rtl' : 'ltr'}
+        >
           {story.title}
         </h1>
         <div className="mt-3 space-y-1">
@@ -823,7 +830,14 @@ export default function StoryBook({ story, onReset, characterBible, sceneCards, 
             </div>
 
             <div className="flex-1 flex items-center">
-              <p className="text-base md:text-lg lg:text-xl text-amber-950 leading-relaxed font-serif">
+              <p
+                className={`text-amber-950 font-serif ${
+                  ['ur', 'ar', 'fa'].includes(story.language || '')
+                    ? 'text-xl md:text-2xl lg:text-3xl leading-[2.2] text-right w-full'
+                    : 'text-base md:text-lg lg:text-xl leading-relaxed'
+                }`}
+                dir={['ur', 'ar', 'fa'].includes(story.language || '') ? 'rtl' : 'ltr'}
+              >
                 {story.pages[displayedPage].text}
               </p>
             </div>

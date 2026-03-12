@@ -435,7 +435,12 @@ export default function SpeechRecorder({ onComplete }: SpeechRecorderProps) {
 
           {/* Editable textarea */}
           <textarea
-            className="w-full p-4 border border-zinc-200 rounded-xl focus:border-emerald-500 focus:ring-2 focus:ring-emerald-500/20 focus:outline-none text-lg min-h-[120px] resize-none bg-white"
+            className={`w-full p-4 border border-zinc-200 rounded-xl focus:border-emerald-500 focus:ring-2 focus:ring-emerald-500/20 focus:outline-none min-h-[120px] resize-none bg-white ${
+              ['ur', 'ar', 'fa'].includes(detectedLanguage)
+                ? 'text-xl leading-loose text-right'
+                : 'text-lg'
+            }`}
+            dir={['ur', 'ar', 'fa'].includes(detectedLanguage) ? 'rtl' : 'ltr'}
             placeholder="Your story will appear here after recording — or just type it!"
             value={transcription}
             onChange={(e) => setTranscription(e.target.value)}
