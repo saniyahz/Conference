@@ -148,11 +148,25 @@ export function createCharacterBible(dna: CharacterDNA, fallbackSpecies?: string
   const gender = (!isAnimal && !isCreature) ? extractGender(dna) : undefined;
   console.log(`  - gender: ${gender || 'N/A (animal/creature)'}`);
 
+  // Detect ethnicity from original prompt for facial feature rendering
+  let ethnicity: string | undefined;
+  if (!isAnimal && !isCreature && originalPrompt) {
+    const pl = originalPrompt.toLowerCase();
+    if (/\b(?:east\s+asian|chinese|japanese|korean|vietnamese|thai|filipino|filipina|taiwanese|cambodian|laotian|burmese|hmong)\b/i.test(pl)) ethnicity = 'east_asian';
+    else if (/\b(?:south\s+asian|indian|pakistani|bangladeshi|sri\s+lankan|desi|nepali)\b/i.test(pl)) ethnicity = 'south_asian';
+    else if (/\b(?:african|black\s+(?:girl|boy|child|kid)|nigerian|ethiopian|kenyan|ghanaian|somali)\b/i.test(pl)) ethnicity = 'african';
+    else if (/\b(?:middle\s+eastern|arab|persian|turkish|kurdish|iraqi|syrian|lebanese|egyptian|moroccan)\b/i.test(pl)) ethnicity = 'middle_eastern';
+    else if (/\b(?:latino|latina|hispanic|mexican|brazilian|colombian|peruvian|cuban|puerto\s+rican|dominican)\b/i.test(pl)) ethnicity = 'latino';
+    else if (/\b(?:indigenous|native\s+american|first\s+nations|aboriginal)\b/i.test(pl)) ethnicity = 'indigenous';
+    if (ethnicity) console.log(`  - ethnicity detected from prompt: ${ethnicity}`);
+  }
+
   return {
     character_id: characterId,
     name: dna.name,
     character_type: isAnimal ? 'animal' : dna.type,  // Normalize: "dog" → "animal" (species field holds the specific animal)
     gender,  // "girl" or "boy" for human characters
+    ethnicity,  // Ethnicity for facial feature cues in image generation
     species: species,  // "dog", "cat", "rhinoceros", etc.
     age: isAnimal ? "friendly" : extractAge(dna),
 

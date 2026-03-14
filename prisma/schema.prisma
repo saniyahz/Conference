@@ -151,6 +151,17 @@ model SchoolBundle {
   @@index([adminUserId])
 }
 
+// ── Guest usage tracking (unauthenticated visitors) ──
+// Allows 1 free story per IP before requiring sign-up
+model GuestUsage {
+  id             String    @id @default(cuid())
+  ipAddress      String    @unique
+  storiesCreated Int       @default(0)
+  lastStoryAt    DateTime?
+  createdAt      DateTime  @default(now())
+  updatedAt      DateTime  @updatedAt
+}
+
 model UsageTracking {
   id                    String   @id @default(cuid())
   userId                String   @unique
