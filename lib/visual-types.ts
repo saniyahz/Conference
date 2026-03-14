@@ -18,6 +18,7 @@ export type CharacterBible = {
   gender?: 'girl' | 'boy';  // Explicit gender for human characters
   species?: string;  // For animals: "rhinoceros", "rabbit", etc.
   age?: string;
+  ethnicity?: string; // e.g., "east_asian", "south_asian", "african", "middle_eastern", "latino", "indigenous"
 
   // Immutable text description (createCharacterCanon builds this)
   description?: string;
@@ -124,3 +125,6 @@ export type StoryImagePack = {
 // Legacy types for backward compatibility
 export type CharacterCanon = CharacterBible;
 export type NormalizedScene = PageSceneCard;
+
+// Re-export new structured types from imagination pipeline
+export type { SceneCard as ImaginationSceneCard, StoryWorldDNA } from './imagination-types';

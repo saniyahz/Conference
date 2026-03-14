@@ -1,7 +1,7 @@
 'use client'
 
 import Link from 'next/link'
-import { BookOpen, Heart, Users, ArrowLeft, Mic, PenTool, Headphones, Check } from 'lucide-react'
+import { BookOpen, Heart, ArrowLeft, Brain, GraduationCap, Globe, Sparkles, Shield, Check, MessageCircle, Users } from 'lucide-react'
 import BeaverMascot from '@/components/BeaverMascot'
 
 export default function AboutPage() {
@@ -19,15 +19,15 @@ export default function AboutPage() {
           </Link>
         </div>
 
-        {/* Hero Section with Benny */}
+        {/* Hero Section */}
         <div className="bg-white rounded-2xl shadow-[0_20px_40px_-15px_rgba(0,0,0,0.05)] p-8 md:p-12 mb-8 border border-zinc-200">
           <div className="grid md:grid-cols-[1fr_auto] gap-8 items-center mb-8">
             <div>
               <h1 className="text-4xl md:text-5xl font-bold text-zinc-800 mb-4 tracking-tight">
-                Meet Little Story Bear
+                Building Readers, One Story at a Time
               </h1>
               <p className="text-xl text-zinc-500">
-                Helping kids discover the joy of storytelling
+                Little Story Bear turns children into authors — developing literacy, empathy, and a lifelong love of learning through the power of their own stories.
               </p>
             </div>
             <div className="hidden md:block">
@@ -35,143 +35,255 @@ export default function AboutPage() {
             </div>
           </div>
 
-          {/* Our Mission */}
-          <div className="bg-zinc-50 rounded-2xl p-6 md:p-8 mb-8 border border-zinc-200">
+          {/* Our Educational Mission */}
+          <div className="bg-emerald-50 rounded-2xl p-6 md:p-8 mb-8 border border-emerald-200">
             <div className="flex items-center gap-3 mb-4">
-              <Heart className="w-8 h-8 text-rose-500" />
-              <h2 className="text-2xl font-bold text-zinc-800">Our Mission</h2>
+              <GraduationCap className="w-8 h-8 text-emerald-600" />
+              <h2 className="text-2xl font-bold text-zinc-800">Our Educational Mission</h2>
             </div>
+            <p className="text-lg text-zinc-600 leading-relaxed mb-4">
+              Childhood literacy is in decline. Screens compete for attention, and many children never
+              discover the joy of reading because they haven&apos;t experienced the magic of <em>creating</em> a story themselves.
+            </p>
             <p className="text-lg text-zinc-600 leading-relaxed">
-              We believe every child has a story to tell. <strong>Little Story Bear</strong> was created
-              to spark the imagination of young minds and help them fall in love with reading and
-              storytelling. By letting kids speak their ideas and watch them transform into beautiful
-              illustrated stories, we&apos;re making creativity accessible and fun for everyone.
+              <strong>Little Story Bear</strong> exists to change that. We use AI-powered storytelling to meet
+              children where they are — letting them speak a story idea and watch it become a real illustrated
+              book they can read, share, and treasure. When a child sees themselves as an author,
+              they see themselves as a reader.
             </p>
           </div>
 
-          {/* Why We Started */}
+          {/* The Science Behind It */}
           <div className="mb-8">
             <div className="flex items-center gap-3 mb-6">
-              <BookOpen className="w-8 h-8 text-emerald-600" />
-              <h2 className="text-2xl font-bold text-zinc-800">Why We Started This Journey</h2>
+              <Brain className="w-8 h-8 text-violet-600" />
+              <h2 className="text-2xl font-bold text-zinc-800">How Storytelling Builds Young Minds</h2>
             </div>
+            <p className="text-lg text-zinc-600 leading-relaxed mb-6">
+              Decades of research in child development show that storytelling is one of the most
+              powerful tools for learning. When children create and engage with stories, they
+              develop critical skills across multiple domains:
+            </p>
 
-            <div className="space-y-6 text-zinc-600">
-              <p className="text-lg leading-relaxed">
-                In a world full of screens and distractions, we noticed something troubling:
-                fewer kids were picking up books, and fewer were discovering the magic of creating
-                their own stories. We wanted to change that.
-              </p>
+            <div className="grid md:grid-cols-2 gap-4">
+              <div className="bg-zinc-50 rounded-xl p-5 border border-zinc-200">
+                <h3 className="font-bold text-zinc-800 mb-2 flex items-center gap-2">
+                  <BookOpen className="w-5 h-5 text-emerald-600" />
+                  Literacy &amp; Language
+                </h3>
+                <p className="text-zinc-500 text-sm">
+                  Story creation builds vocabulary, sentence structure, and narrative comprehension — the
+                  foundations of reading fluency.
+                </p>
+              </div>
 
-              <p className="text-lg leading-relaxed">
-                <strong>Little Story Bear</strong> was born from a simple idea: what if we could
-                make storytelling as easy as talking to a friend? Kids don&apos;t need to know how to
-                write perfectly or draw beautifully to be storytellers. They just need their
-                imagination and their voice.
-              </p>
+              <div className="bg-zinc-50 rounded-xl p-5 border border-zinc-200">
+                <h3 className="font-bold text-zinc-800 mb-2 flex items-center gap-2">
+                  <Sparkles className="w-5 h-5 text-amber-500" />
+                  Creativity &amp; Critical Thinking
+                </h3>
+                <p className="text-zinc-500 text-sm">
+                  Imagining characters, settings, and plot challenges develops creative problem-solving
+                  and abstract thinking skills.
+                </p>
+              </div>
 
-              <p className="text-lg leading-relaxed">
-                When a child sees their spoken words transformed into a real storybook with
-                colorful illustrations, something magical happens. They realize:
-                <em className="text-emerald-600 font-semibold"> &quot;I&apos;m an author! I created this!&quot;</em>
-              </p>
+              <div className="bg-zinc-50 rounded-xl p-5 border border-zinc-200">
+                <h3 className="font-bold text-zinc-800 mb-2 flex items-center gap-2">
+                  <Heart className="w-5 h-5 text-rose-500" />
+                  Emotional Intelligence
+                </h3>
+                <p className="text-zinc-500 text-sm">
+                  Stories help children name and process emotions, understand different perspectives,
+                  and build empathy through characters.
+                </p>
+              </div>
+
+              <div className="bg-zinc-50 rounded-xl p-5 border border-zinc-200">
+                <h3 className="font-bold text-zinc-800 mb-2 flex items-center gap-2">
+                  <MessageCircle className="w-5 h-5 text-blue-500" />
+                  Confidence &amp; Self-Expression
+                </h3>
+                <p className="text-zinc-500 text-sm">
+                  Children who struggle with writing can still be storytellers. Voice-first creation
+                  removes barriers and builds confidence.
+                </p>
+              </div>
+
+              <div className="bg-zinc-50 rounded-xl p-5 border border-zinc-200 md:col-span-2">
+                <h3 className="font-bold text-zinc-800 mb-2 flex items-center gap-2">
+                  <Users className="w-5 h-5 text-emerald-600" />
+                  Parent-Child Bonding
+                </h3>
+                <p className="text-zinc-500 text-sm">
+                  Little Story Bear is designed to be a shared experience. Parents sit with their child,
+                  help shape the story idea, and watch it come to life together. Reading the finished
+                  book becomes a bedtime ritual, a car ride activity, or a weekend tradition — creating
+                  meaningful moments that strengthen the bond between parent and child through the magic of storytelling.
+                </p>
+              </div>
             </div>
           </div>
 
-          {/* What We Believe — 2-column zig-zag */}
-          <div className="grid md:grid-cols-2 gap-6 mb-8">
-            <div className="bg-zinc-50 rounded-xl p-6 border border-zinc-200">
-              <div className="w-12 h-12 bg-emerald-100 rounded-xl flex items-center justify-center mb-4">
-                <Mic className="w-6 h-6 text-emerald-600" />
-              </div>
-              <h3 className="text-lg font-bold text-zinc-800 mb-2">Every Voice Matters</h3>
-              <p className="text-zinc-500 text-sm">
-                Kids who struggle with writing can still be amazing storytellers.
-                Speaking their ideas removes barriers to creativity.
-              </p>
+          {/* Three Modes of Learning */}
+          <div className="mb-8">
+            <div className="flex items-center gap-3 mb-6">
+              <Globe className="w-8 h-8 text-blue-600" />
+              <h2 className="text-2xl font-bold text-zinc-800">Three Ways to Learn Through Stories</h2>
             </div>
+            <p className="text-lg text-zinc-600 leading-relaxed mb-6">
+              Every child learns differently. Little Story Bear offers three story modes, each designed
+              to develop different skills while keeping children engaged and excited about reading.
+            </p>
 
-            <div className="bg-zinc-50 rounded-xl p-6 border border-zinc-200 md:mt-8">
-              <div className="w-12 h-12 bg-emerald-100 rounded-xl flex items-center justify-center mb-4">
-                <PenTool className="w-6 h-6 text-emerald-600" />
+            <div className="space-y-4">
+              <div className="bg-gradient-to-r from-violet-50 to-white rounded-xl p-6 border border-violet-200">
+                <h3 className="text-lg font-bold text-zinc-800 mb-2">
+                  <span className="text-violet-600">Imagination Mode</span> — Creative Storytelling
+                </h3>
+                <p className="text-zinc-600 text-sm leading-relaxed">
+                  Children speak any story idea — a dragon who loves to bake, a trip to the moon,
+                  an adventure with their pet — and watch it become a fully illustrated 10-page book.
+                  This builds narrative thinking, vocabulary, and the fundamental belief that their ideas have value.
+                </p>
               </div>
-              <h3 className="text-lg font-bold text-zinc-800 mb-2">Creativity Builds Confidence</h3>
-              <p className="text-zinc-500 text-sm">
-                When kids see their ideas come to life, they gain confidence to
-                express themselves and explore new possibilities.
-              </p>
-            </div>
 
-            <div className="bg-zinc-50 rounded-xl p-6 border border-zinc-200">
-              <div className="w-12 h-12 bg-emerald-100 rounded-xl flex items-center justify-center mb-4">
-                <Headphones className="w-6 h-6 text-emerald-600" />
+              <div className="bg-gradient-to-r from-amber-50 to-white rounded-xl p-6 border border-amber-200">
+                <h3 className="text-lg font-bold text-zinc-800 mb-2">
+                  <span className="text-amber-600">History Mode</span> — Learning Real Events
+                </h3>
+                <p className="text-zinc-600 text-sm leading-relaxed">
+                  Children explore historical topics through engaging stories anchored in real facts.
+                  From ancient civilizations to space exploration, history comes alive through
+                  child-friendly narratives with factual accuracy — turning learning into an adventure.
+                </p>
               </div>
-              <h3 className="text-lg font-bold text-zinc-800 mb-2">Reading is an Adventure</h3>
-              <p className="text-zinc-500 text-sm">
-                By creating their own stories, kids develop a love for reading
-                that lasts a lifetime. Their journey into books starts here.
-              </p>
-            </div>
 
-            <div className="bg-zinc-50 rounded-xl p-6 border border-zinc-200 md:mt-8">
-              <div className="w-12 h-12 bg-emerald-100 rounded-xl flex items-center justify-center mb-4">
-                <Users className="w-6 h-6 text-emerald-600" />
+              <div className="bg-gradient-to-r from-emerald-50 to-white rounded-xl p-6 border border-emerald-200">
+                <h3 className="text-lg font-bold text-zinc-800 mb-2">
+                  <span className="text-emerald-600">Coping Mode</span> — Emotional Growth
+                </h3>
+                <p className="text-zinc-600 text-sm leading-relaxed">
+                  When children face challenges — a new sibling, moving to a new school, fears and
+                  worries — stories help them process emotions safely. Coping stories validate
+                  feelings and model healthy responses through relatable characters.
+                </p>
               </div>
-              <h3 className="text-lg font-bold text-zinc-800 mb-2">Stories Connect Families</h3>
-              <p className="text-zinc-500 text-sm">
-                A story created by a child becomes a treasured memory — something
-                to share, read aloud, and keep forever.
-              </p>
             </div>
           </div>
 
-          {/* Impact Section */}
+          {/* Age-Appropriate Growth */}
           <div className="bg-zinc-50 rounded-2xl p-6 md:p-8 mb-8 border border-zinc-200">
             <div className="flex items-center gap-3 mb-4">
-              <BookOpen className="w-8 h-8 text-emerald-600" />
-              <h2 className="text-2xl font-bold text-zinc-800">The Journey Into Reading</h2>
+              <GraduationCap className="w-8 h-8 text-emerald-600" />
+              <h2 className="text-2xl font-bold text-zinc-800">Growing With Your Child</h2>
             </div>
-            <div className="space-y-4 text-zinc-600">
-              <p className="text-lg leading-relaxed">
-                Research shows that children who engage with storytelling early develop stronger
-                language skills, better comprehension, and a deeper love for reading. When kids
-                become authors of their own stories, they:
-              </p>
-              <ul className="space-y-2 ml-4">
-                <li className="flex items-start gap-2">
-                  <Check className="w-5 h-5 text-emerald-500 flex-shrink-0 mt-0.5" />
-                  <span>Build vocabulary and language skills naturally</span>
-                </li>
-                <li className="flex items-start gap-2">
-                  <Check className="w-5 h-5 text-emerald-500 flex-shrink-0 mt-0.5" />
-                  <span>Develop creative thinking and problem-solving abilities</span>
-                </li>
-                <li className="flex items-start gap-2">
-                  <Check className="w-5 h-5 text-emerald-500 flex-shrink-0 mt-0.5" />
-                  <span>Gain confidence in expressing their ideas</span>
-                </li>
-                <li className="flex items-start gap-2">
-                  <Check className="w-5 h-5 text-emerald-500 flex-shrink-0 mt-0.5" />
-                  <span>Create memories they can share with family and friends</span>
-                </li>
-                <li className="flex items-start gap-2">
-                  <Check className="w-5 h-5 text-emerald-500 flex-shrink-0 mt-0.5" />
-                  <span>Start a lifelong journey of exploring ideas through books</span>
-                </li>
-              </ul>
+            <p className="text-lg text-zinc-600 leading-relaxed mb-6">
+              Stories adapt to your child&apos;s developmental stage, so the experience grows with them:
+            </p>
+            <div className="space-y-4">
+              <div className="flex items-start gap-4">
+                <div className="bg-emerald-100 text-emerald-700 font-bold text-sm rounded-lg px-3 py-1.5 flex-shrink-0">
+                  Ages 3–5
+                </div>
+                <p className="text-zinc-600 text-sm">
+                  Simple sentences, bright colorful illustrations, familiar settings. Builds early
+                  vocabulary, letter awareness, and the habit of engaging with books.
+                </p>
+              </div>
+              <div className="flex items-start gap-4">
+                <div className="bg-blue-100 text-blue-700 font-bold text-sm rounded-lg px-3 py-1.5 flex-shrink-0">
+                  Ages 6–8
+                </div>
+                <p className="text-zinc-600 text-sm">
+                  Richer narratives, longer sentences, more complex plots. Develops reading
+                  comprehension, cause-and-effect thinking, and emotional nuance.
+                </p>
+              </div>
+              <div className="flex items-start gap-4">
+                <div className="bg-violet-100 text-violet-700 font-bold text-sm rounded-lg px-3 py-1.5 flex-shrink-0">
+                  Ages 9–12
+                </div>
+                <p className="text-zinc-600 text-sm">
+                  Complex stories with deeper themes, graphic novel-style illustrations, and layered
+                  characters. Builds critical thinking, advanced vocabulary, and a bridge to independent reading.
+                </p>
+              </div>
             </div>
           </div>
 
-          {/* Benny's Promise */}
+          {/* Multilingual Learning */}
+          <div className="bg-blue-50 rounded-2xl p-6 md:p-8 mb-8 border border-blue-200">
+            <div className="flex items-center gap-3 mb-4">
+              <Globe className="w-8 h-8 text-blue-600" />
+              <h2 className="text-2xl font-bold text-zinc-800">Stories in Any Language</h2>
+            </div>
+            <p className="text-lg text-zinc-600 leading-relaxed mb-4">
+              Language is the gateway to literacy, and every child deserves to learn in the language
+              they speak at home. Little Story Bear generates stories in <strong>30+ languages</strong> — from
+              Arabic and Urdu to Spanish, Mandarin, French, and beyond.
+            </p>
+            <p className="text-lg text-zinc-600 leading-relaxed mb-6">
+              For multilingual families, stories can be created in a child&apos;s heritage language,
+              helping them build reading skills and cultural connection simultaneously. Whether
+              your family speaks one language or three, every child can create stories in the
+              language that feels like home.
+            </p>
+            <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
+              {[
+                { lang: 'Arabic', dir: 'RTL support' },
+                { lang: 'Spanish', dir: '30+ languages' },
+                { lang: 'Mandarin', dir: 'CJK support' },
+                { lang: 'Urdu', dir: 'RTL support' },
+                { lang: 'French', dir: 'European' },
+                { lang: 'Hindi', dir: 'Indic scripts' },
+                { lang: 'Turkish', dir: 'And many more' },
+                { lang: 'Swahili', dir: 'African languages' },
+              ].map((item) => (
+                <div key={item.lang} className="bg-white rounded-lg p-3 text-center border border-blue-100">
+                  <p className="font-semibold text-zinc-700 text-sm">{item.lang}</p>
+                  <p className="text-zinc-400 text-xs">{item.dir}</p>
+                </div>
+              ))}
+            </div>
+          </div>
+
+          {/* Safety & Trust */}
+          <div className="bg-zinc-50 rounded-2xl p-6 md:p-8 mb-8 border border-zinc-200">
+            <div className="flex items-center gap-3 mb-4">
+              <Shield className="w-8 h-8 text-blue-600" />
+              <h2 className="text-2xl font-bold text-zinc-800">Safe &amp; Age-Appropriate</h2>
+            </div>
+            <ul className="space-y-3 text-zinc-600">
+              <li className="flex items-start gap-2">
+                <Check className="w-5 h-5 text-emerald-500 flex-shrink-0 mt-0.5" />
+                <span>Every story passes multi-layer content safety checks before reaching your child</span>
+              </li>
+              <li className="flex items-start gap-2">
+                <Check className="w-5 h-5 text-emerald-500 flex-shrink-0 mt-0.5" />
+                <span>Illustrations are filtered for age-appropriate, child-safe imagery</span>
+              </li>
+              <li className="flex items-start gap-2">
+                <Check className="w-5 h-5 text-emerald-500 flex-shrink-0 mt-0.5" />
+                <span>No ads, no data collection from children, no external links</span>
+              </li>
+              <li className="flex items-start gap-2">
+                <Check className="w-5 h-5 text-emerald-500 flex-shrink-0 mt-0.5" />
+                <span>Characters represent diverse backgrounds with respectful, inclusive design</span>
+              </li>
+            </ul>
+          </div>
+
+          {/* Our Promise */}
           <div className="bg-emerald-600 text-white rounded-2xl p-6 md:p-8 text-center">
             <div className="flex justify-center mb-4">
               <BeaverMascot greeting="" isRecording={false} isProcessing={false} size="small" />
             </div>
-            <h2 className="text-2xl font-bold mb-4">Our Promise</h2>
+            <h2 className="text-2xl font-bold mb-4">Our Promise to Families</h2>
             <p className="text-lg text-white/90 leading-relaxed max-w-2xl mx-auto">
-              &quot;Every story you tell is special. I&apos;m here to listen to your amazing ideas and
-              help bring them to life. Together, we&apos;ll create adventures you can read again
-              and again. So tell me... what story shall we create today?&quot;
+              Every child deserves to see themselves as a reader and a creator. We&apos;re building
+              Little Story Bear to make that possible — one story at a time, in any language,
+              for every child, regardless of ability or background.
             </p>
             <p className="text-emerald-200 mt-4 font-semibold">&mdash; The Little Story Bear Team</p>
           </div>
@@ -187,13 +299,13 @@ export default function AboutPage() {
             Start Creating Stories
           </Link>
           <p className="text-zinc-400 mt-4">
-            Join thousands of young authors on their storytelling adventure!
+            Join families around the world building a love of reading through storytelling.
           </p>
         </div>
 
         {/* Footer */}
         <div className="mt-12 text-center text-zinc-400 text-sm">
-          <p>Made with love for young storytellers everywhere</p>
+          <p>Made with love for young learners everywhere</p>
           <div className="flex justify-center gap-4 mt-4">
             <Link href="/pricing" className="hover:text-zinc-600 underline">Pricing</Link>
             <Link href="/terms" className="hover:text-zinc-600 underline">Terms & Conditions</Link>
