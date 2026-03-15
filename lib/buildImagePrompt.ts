@@ -349,6 +349,7 @@ export function buildImagePrompt(
     prompt += ' The child character is TINY, only 10-15% of the image height, placed at the edge or corner observing the scene.';
     prompt += ' Focus on historical details: architecture, clothing of the era, tools, vehicles, landscape, cultural artifacts.';
     prompt += ' Minimize people — show the PLACE and SETTING, not crowds or character close-ups.';
+    prompt += ' Correct anatomy for ALL figures (two arms, two legs, no extra limbs, five fingers per hand, no distorted or bent limbs, natural human proportions). Even tiny background figures must have correct limb anatomy.';
 
     // Minimal character identity (they're tiny anyway)
     if (identity.skinTone) {
@@ -374,7 +375,7 @@ export function buildImagePrompt(
       prompt += ` ${identityCues.join(', ')}.`;
     }
 
-    prompt += ' Correct anatomy (two arms, two legs, no extra limbs, five fingers per hand).';
+    prompt += ' Correct anatomy (two arms, two legs, no extra limbs, no distorted or bent limbs, five fingers per hand, natural human proportions).';
     prompt += ' The character is a CHILD — small childlike body, big round head, short stubby limbs. NO adult body, NO teenager body, NO curves, NO mature proportions.';
     prompt += ' EXTREME WIDE SHOT composition — character is TINY, only 15-20% of image height, full body visible head to feet.';
     prompt += ' The environment fills 80%+ of the image — detailed backgrounds with depth and atmosphere.';
